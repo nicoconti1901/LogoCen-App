@@ -3,11 +3,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createAppointment,
   deleteAppointment,
-  fetchOffices,
   fetchPatients,
   fetchSpecialists,
   updateAppointment,
 } from "../api/endpoints";
+import { getAppointmentDateStr, getEndTimeStr, getStartTimeStr } from "../lib/appointmentDisplay";
 import { useAuth } from "../contexts/AuthContext";
 import type { Appointment, AppointmentStatus } from "../types";
 
@@ -20,12 +20,31 @@ type Props = {
   onSaved: () => void;
 };
 
-const statuses: AppointmentStatus[] = ["SCHEDULED", "COMPLETED", "CANCELLED"];
+const statuses: AppointmentStatus[] = [
+  "RESERVED",
+  "CONFIRMED",
+  "ATTENDED",
+  "CANCELLED",
+  "NO_SHOW",
+];
 
-function toLocalInput(d: Date): string {
+function localDateStr(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
+
+function localTimeStr(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+const statusLabel: Record<AppointmentStatus, string> = {
+  RESERVED: "Reservada",
+  CONFIRMED: "Confirmada",
+  ATTENDED: "Atendida",
+  CANCELLED: "Cancelada",
+  NO_SHOW: "No asistió",
+};
 
 export function AppointmentModal({
   open,
@@ -46,16 +65,15 @@ export function AppointmentModal({
     queryFn: () => fetchSpecialists(false),
     enabled: open && isAdmin,
   });
-  const officesQ = useQuery({ queryKey: ["offices"], queryFn: fetchOffices, enabled: open });
 
   const [patientId, setPatientId] = useState("");
   const [specialistId, setSpecialistId] = useState("");
-  const [officeId, setOfficeId] = useState("");
-  const [startStr, setStartStr] = useState("");
-  const [endStr, setEndStr] = useState("");
-  const [notes, setNotes] = useState("");
-  const [status, setStatus] = useState<AppointmentStatus>("SCHEDULED");
-  const [clinicalHistory, setClinicalHistory] = useState("");
+  const [dateStr, setDateStr] = useState("");
+  const [startTimeStr, setStartTimeStr] = useState("");
+  const [endTimeStr, setEndTimeStr] = useState("");
+  const [status, setStatus] = useState<AppointmentStatus>("RESERVED");
+  const [medicalRecord, setMedicalRecord] = useState("");
+  const [reasonForVisit, setReasonForVisit] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const isEdit = Boolean(appointment);
@@ -66,23 +84,23 @@ export function AppointmentModal({
     if (appointment) {
       setPatientId(appointment.patientId);
       setSpecialistId(appointment.specialistId);
-      setOfficeId(appointment.officeId ?? "");
-      setStartStr(toLocalInput(new Date(appointment.startAt)));
-      setEndStr(toLocalInput(new Date(appointment.endAt)));
-      setNotes(appointment.notes ?? "");
+      setDateStr(getAppointmentDateStr(appointment));
+      setStartTimeStr(getStartTimeStr(appointment));
+      setEndTimeStr(getEndTimeStr(appointment));
       setStatus(appointment.status);
-      setClinicalHistory(appointment.clinicalHistory ?? "");
+      setMedicalRecord(appointment.medicalRecord ?? "");
+      setReasonForVisit(appointment.reasonForVisit ?? "");
     } else {
       const s = initialStart ?? new Date();
       const e = initialEnd ?? new Date(s.getTime() + 30 * 60 * 1000);
       setPatientId("");
       setSpecialistId(isAdmin ? "" : mySpecialistId);
-      setOfficeId("");
-      setStartStr(toLocalInput(s));
-      setEndStr(toLocalInput(e));
-      setNotes("");
-      setStatus("SCHEDULED");
-      setClinicalHistory("");
+      setDateStr(localDateStr(s));
+      setStartTimeStr(localTimeStr(s));
+      setEndTimeStr(localTimeStr(e));
+      setStatus("RESERVED");
+      setMedicalRecord("");
+      setReasonForVisit("");
     }
   }, [open, appointment, initialStart, initialEnd, isAdmin, mySpecialistId]);
 
@@ -91,11 +109,12 @@ export function AppointmentModal({
       createAppointment({
         patientId,
         specialistId: isAdmin ? specialistId : mySpecialistId,
-        officeId: officeId || null,
-        startAt: new Date(startStr).toISOString(),
-        endAt: new Date(endStr).toISOString(),
-        notes: notes || null,
+        date: dateStr,
+        startTime: startTimeStr,
+        endTime: endTimeStr,
         status,
+        medicalRecord: medicalRecord || null,
+        reasonForVisit: reasonForVisit || null,
       }),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["appointments"] });
@@ -116,12 +135,12 @@ export function AppointmentModal({
       updateAppointment(appointment!.id, {
         patientId: isAdmin ? patientId : undefined,
         specialistId: isAdmin ? specialistId : undefined,
-        officeId: officeId || null,
-        startAt: new Date(startStr).toISOString(),
-        endAt: new Date(endStr).toISOString(),
-        notes: notes || null,
+        date: dateStr,
+        startTime: startTimeStr,
+        endTime: endTimeStr,
         status,
-        clinicalHistory: clinicalHistory || null,
+        medicalRecord: medicalRecord || null,
+        reasonForVisit: reasonForVisit || null,
       }),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["appointments"] });
@@ -155,14 +174,13 @@ export function AppointmentModal({
 
   const patients = patientsQ.data ?? [];
   const specialists = specialistsQ.data ?? [];
-  const offices = officesQ.data ?? [];
 
   const canSubmit = useMemo(() => {
-    if (!patientId || !startStr || !endStr) return false;
+    if (!patientId || !dateStr || !startTimeStr || !endTimeStr) return false;
     if (isAdmin && !specialistId) return false;
     if (!isAdmin && !mySpecialistId) return false;
     return true;
-  }, [patientId, startStr, endStr, isAdmin, specialistId, mySpecialistId]);
+  }, [patientId, dateStr, startTimeStr, endTimeStr, isAdmin, specialistId, mySpecialistId]);
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -239,41 +257,35 @@ export function AppointmentModal({
           )}
 
           <div>
-            <label className="block text-sm font-medium text-slate-700">Consultorio (opcional)</label>
-            <select
+            <label className="block text-sm font-medium text-slate-700">Fecha</label>
+            <input
+              type="date"
+              required
               className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
-              value={officeId}
-              onChange={(e) => setOfficeId(e.target.value)}
-            >
-              <option value="">—</option>
-              {offices.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.name}
-                  {o.number ? ` (${o.number})` : ""}
-                </option>
-              ))}
-            </select>
+              value={dateStr}
+              onChange={(e) => setDateStr(e.target.value)}
+            />
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <label className="block text-sm font-medium text-slate-700">Inicio</label>
+              <label className="block text-sm font-medium text-slate-700">Hora inicio</label>
               <input
-                type="datetime-local"
+                type="time"
                 required
                 className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
-                value={startStr}
-                onChange={(e) => setStartStr(e.target.value)}
+                value={startTimeStr}
+                onChange={(e) => setStartTimeStr(e.target.value)}
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700">Fin</label>
+              <label className="block text-sm font-medium text-slate-700">Hora fin</label>
               <input
-                type="datetime-local"
+                type="time"
                 required
                 className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
-                value={endStr}
-                onChange={(e) => setEndStr(e.target.value)}
+                value={endTimeStr}
+                onChange={(e) => setEndTimeStr(e.target.value)}
               />
             </div>
           </div>
@@ -287,33 +299,32 @@ export function AppointmentModal({
             >
               {statuses.map((s) => (
                 <option key={s} value={s}>
-                  {s === "SCHEDULED" ? "Programada" : s === "COMPLETED" ? "Completada" : "Cancelada"}
+                  {statusLabel[s]}
                 </option>
               ))}
             </select>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700">Notas</label>
+            <label className="block text-sm font-medium text-slate-700">Motivo de consulta</label>
             <textarea
               className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
               rows={2}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
+              value={reasonForVisit}
+              onChange={(e) => setReasonForVisit(e.target.value)}
             />
           </div>
 
           {isEdit && (
             <div>
               <label className="block text-sm font-medium text-slate-700">
-                Historial clínico (completado por el especialista)
+                Historial / registro médico
               </label>
               <textarea
                 className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm"
                 rows={5}
-                value={clinicalHistory}
-                onChange={(e) => setClinicalHistory(e.target.value)}
-                placeholder="Evolución, diagnóstico, indicaciones…"
+                value={medicalRecord}
+                onChange={(e) => setMedicalRecord(e.target.value)}
               />
             </div>
           )}

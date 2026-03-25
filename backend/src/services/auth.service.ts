@@ -1,18 +1,15 @@
 import { Role } from "@prisma/client";
-import { prisma } from "../config/database.js";
+import { userRepository } from "../repositories/user.repository.js";
 import { AppError } from "../middleware/errorHandler.js";
 import { signToken } from "../utils/jwt.js";
 import { verifyPassword } from "../utils/password.js";
 
 export async function getCurrentUser(userId: string) {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    include: { specialist: true },
-  });
+  const user = await userRepository.findById(userId);
   if (!user) {
     throw new AppError(404, "Usuario no encontrado");
   }
-  if (user.role === Role.ESPECIALISTA && (!user.specialist || !user.specialist.active)) {
+  if (user.role === Role.SPECIALIST && (!user.specialist || !user.specialist.active)) {
     throw new AppError(403, "Cuenta de especialista inactiva");
   }
   return {
@@ -32,10 +29,7 @@ export async function getCurrentUser(userId: string) {
 }
 
 export async function login(email: string, password: string) {
-  const user = await prisma.user.findUnique({
-    where: { email: email.toLowerCase().trim() },
-    include: { specialist: true },
-  });
+  const user = await userRepository.findByEmail(email);
   if (!user) {
     throw new AppError(401, "Credenciales inválidas");
   }
@@ -43,7 +37,7 @@ export async function login(email: string, password: string) {
   if (!ok) {
     throw new AppError(401, "Credenciales inválidas");
   }
-  if (user.role === Role.ESPECIALISTA) {
+  if (user.role === Role.SPECIALIST) {
     if (!user.specialist || !user.specialist.active) {
       throw new AppError(403, "Cuenta de especialista inactiva");
     }

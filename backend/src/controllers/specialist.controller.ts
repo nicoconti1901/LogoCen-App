@@ -33,15 +33,16 @@ export const list = asyncHandler(async (req: Request, res: Response) => {
 });
 
 export const getById = asyncHandler(async (req: Request, res: Response) => {
-  if (req.user?.role === Role.ESPECIALISTA && req.user.specialistId !== req.params.id) {
+  const id = String(req.params.id);
+  if (req.user?.role === Role.SPECIALIST && req.user.specialistId !== id) {
     throw new AppError(403, "Sin permisos");
   }
-  const row = await specialistService.getSpecialistById(req.params.id);
+  const row = await specialistService.getSpecialistById(id);
   res.json(row);
 });
 
 export const getMe = asyncHandler(async (req: Request, res: Response) => {
-  if (req.user?.role !== Role.ESPECIALISTA || !req.user.specialistId) {
+  if (req.user?.role !== Role.SPECIALIST || !req.user.specialistId) {
     throw new AppError(403, "Solo especialistas");
   }
   const row = await specialistService.getSpecialistById(req.user.specialistId);
@@ -56,11 +57,11 @@ export const create = asyncHandler(async (req: Request, res: Response) => {
 
 export const update = asyncHandler(async (req: Request, res: Response) => {
   const body = updateSchema.parse(req.body);
-  const row = await specialistService.updateSpecialist(req.params.id, body);
+  const row = await specialistService.updateSpecialist(String(req.params.id), body);
   res.json(row);
 });
 
 export const remove = asyncHandler(async (req: Request, res: Response) => {
-  await specialistService.deleteSpecialist(req.params.id);
+  await specialistService.deleteSpecialist(String(req.params.id));
   res.status(204).send();
 });

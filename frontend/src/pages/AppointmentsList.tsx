@@ -88,13 +88,15 @@ export function AppointmentsListPage() {
               <th className="px-4 py-3">Paciente</th>
               {isAdmin && <th className="px-4 py-3">Especialista</th>}
               <th className="px-4 py-3">Estado</th>
-              <th className="px-4 py-3">Consultorio</th>
             </tr>
           </thead>
           <tbody>
             {isLoading && (
               <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-slate-500">
+                <td
+                  colSpan={isAdmin ? 4 : 3}
+                  className="px-4 py-6 text-center text-slate-500"
+                >
                   Cargando…
                 </td>
               </tr>
@@ -110,7 +112,8 @@ export function AppointmentsListPage() {
                   }}
                 >
                   <td className="px-4 py-3 whitespace-nowrap">
-                    {new Date(a.startAt).toLocaleString()}
+                    {(a.date ?? a.appointmentDate.slice(0, 10)) + " "}
+                    {(a.time?.start ?? a.startTime) + "–" + (a.time?.end ?? a.endTime)}
                   </td>
                   <td className="px-4 py-3">
                     {a.patient.lastName}, {a.patient.firstName}
@@ -121,7 +124,6 @@ export function AppointmentsListPage() {
                     </td>
                   )}
                   <td className="px-4 py-3">{a.status}</td>
-                  <td className="px-4 py-3">{a.office?.name ?? "—"}</td>
                 </tr>
               ))}
           </tbody>

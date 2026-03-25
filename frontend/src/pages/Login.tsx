@@ -1,3 +1,4 @@
+import axios from "axios";
 import { FormEvent, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
@@ -20,10 +21,14 @@ export function LoginPage() {
     try {
       await login(email, password);
     } catch (err: unknown) {
-      const msg =
-        err && typeof err === "object" && "response" in err
-          ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
-          : null;
+      let msg: string | null = null;
+      if (axios.isAxiosError(err)) {
+        msg = err.response?.data?.message ?? null;
+        if (!msg && err.code === "ERR_NETWORK") {
+          msg =
+            "No hay conexión con el API. Comprobá que el backend esté en marcha (p. ej. puerto 4000) y que el proxy / VITE_API_URL sea correcto.";
+        }
+      }
       setError(msg ?? "No se pudo iniciar sesión");
     } finally {
       setPending(false);

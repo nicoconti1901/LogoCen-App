@@ -1,6 +1,13 @@
-export type Role = "ADMIN" | "ESPECIALISTA";
+export type Role = "ADMIN" | "SPECIALIST";
 
-export type AppointmentStatus = "SCHEDULED" | "COMPLETED" | "CANCELLED";
+export type AppointmentStatus =
+  | "RESERVED"
+  | "CONFIRMED"
+  | "ATTENDED"
+  | "CANCELLED"
+  | "NO_SHOW";
+
+export type PaymentStatus = "PENDING" | "PAID" | "FAILED" | "REFUNDED";
 
 export type AuthUser = {
   id: string;
@@ -43,23 +50,34 @@ export type Specialist = {
   user: { id: string; email: string };
 };
 
-export type Office = {
-  id: string;
-  name: string;
-  number: string | null;
-};
-
+/** Respuesta API enriquecida: fecha, franja horaria, snake_case opcional */
 export type Appointment = {
   id: string;
   patientId: string;
   specialistId: string;
-  officeId: string | null;
-  startAt: string;
-  endAt: string;
+  appointmentDate: string;
+  startTime: string;
+  endTime: string;
   status: AppointmentStatus;
-  notes: string | null;
-  clinicalHistory: string | null;
+  medicalRecord: string | null;
+  reasonForVisit: string | null;
+  date?: string;
+  time?: { start: string; end: string };
+  medical_record?: string | null;
+  reason_for_visit?: string | null;
   patient: Patient;
   specialist: Omit<Specialist, "user">;
-  office: Office | null;
+  payments?: Payment[];
+};
+
+export type Payment = {
+  id: string;
+  appointmentId: string;
+  amount: string;
+  currency: string;
+  status: PaymentStatus;
+  method: string | null;
+  paidAt: string | null;
+  notes: string | null;
+  appointment?: Appointment;
 };

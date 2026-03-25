@@ -22,7 +22,7 @@ export const list = asyncHandler(async (req: Request, res: Response) => {
 });
 
 export const getById = asyncHandler(async (req: Request, res: Response) => {
-  const row = await patientService.getPatientById(req.params.id);
+  const row = await patientService.getPatientById(String(req.params.id));
   res.json(row);
 });
 
@@ -34,11 +34,11 @@ export const create = asyncHandler(async (req: Request, res: Response) => {
 
 export const update = asyncHandler(async (req: Request, res: Response) => {
   const body = updateSchema.parse(req.body);
-  const row = await patientService.updatePatient(req.params.id, body);
+  const row = await patientService.updatePatient(String(req.params.id), body);
   res.json(row);
 });
 
 export const remove = asyncHandler(async (req: Request, res: Response) => {
-  await patientService.deletePatient(req.params.id);
+  await patientService.deletePatient(String(req.params.id));
   res.status(204).send();
 });

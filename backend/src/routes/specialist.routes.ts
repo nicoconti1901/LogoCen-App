@@ -8,7 +8,7 @@ export const specialistRouter = Router();
 specialistRouter.use(requireAuth);
 
 specialistRouter.get("/", specialistController.list);
-specialistRouter.get("/me", requireRole(Role.ESPECIALISTA), specialistController.getMe);
+specialistRouter.get("/me", requireRole(Role.SPECIALIST), specialistController.getMe);
 specialistRouter.get("/:id", specialistController.getById);
 specialistRouter.post("/", requireRole(Role.ADMIN), specialistController.create);
 specialistRouter.patch("/:id", requireRole(Role.ADMIN), specialistController.update);

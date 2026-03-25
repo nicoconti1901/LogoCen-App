@@ -1,37 +1,17 @@
 import { AppointmentStatus, Prisma, Role } from "@prisma/client";
-import { prisma } from "../config/database.js";
+import { appointmentRepository } from "../repositories/appointment.repository.js";
+import { patientRepository } from "../repositories/patient.repository.js";
+import { specialistRepository } from "../repositories/specialist.repository.js";
 import { AppError } from "../middleware/errorHandler.js";
-import { sendAppointmentConfirmation } from "./mail.service.js";
+import {
+  assertValidTime,
+  currentTimeHHmm,
+  parseDateOnlyISO,
+  timeToMinutes,
+  timesOverlap,
+  toDateOnly,
+} from "../utils/appointmentTime.js";
 import { endOfLocalDay, startOfLocalDay } from "../utils/date.js";
-
-async function assertNoOverlap(
-  specialistId: string,
-  startAt: Date,
-  endAt: Date,
-  excludeId?: string
-): Promise<void> {
-  const clash = await prisma.appointment.findFirst({
-    where: {
-      specialistId,
-      status: { not: AppointmentStatus.CANCELLED },
-      ...(excludeId ? { id: { not: excludeId } } : {}),
-      AND: [{ startAt: { lt: endAt } }, { endAt: { gt: startAt } }],
-    },
-  });
-  if (clash) {
-    throw new AppError(409, "El especialista ya tiene una cita en ese horario");
-  }
-}
-
-const appointmentInclude = {
-  patient: true,
-  specialist: true,
-  office: true,
-} satisfies Prisma.AppointmentInclude;
-
-export type AppointmentWithRelations = Prisma.AppointmentGetPayload<{
-  include: typeof appointmentInclude;
-}>;
 
 function assertCanAccessAppointment(
   role: Role,
@@ -39,8 +19,33 @@ function assertCanAccessAppointment(
   appointmentSpecialistId: string
 ): void {
   if (role === Role.ADMIN) return;
-  if (role === Role.ESPECIALISTA && userSpecialistId === appointmentSpecialistId) return;
+  if (role === Role.SPECIALIST && userSpecialistId === appointmentSpecialistId) return;
   throw new AppError(403, "No puede acceder a esta cita");
+}
+
+function assertEndAfterStart(startTime: string, endTime: string): void {
+  if (timeToMinutes(endTime) <= timeToMinutes(startTime)) {
+    throw new AppError(400, "La hora de fin debe ser posterior al inicio");
+  }
+}
+
+async function assertNoOverlap(
+  specialistId: string,
+  appointmentDate: Date,
+  startTime: string,
+  endTime: string,
+  excludeId?: string
+): Promise<void> {
+  const sameDay = await appointmentRepository.findBySpecialistAndDate(
+    specialistId,
+    appointmentDate,
+    excludeId
+  );
+  for (const row of sameDay) {
+    if (timesOverlap(startTime, endTime, row.startTime, row.endTime)) {
+      throw new AppError(409, "El especialista ya tiene una cita en ese horario");
+    }
+  }
 }
 
 export async function listAppointments(params: {
@@ -53,10 +58,10 @@ export async function listAppointments(params: {
   status?: AppointmentStatus;
   specialistId?: string;
   patientId?: string;
-}): Promise<AppointmentWithRelations[]> {
+}) {
   const where: Prisma.AppointmentWhereInput = {};
 
-  if (params.role === Role.ESPECIALISTA) {
+  if (params.role === Role.SPECIALIST) {
     if (!params.userSpecialistId) throw new AppError(403, "Sin perfil de especialista");
     where.specialistId = params.userSpecialistId;
   } else if (params.specialistId) {
@@ -66,48 +71,42 @@ export async function listAppointments(params: {
   if (params.patientId) where.patientId = params.patientId;
   if (params.status) where.status = params.status;
 
-  let startAtFilter: Prisma.DateTimeFilter = {};
+  const todayOnly = toDateOnly(new Date());
+  const nowT = currentTimeHHmm();
 
-  if (params.today) {
-    startAtFilter = { gte: startOfLocalDay(), lte: endOfLocalDay() };
+  if (params.today && params.upcoming) {
+    where.appointmentDate = { equals: todayOnly };
+    where.startTime = { gte: nowT };
+  } else if (params.today) {
+    const s = startOfLocalDay();
+    const e = endOfLocalDay();
+    where.appointmentDate = { gte: toDateOnly(s), lte: toDateOnly(e) };
   } else {
-    if (params.from) startAtFilter.gte = params.from;
-    if (params.to) startAtFilter.lte = params.to;
+    const range: Prisma.DateTimeFilter = {};
+    if (params.from) range.gte = toDateOnly(params.from);
+    if (params.to) range.lte = toDateOnly(params.to);
+    if (Object.keys(range).length) where.appointmentDate = range;
   }
 
-  if (params.upcoming) {
-    const now = new Date();
-    const prevGte = startAtFilter.gte;
-    if (prevGte instanceof Date) {
-      startAtFilter.gte = prevGte > now ? prevGte : now;
-    } else if (prevGte) {
-      const p = new Date(prevGte);
-      startAtFilter.gte = p > now ? p : now;
-    } else {
-      startAtFilter.gte = now;
-    }
+  if (params.upcoming && !params.today) {
+    where.AND = [
+      ...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []),
+      {
+        OR: [
+          { appointmentDate: { gt: todayOnly } },
+          {
+            AND: [{ appointmentDate: { equals: todayOnly } }, { startTime: { gte: nowT } }],
+          },
+        ],
+      },
+    ];
   }
 
-  if (Object.keys(startAtFilter).length) {
-    where.startAt = startAtFilter;
-  }
-
-  return prisma.appointment.findMany({
-    where,
-    include: appointmentInclude,
-    orderBy: { startAt: "asc" },
-  });
+  return appointmentRepository.findMany(where);
 }
 
-export async function getAppointmentById(
-  id: string,
-  role: Role,
-  userSpecialistId: string | null
-): Promise<AppointmentWithRelations> {
-  const a = await prisma.appointment.findUnique({
-    where: { id },
-    include: appointmentInclude,
-  });
+export async function getAppointmentById(id: string, role: Role, userSpecialistId: string | null) {
+  const a = await appointmentRepository.findById(id);
   if (!a) throw new AppError(404, "Cita no encontrada");
   assertCanAccessAppointment(role, userSpecialistId, a.specialistId);
   return a;
@@ -117,63 +116,48 @@ export async function createAppointment(
   data: {
     patientId: string;
     specialistId: string;
-    officeId?: string | null;
-    startAt: Date;
-    endAt: Date;
-    notes?: string | null;
+    appointmentDate: Date;
+    startTime: string;
+    endTime: string;
     status?: AppointmentStatus;
+    medicalRecord?: string | null;
+    reasonForVisit?: string | null;
   },
   role: Role,
   userSpecialistId: string | null
-): Promise<AppointmentWithRelations> {
-  if (role === Role.ESPECIALISTA) {
+) {
+  if (role === Role.SPECIALIST) {
     if (!userSpecialistId || data.specialistId !== userSpecialistId) {
       throw new AppError(403, "Solo puede crear citas para usted mismo");
     }
   }
 
-  if (data.startAt >= data.endAt) {
-    throw new AppError(400, "La hora de fin debe ser posterior al inicio");
-  }
+  const startTime = assertValidTime(data.startTime);
+  const endTime = assertValidTime(data.endTime);
+  assertEndAfterStart(startTime, endTime);
 
-  const specialist = await prisma.specialist.findUnique({ where: { id: data.specialistId } });
+  const appointmentDate = toDateOnly(data.appointmentDate);
+
+  const specialist = await specialistRepository.findById(data.specialistId);
   if (!specialist || !specialist.active) {
     throw new AppError(400, "Especialista inválido o inactivo");
   }
 
-  await prisma.patient.findUniqueOrThrow({ where: { id: data.patientId } });
+  const patient = await patientRepository.findById(data.patientId);
+  if (!patient) throw new AppError(400, "Paciente no encontrado");
 
-  if (data.officeId) {
-    await prisma.office.findUniqueOrThrow({ where: { id: data.officeId } });
-  }
+  await assertNoOverlap(data.specialistId, appointmentDate, startTime, endTime);
 
-  await assertNoOverlap(data.specialistId, data.startAt, data.endAt);
-
-  const created = await prisma.appointment.create({
-    data: {
-      patientId: data.patientId,
-      specialistId: data.specialistId,
-      officeId: data.officeId ?? null,
-      startAt: data.startAt,
-      endAt: data.endAt,
-      notes: data.notes?.trim() || null,
-      status: data.status ?? AppointmentStatus.SCHEDULED,
-    },
-    include: appointmentInclude,
+  return appointmentRepository.create({
+    patient: { connect: { id: data.patientId } },
+    specialist: { connect: { id: data.specialistId } },
+    appointmentDate,
+    startTime,
+    endTime,
+    status: data.status ?? AppointmentStatus.RESERVED,
+    medicalRecord: data.medicalRecord?.trim() || null,
+    reasonForVisit: data.reasonForVisit?.trim() || null,
   });
-
-  const specialistName = `${created.specialist.firstName} ${created.specialist.lastName}`;
-  await sendAppointmentConfirmation({
-    patientName: `${created.patient.firstName} ${created.patient.lastName}`,
-    patientEmail: created.patient.email,
-    specialistName,
-    startAt: created.startAt,
-    endAt: created.endAt,
-    officeName: created.office?.name ?? null,
-    isUpdate: false,
-  }).catch((err) => console.error("[mail] confirmación:", err));
-
-  return created;
 }
 
 export async function updateAppointment(
@@ -181,28 +165,26 @@ export async function updateAppointment(
   data: Partial<{
     patientId: string;
     specialistId: string;
-    officeId: string | null;
-    startAt: Date;
-    endAt: Date;
-    notes: string | null;
+    appointmentDate: Date;
+    startTime: string;
+    endTime: string;
     status: AppointmentStatus;
-    clinicalHistory: string | null;
+    medicalRecord: string | null;
+    reasonForVisit: string | null;
   }>,
   role: Role,
   userSpecialistId: string | null
-): Promise<AppointmentWithRelations> {
-  const existing = await prisma.appointment.findUnique({
-    where: { id },
-    include: appointmentInclude,
-  });
+) {
+  const existing = await appointmentRepository.findById(id);
   if (!existing) throw new AppError(404, "Cita no encontrada");
   assertCanAccessAppointment(role, userSpecialistId, existing.specialistId);
 
   const nextSpecialistId = data.specialistId ?? existing.specialistId;
-  const nextStart = data.startAt ?? existing.startAt;
-  const nextEnd = data.endAt ?? existing.endAt;
+  const nextDate = data.appointmentDate !== undefined ? toDateOnly(data.appointmentDate) : existing.appointmentDate;
+  const nextStart = data.startTime !== undefined ? assertValidTime(data.startTime) : existing.startTime;
+  const nextEnd = data.endTime !== undefined ? assertValidTime(data.endTime) : existing.endTime;
 
-  if (role === Role.ESPECIALISTA) {
+  if (role === Role.SPECIALIST) {
     if (data.specialistId && data.specialistId !== userSpecialistId) {
       throw new AppError(403, "No puede reasignar la cita a otro especialista");
     }
@@ -211,72 +193,36 @@ export async function updateAppointment(
     }
   }
 
-  if (nextStart >= nextEnd) {
-    throw new AppError(400, "La hora de fin debe ser posterior al inicio");
-  }
+  assertEndAfterStart(nextStart, nextEnd);
 
-  if (data.specialistId || data.startAt || data.endAt) {
-    const specialist = await prisma.specialist.findUnique({ where: { id: nextSpecialistId } });
+  if (data.specialistId || data.appointmentDate !== undefined || data.startTime !== undefined || data.endTime !== undefined) {
+    const specialist = await specialistRepository.findById(nextSpecialistId);
     if (!specialist || !specialist.active) {
       throw new AppError(400, "Especialista inválido o inactivo");
     }
-    await assertNoOverlap(nextSpecialistId, nextStart, nextEnd, id);
+    await assertNoOverlap(nextSpecialistId, nextDate, nextStart, nextEnd, id);
   }
 
   if (data.patientId) {
-    await prisma.patient.findUniqueOrThrow({ where: { id: data.patientId } });
+    const patient = await patientRepository.findById(data.patientId);
+    if (!patient) throw new AppError(400, "Paciente no encontrado");
   }
 
-  if (data.officeId) {
-    await prisma.office.findUniqueOrThrow({ where: { id: data.officeId } });
-  }
-
-  const updated = await prisma.appointment.update({
-    where: { id },
-    data: {
-      ...(data.patientId !== undefined ? { patientId: data.patientId } : {}),
-      ...(data.specialistId !== undefined ? { specialistId: data.specialistId } : {}),
-      ...(data.officeId !== undefined ? { officeId: data.officeId } : {}),
-      ...(data.startAt !== undefined ? { startAt: data.startAt } : {}),
-      ...(data.endAt !== undefined ? { endAt: data.endAt } : {}),
-      ...(data.notes !== undefined ? { notes: data.notes?.trim() || null } : {}),
-      ...(data.status !== undefined ? { status: data.status } : {}),
-      ...(data.clinicalHistory !== undefined
-        ? { clinicalHistory: data.clinicalHistory?.trim() || null }
-        : {}),
-    },
-    include: appointmentInclude,
+  return appointmentRepository.update(id, {
+    ...(data.patientId !== undefined ? { patient: { connect: { id: data.patientId } } } : {}),
+    ...(data.specialistId !== undefined ? { specialist: { connect: { id: data.specialistId } } } : {}),
+    ...(data.appointmentDate !== undefined ? { appointmentDate: nextDate } : {}),
+    ...(data.startTime !== undefined ? { startTime: nextStart } : {}),
+    ...(data.endTime !== undefined ? { endTime: nextEnd } : {}),
+    ...(data.status !== undefined ? { status: data.status } : {}),
+    ...(data.medicalRecord !== undefined ? { medicalRecord: data.medicalRecord?.trim() || null } : {}),
+    ...(data.reasonForVisit !== undefined ? { reasonForVisit: data.reasonForVisit?.trim() || null } : {}),
   });
-
-  const timeChanged =
-    data.startAt !== undefined ||
-    data.endAt !== undefined ||
-    data.specialistId !== undefined ||
-    data.officeId !== undefined;
-
-  if (timeChanged) {
-    const specialistName = `${updated.specialist.firstName} ${updated.specialist.lastName}`;
-    await sendAppointmentConfirmation({
-      patientName: `${updated.patient.firstName} ${updated.patient.lastName}`,
-      patientEmail: updated.patient.email,
-      specialistName,
-      startAt: updated.startAt,
-      endAt: updated.endAt,
-      officeName: updated.office?.name ?? null,
-      isUpdate: true,
-    }).catch((err) => console.error("[mail] reprogramación:", err));
-  }
-
-  return updated;
 }
 
-export async function deleteAppointment(
-  id: string,
-  role: Role,
-  userSpecialistId: string | null
-): Promise<void> {
-  const existing = await prisma.appointment.findUnique({ where: { id } });
+export async function deleteAppointment(id: string, role: Role, userSpecialistId: string | null) {
+  const existing = await appointmentRepository.findById(id);
   if (!existing) throw new AppError(404, "Cita no encontrada");
   assertCanAccessAppointment(role, userSpecialistId, existing.specialistId);
-  await prisma.appointment.delete({ where: { id } });
+  await appointmentRepository.delete(id);
 }

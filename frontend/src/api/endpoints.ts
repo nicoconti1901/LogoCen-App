@@ -3,8 +3,8 @@ import type {
   Appointment,
   AuthUser,
   LoginResponse,
-  Office,
   Patient,
+  Payment,
   Specialist,
 } from "../types";
 
@@ -88,28 +88,6 @@ export async function deletePatient(id: string): Promise<void> {
   await api.delete(`/patients/${id}`);
 }
 
-export async function fetchOffices(): Promise<Office[]> {
-  const { data } = await api.get<Office[]>("/offices");
-  return data;
-}
-
-export async function createOffice(body: { name: string; number?: string | null }): Promise<Office> {
-  const { data } = await api.post<Office>("/offices", body);
-  return data;
-}
-
-export async function updateOffice(
-  id: string,
-  body: Partial<{ name: string; number: string | null }>
-): Promise<Office> {
-  const { data } = await api.patch<Office>(`/offices/${id}`, body);
-  return data;
-}
-
-export async function deleteOffice(id: string): Promise<void> {
-  await api.delete(`/offices/${id}`);
-}
-
 export type AppointmentListParams = {
   from?: string;
   to?: string;
@@ -133,11 +111,12 @@ export async function fetchAppointment(id: string): Promise<Appointment> {
 export async function createAppointment(body: {
   patientId: string;
   specialistId: string;
-  officeId?: string | null;
-  startAt: string;
-  endAt: string;
-  notes?: string | null;
+  date: string;
+  startTime: string;
+  endTime: string;
   status?: string;
+  medicalRecord?: string | null;
+  reasonForVisit?: string | null;
 }): Promise<Appointment> {
   const { data } = await api.post<Appointment>("/appointments", body);
   return data;
@@ -148,12 +127,12 @@ export async function updateAppointment(
   body: Partial<{
     patientId: string;
     specialistId: string;
-    officeId: string | null;
-    startAt: string;
-    endAt: string;
-    notes: string | null;
+    date: string;
+    startTime: string;
+    endTime: string;
     status: string;
-    clinicalHistory: string | null;
+    medicalRecord: string | null;
+    reasonForVisit: string | null;
   }>
 ): Promise<Appointment> {
   const { data } = await api.patch<Appointment>(`/appointments/${id}`, body);
@@ -162,4 +141,37 @@ export async function updateAppointment(
 
 export async function deleteAppointment(id: string): Promise<void> {
   await api.delete(`/appointments/${id}`);
+}
+
+export async function fetchPayments(params?: { appointmentId?: string; status?: string }): Promise<Payment[]> {
+  const { data } = await api.get<Payment[]>("/payments", { params });
+  return data;
+}
+
+export async function createPayment(body: {
+  appointmentId: string;
+  amount: string | number;
+  currency?: string;
+  status?: string;
+  method?: string | null;
+  paidAt?: string | null;
+  notes?: string | null;
+}): Promise<Payment> {
+  const { data } = await api.post<Payment>("/payments", body);
+  return data;
+}
+
+export async function updatePayment(
+  id: string,
+  body: Partial<{
+    amount: string | number;
+    currency: string;
+    status: string;
+    method: string | null;
+    paidAt: string | null;
+    notes: string | null;
+  }>
+): Promise<Payment> {
+  const { data } = await api.patch<Payment>(`/payments/${id}`, body);
+  return data;
 }

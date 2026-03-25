@@ -34,16 +34,13 @@ export function Layout() {
                   <NavLink to="/patients" className={linkClass}>
                     Pacientes
                   </NavLink>
-                  <NavLink to="/offices" className={linkClass}>
-                    Consultorios
-                  </NavLink>
                 </>
               )}
             </nav>
           </div>
           <div className="flex items-center gap-3 text-sm text-slate-600">
             <span className="hidden sm:inline max-w-[200px] truncate" title={user?.email}>
-              {user?.role === "ESPECIALISTA" && user.specialist
+              {user?.role === "SPECIALIST" && user.specialist
                 ? `Dr(a). ${user.specialist.lastName}`
                 : user?.email}
             </span>

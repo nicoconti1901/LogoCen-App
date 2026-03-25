@@ -3,7 +3,6 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { Layout } from "./components/Layout";
 import { PrivateRoute } from "./components/PrivateRoute";
 import { useAuth } from "./contexts/AuthContext";
-import { AdminOfficesPage } from "./pages/admin/AdminOffices";
 import { AdminPatientsPage } from "./pages/admin/AdminPatients";
 import { AdminSpecialistsPage } from "./pages/admin/AdminSpecialists";
 import { AgendaPage } from "./pages/Agenda";
@@ -41,14 +40,6 @@ export default function App() {
             element={
               <AdminOnly>
                 <AdminPatientsPage />
-              </AdminOnly>
-            }
-          />
-          <Route
-            path="offices"
-            element={
-              <AdminOnly>
-                <AdminOfficesPage />
               </AdminOnly>
             }
           />
