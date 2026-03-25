@@ -11,8 +11,9 @@ import type { AuthUser } from "../types";
 import {
   clearStoredToken,
   getStoredToken,
+  getStoredUser,
   initAuthFromStorage,
-  storeToken,
+  storeSession,
 } from "../api/client";
 import { fetchMe, login as apiLogin } from "../api/endpoints";
 
@@ -34,21 +35,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
-    async function run() {
-      initAuthFromStorage();
-      const t = getStoredToken();
-      setToken(t);
-      if (t) {
-        try {
-          const u = await fetchMe();
-          if (!cancelled) setUser(u);
-        } catch {
-          if (!cancelled) clearStoredToken();
+
+    initAuthFromStorage();
+    const t = getStoredToken();
+    const cached = getStoredUser();
+    setToken(t);
+
+    if (!t) {
+      setLoading(false);
+      return;
+    }
+
+    if (cached) {
+      setUser(cached);
+      setLoading(false);
+    }
+
+    void (async () => {
+      try {
+        const u = await fetchMe();
+        if (cancelled) return;
+        setUser(u);
+        storeSession(t, u);
+      } catch {
+        if (cancelled) return;
+        clearStoredToken();
+        setUser(null);
+        setToken(null);
+      } finally {
+        if (!cancelled && !cached) {
+          setLoading(false);
         }
       }
-      if (!cancelled) setLoading(false);
-    }
-    void run();
+    })();
+
     return () => {
       cancelled = true;
     };
@@ -56,7 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     const res = await apiLogin(email, password);
-    storeToken(res.token);
+    storeSession(res.token, res.user);
     setToken(res.token);
     setUser(res.user);
   }, []);
@@ -65,7 +85,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearStoredToken();
     setToken(null);
     setUser(null);
-    sessionStorage.removeItem("logocen_user");
   }, []);
 
   const value = useMemo<AuthContextValue>(

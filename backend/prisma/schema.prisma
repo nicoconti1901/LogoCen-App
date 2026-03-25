@@ -9,13 +9,22 @@ datasource db {
 
 enum Role {
   ADMIN
-  ESPECIALISTA
+  SPECIALIST
 }
 
 enum AppointmentStatus {
-  SCHEDULED
-  COMPLETED
+  RESERVED
+  CONFIRMED
+  ATTENDED
   CANCELLED
+  NO_SHOW
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
 }
 
 model User {
@@ -57,31 +66,42 @@ model Patient {
   appointments Appointment[]
 }
 
-model Office {
-  id           String        @id @default(uuid())
-  name         String
-  number       String?
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  appointments Appointment[]
-}
-
+/// Cita: paciente, especialista, fecha, franja horaria, estado, registro médico, motivo.
 model Appointment {
   id              String            @id @default(uuid())
   patientId       String
   patient         Patient           @relation(fields: [patientId], references: [id], onDelete: Cascade)
   specialistId    String
   specialist      Specialist        @relation(fields: [specialistId], references: [id], onDelete: Cascade)
-  officeId        String?
-  office          Office?           @relation(fields: [officeId], references: [id], onDelete: SetNull)
-  startAt         DateTime
-  endAt           DateTime
-  status          AppointmentStatus @default(SCHEDULED)
-  notes           String?
-  clinicalHistory String?           @db.Text
+  /// Fecha del turno (solo día)
+  appointmentDate DateTime          @db.Date
+  /// Hora inicio "HH:mm" (24 h)
+  startTime       String
+  /// Hora fin "HH:mm"
+  endTime         String
+  status          AppointmentStatus @default(RESERVED)
+  medicalRecord   String?           @db.Text
+  reasonForVisit  String?
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
+  payments        Payment[]
 
-  @@index([specialistId, startAt])
-  @@index([startAt])
+  @@index([specialistId, appointmentDate])
+  @@index([appointmentDate])
+}
+
+model Payment {
+  id            String        @id @default(uuid())
+  appointmentId String
+  appointment   Appointment   @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  amount        Decimal       @db.Decimal(12, 2)
+  currency      String        @default("ARS")
+  status        PaymentStatus @default(PENDING)
+  method        String?
+  paidAt        DateTime?
+  notes         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([appointmentId])
 }

@@ -7,18 +7,20 @@ import type { DateSelectArg, EventClickArg, EventInput } from "@fullcalendar/cor
 import { useCallback, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchAppointments } from "../api/endpoints";
+import { toCalendarEnd, toCalendarStart } from "../lib/appointmentDisplay";
 import { AppointmentModal } from "../components/AppointmentModal";
 import type { Appointment } from "../types";
 
 function toEvent(a: Appointment): EventInput {
   let color = "#0284c7";
-  if (a.status === "COMPLETED") color = "#16a34a";
-  if (a.status === "CANCELLED") color = "#94a3b8";
+  if (a.status === "ATTENDED") color = "#16a34a";
+  if (a.status === "CANCELLED" || a.status === "NO_SHOW") color = "#94a3b8";
+  if (a.status === "CONFIRMED") color = "#7c3aed";
   return {
     id: a.id,
     title: `${a.patient.lastName}, ${a.patient.firstName}`,
-    start: a.startAt,
-    end: a.endAt,
+    start: toCalendarStart(a),
+    end: toCalendarEnd(a),
     backgroundColor: color,
     borderColor: color,
     extendedProps: { raw: a },

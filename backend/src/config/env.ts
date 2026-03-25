@@ -6,20 +6,9 @@ const envSchema = z.object({
   PORT: z.coerce.number().default(4000),
   DATABASE_URL: z.string().min(1),
   JWT_SECRET: z.string().min(16),
-  JWT_EXPIRES_IN: z.string().default("7d"),
+  /** Duración de la sesión (p. ej. 90d, 365d). Sin refresh token: al expirar habrá que volver a iniciar sesión. */
+  JWT_EXPIRES_IN: z.string().default("365d"),
   CORS_ORIGIN: z.string().default("http://localhost:5173"),
-  SMTP_HOST: z.string().optional(),
-  SMTP_PORT: z.coerce.number().optional(),
-  SMTP_SECURE: z.enum(["true", "false"]).optional(),
-  SMTP_USER: z.string().optional(),
-  SMTP_PASS: z.string().optional(),
-  EMAIL_FROM: z.string().optional(),
 });
 
 export const env = envSchema.parse(process.env);
-
-export function isMailConfigured(): boolean {
-  return Boolean(
-    env.SMTP_HOST && env.SMTP_USER !== undefined && env.EMAIL_FROM
-  );
-}

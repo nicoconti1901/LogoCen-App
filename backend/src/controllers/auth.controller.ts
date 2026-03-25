@@ -4,7 +4,7 @@ import * as authService from "../services/auth.service.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 
 const loginSchema = z.object({
-  email: z.string().email(),
+  email: z.string().email().transform((s) => s.toLowerCase().trim()),
   password: z.string().min(1),
 });
 

@@ -1,4 +1,5 @@
 import axios from "axios";
+import type { AuthUser } from "../types";
 
 const baseURL = import.meta.env.VITE_API_URL?.replace(/\/$/, "") || "/api";
 
@@ -16,18 +17,32 @@ export function setAuthToken(token: string | null) {
 }
 
 const STORAGE_KEY = "logocen_token";
+const USER_KEY = "logocen_user";
 
 export function getStoredToken(): string | null {
   return localStorage.getItem(STORAGE_KEY);
 }
 
-export function storeToken(token: string) {
+/** Guarda token y perfil para restaurar la sesión al volver a abrir la app. */
+export function storeSession(token: string, user: AuthUser) {
   localStorage.setItem(STORAGE_KEY, token);
+  localStorage.setItem(USER_KEY, JSON.stringify(user));
   setAuthToken(token);
+}
+
+export function getStoredUser(): AuthUser | null {
+  const raw = localStorage.getItem(USER_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as AuthUser;
+  } catch {
+    return null;
+  }
 }
 
 export function clearStoredToken() {
   localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(USER_KEY);
   setAuthToken(null);
 }
 

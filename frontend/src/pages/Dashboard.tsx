@@ -46,13 +46,6 @@ export function DashboardPage() {
               <h2 className="font-semibold text-brand-800">Pacientes</h2>
               <p className="mt-1 text-sm text-slate-600">Datos sin acceso web</p>
             </Link>
-            <Link
-              to="/offices"
-              className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-brand-300 hover:shadow"
-            >
-              <h2 className="font-semibold text-brand-800">Consultorios</h2>
-              <p className="mt-1 text-sm text-slate-600">Salas y numeración</p>
-            </Link>
           </>
         )}
       </div>
