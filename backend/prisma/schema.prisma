@@ -1,0 +1,87 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  ESPECIALISTA
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+model User {
+  id           String      @id @default(uuid())
+  email        String      @unique
+  passwordHash String
+  role         Role
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  specialist   Specialist?
+}
+
+model Specialist {
+  id            String        @id @default(uuid())
+  userId        String        @unique
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  firstName     String
+  lastName      String
+  specialty     String
+  licenseNumber String?
+  phone         String?
+  active        Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  appointments  Appointment[]
+}
+
+model Patient {
+  id           String        @id @default(uuid())
+  firstName    String
+  lastName     String
+  email        String
+  phone        String?
+  documentId   String?
+  birthDate    DateTime?
+  notes        String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  appointments Appointment[]
+}
+
+model Office {
+  id           String        @id @default(uuid())
+  name         String
+  number       String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  appointments Appointment[]
+}
+
+model Appointment {
+  id              String            @id @default(uuid())
+  patientId       String
+  patient         Patient           @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  specialistId    String
+  specialist      Specialist        @relation(fields: [specialistId], references: [id], onDelete: Cascade)
+  officeId        String?
+  office          Office?           @relation(fields: [officeId], references: [id], onDelete: SetNull)
+  startAt         DateTime
+  endAt           DateTime
+  status          AppointmentStatus @default(SCHEDULED)
+  notes           String?
+  clinicalHistory String?           @db.Text
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([specialistId, startAt])
+  @@index([startAt])
+}
