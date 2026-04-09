@@ -44,6 +44,7 @@ export type Specialist = {
   firstName: string;
   lastName: string;
   specialty: string;
+  profilePhotoUrl: string | null;
   licenseNumber: string | null;
   phone: string | null;
   active: boolean;

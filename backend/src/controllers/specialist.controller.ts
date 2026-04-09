@@ -5,14 +5,18 @@ import * as specialistService from "../services/specialist.service.js";
 import { AppError } from "../middleware/errorHandler.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 
+/** URLs largas (p. ej. Drive con query) o data URLs superaban 2048 y rompían el POST. */
+const optionalUrl = z.union([z.string().max(32_000), z.literal(""), z.null()]).optional();
+
 const createSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
   firstName: z.string().min(1),
   lastName: z.string().min(1),
   specialty: z.string().min(1),
-  licenseNumber: z.string().optional().nullable(),
-  phone: z.string().optional().nullable(),
+  profilePhotoUrl: optionalUrl,
+  licenseNumber: z.union([z.string().max(500), z.literal(""), z.null()]).optional(),
+  phone: z.union([z.string().max(50), z.literal(""), z.null()]).optional(),
 });
 
 const updateSchema = z.object({
@@ -21,8 +25,9 @@ const updateSchema = z.object({
   firstName: z.string().min(1).optional(),
   lastName: z.string().min(1).optional(),
   specialty: z.string().min(1).optional(),
-  licenseNumber: z.string().optional().nullable(),
-  phone: z.string().optional().nullable(),
+  profilePhotoUrl: optionalUrl,
+  licenseNumber: z.union([z.string().max(500), z.literal(""), z.null()]).optional(),
+  phone: z.union([z.string().max(50), z.literal(""), z.null()]).optional(),
   active: z.boolean().optional(),
 });
 

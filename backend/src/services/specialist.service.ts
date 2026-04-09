@@ -1,7 +1,12 @@
 import { specialistRepository } from "../repositories/specialist.repository.js";
 import { userRepository } from "../repositories/user.repository.js";
 import { AppError } from "../middleware/errorHandler.js";
+import { normalizeProfilePhotoUrlForStorage } from "../utils/imageUrl.js";
 import { hashPassword } from "../utils/password.js";
+
+function normProfilePhotoUrl(url: string | null | undefined): string | null {
+  return normalizeProfilePhotoUrlForStorage(url);
+}
 
 export async function listSpecialists(includeInactive = false) {
   return specialistRepository.findMany(includeInactive);
@@ -19,6 +24,7 @@ export async function createSpecialist(data: {
   firstName: string;
   lastName: string;
   specialty: string;
+  profilePhotoUrl?: string | null;
   licenseNumber?: string | null;
   phone?: string | null;
 }) {
@@ -34,6 +40,7 @@ export async function createSpecialist(data: {
     firstName: data.firstName.trim(),
     lastName: data.lastName.trim(),
     specialty: data.specialty.trim(),
+    profilePhotoUrl: normProfilePhotoUrl(data.profilePhotoUrl),
     licenseNumber: data.licenseNumber?.trim() || null,
     phone: data.phone?.trim() || null,
   });
@@ -47,6 +54,7 @@ export async function updateSpecialist(
     firstName: string;
     lastName: string;
     specialty: string;
+    profilePhotoUrl: string | null;
     licenseNumber: string | null;
     phone: string | null;
     active: boolean;
@@ -72,6 +80,9 @@ export async function updateSpecialist(
       ...(data.firstName !== undefined ? { firstName: data.firstName.trim() } : {}),
       ...(data.lastName !== undefined ? { lastName: data.lastName.trim() } : {}),
       ...(data.specialty !== undefined ? { specialty: data.specialty.trim() } : {}),
+      ...(data.profilePhotoUrl !== undefined
+        ? { profilePhotoUrl: normProfilePhotoUrl(data.profilePhotoUrl) }
+        : {}),
       ...(data.licenseNumber !== undefined ? { licenseNumber: data.licenseNumber?.trim() || null } : {}),
       ...(data.phone !== undefined ? { phone: data.phone?.trim() || null } : {}),
       ...(data.active !== undefined ? { active: data.active } : {}),
