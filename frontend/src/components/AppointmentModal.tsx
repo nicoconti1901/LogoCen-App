@@ -17,6 +17,8 @@ type Props = {
   initialStart?: Date;
   initialEnd?: Date;
   appointment?: Appointment | null;
+  /** Admin viendo la agenda de un especialista: el turno queda asignado a ese profesional. */
+  fixedSpecialistId?: string;
   onSaved: () => void;
 };
 
@@ -52,6 +54,7 @@ export function AppointmentModal({
   initialStart,
   initialEnd,
   appointment,
+  fixedSpecialistId,
   onSaved,
 }: Props) {
   const { user } = useAuth();
@@ -63,7 +66,7 @@ export function AppointmentModal({
   const specialistsQ = useQuery({
     queryKey: ["specialists"],
     queryFn: () => fetchSpecialists(false),
-    enabled: open && isAdmin,
+    enabled: open && isAdmin && !fixedSpecialistId,
   });
 
   const [patientId, setPatientId] = useState("");
@@ -94,7 +97,9 @@ export function AppointmentModal({
       const s = initialStart ?? new Date();
       const e = initialEnd ?? new Date(s.getTime() + 30 * 60 * 1000);
       setPatientId("");
-      setSpecialistId(isAdmin ? "" : mySpecialistId);
+      setSpecialistId(
+        fixedSpecialistId ? fixedSpecialistId : isAdmin ? "" : mySpecialistId
+      );
       setDateStr(localDateStr(s));
       setStartTimeStr(localTimeStr(s));
       setEndTimeStr(localTimeStr(e));
@@ -102,13 +107,13 @@ export function AppointmentModal({
       setMedicalRecord("");
       setReasonForVisit("");
     }
-  }, [open, appointment, initialStart, initialEnd, isAdmin, mySpecialistId]);
+  }, [open, appointment, initialStart, initialEnd, isAdmin, mySpecialistId, fixedSpecialistId]);
 
   const createMut = useMutation({
     mutationFn: () =>
       createAppointment({
         patientId,
-        specialistId: isAdmin ? specialistId : mySpecialistId,
+        specialistId: isAdmin ? (fixedSpecialistId ?? specialistId) : mySpecialistId,
         date: dateStr,
         startTime: startTimeStr,
         endTime: endTimeStr,
@@ -134,7 +139,7 @@ export function AppointmentModal({
     mutationFn: () =>
       updateAppointment(appointment!.id, {
         patientId: isAdmin ? patientId : undefined,
-        specialistId: isAdmin ? specialistId : undefined,
+        specialistId: isAdmin ? (fixedSpecialistId ?? specialistId) : undefined,
         date: dateStr,
         startTime: startTimeStr,
         endTime: endTimeStr,
@@ -175,12 +180,14 @@ export function AppointmentModal({
   const patients = patientsQ.data ?? [];
   const specialists = specialistsQ.data ?? [];
 
+  const effectiveSpecialistId = fixedSpecialistId ?? specialistId;
+
   const canSubmit = useMemo(() => {
     if (!patientId || !dateStr || !startTimeStr || !endTimeStr) return false;
-    if (isAdmin && !specialistId) return false;
+    if (isAdmin && !effectiveSpecialistId) return false;
     if (!isAdmin && !mySpecialistId) return false;
     return true;
-  }, [patientId, dateStr, startTimeStr, endTimeStr, isAdmin, specialistId, mySpecialistId]);
+  }, [patientId, dateStr, startTimeStr, endTimeStr, isAdmin, effectiveSpecialistId, mySpecialistId]);
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -231,7 +238,7 @@ export function AppointmentModal({
             </select>
           </div>
 
-          {isAdmin && (
+          {isAdmin && !fixedSpecialistId && (
             <div>
               <label className="block text-sm font-medium text-slate-700">Especialista</label>
               <select
@@ -248,6 +255,12 @@ export function AppointmentModal({
                 ))}
               </select>
             </div>
+          )}
+
+          {isAdmin && fixedSpecialistId && (
+            <p className="text-sm text-slate-600">
+              Especialista fijo para esta vista de agenda.
+            </p>
           )}
 
           {!isAdmin && (

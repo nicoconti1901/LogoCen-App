@@ -27,6 +27,7 @@ export const specialistRepository = {
     firstName: string;
     lastName: string;
     specialty: string;
+    profilePhotoUrl?: string | null;
     licenseNumber?: string | null;
     phone?: string | null;
   }): Promise<SpecialistWithUser> {
@@ -44,6 +45,7 @@ export const specialistRepository = {
           firstName: input.firstName,
           lastName: input.lastName,
           specialty: input.specialty,
+          profilePhotoUrl: input.profilePhotoUrl ?? null,
           licenseNumber: input.licenseNumber ?? null,
           phone: input.phone ?? null,
         },
@@ -61,6 +63,7 @@ export const specialistRepository = {
       firstName?: string;
       lastName?: string;
       specialty?: string;
+      profilePhotoUrl?: string | null;
       licenseNumber?: string | null;
       phone?: string | null;
       active?: boolean;
@@ -83,6 +86,7 @@ export const specialistRepository = {
           ...(data.firstName !== undefined ? { firstName: data.firstName } : {}),
           ...(data.lastName !== undefined ? { lastName: data.lastName } : {}),
           ...(data.specialty !== undefined ? { specialty: data.specialty } : {}),
+          ...(data.profilePhotoUrl !== undefined ? { profilePhotoUrl: data.profilePhotoUrl } : {}),
           ...(data.licenseNumber !== undefined ? { licenseNumber: data.licenseNumber } : {}),
           ...(data.phone !== undefined ? { phone: data.phone } : {}),
           ...(data.active !== undefined ? { active: data.active } : {}),

@@ -17,14 +17,8 @@ export function Layout() {
           <div className="flex items-center gap-6">
             <span className="text-lg font-semibold text-brand-800">LogoCen</span>
             <nav className="hidden flex-wrap gap-1 sm:flex">
-              <NavLink to="/" end className={linkClass}>
-                Inicio
-              </NavLink>
               <NavLink to="/agenda" className={linkClass}>
                 Agenda
-              </NavLink>
-              <NavLink to="/appointments" className={linkClass}>
-                Citas
               </NavLink>
               {isAdmin && (
                 <>

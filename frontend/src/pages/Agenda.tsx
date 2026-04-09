@@ -5,8 +5,9 @@ import FullCalendar from "@fullcalendar/react";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import type { DateSelectArg, EventClickArg, EventInput } from "@fullcalendar/core";
 import { useCallback, useState } from "react";
+import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { fetchAppointments } from "../api/endpoints";
+import { fetchAppointments, fetchSpecialist } from "../api/endpoints";
 import { toCalendarEnd, toCalendarStart } from "../lib/appointmentDisplay";
 import { AppointmentModal } from "../components/AppointmentModal";
 import type { Appointment } from "../types";
@@ -28,17 +29,25 @@ function toEvent(a: Appointment): EventInput {
 }
 
 export function AgendaPage() {
+  const { specialistId: routeSpecialistId } = useParams<{ specialistId?: string }>();
   const [range, setRange] = useState<{ from: string; to: string } | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [slot, setSlot] = useState<{ start: Date; end: Date } | null>(null);
   const [selected, setSelected] = useState<Appointment | null>(null);
 
+  const specialistQ = useQuery({
+    queryKey: ["specialist", routeSpecialistId],
+    queryFn: () => fetchSpecialist(routeSpecialistId!),
+    enabled: Boolean(routeSpecialistId),
+  });
+
   const { data = [], refetch } = useQuery({
-    queryKey: ["appointments", range?.from, range?.to],
+    queryKey: ["appointments", range?.from, range?.to, routeSpecialistId],
     queryFn: () =>
       fetchAppointments({
         from: range!.from,
         to: range!.to,
+        ...(routeSpecialistId ? { specialistId: routeSpecialistId } : {}),
       }),
     enabled: Boolean(range),
   });
@@ -67,11 +76,42 @@ export function AgendaPage() {
     }
   }
 
+  const specialistLabel = specialistQ.data
+    ? `${specialistQ.data.lastName}, ${specialistQ.data.firstName}`
+    : null;
+
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Agenda</h1>
-        <p className="text-slate-600">Seleccione un horario para crear una cita o pulse un evento para editarlo.</p>
+        {routeSpecialistId && (
+          <div className="mb-3">
+            <Link
+              to="/specialists"
+              className="text-sm font-medium text-brand-700 hover:text-brand-800 hover:underline"
+            >
+              ← Volver a especialistas
+            </Link>
+          </div>
+        )}
+        <h1 className="text-2xl font-semibold text-slate-900">
+          {routeSpecialistId ? (
+            <>
+              Agenda
+              {specialistLabel && (
+                <span className="block text-base font-normal text-slate-600 sm:inline sm:before:content-['_—_']">
+                  {specialistLabel}
+                </span>
+              )}
+            </>
+          ) : (
+            "Agenda"
+          )}
+        </h1>
+        <p className="text-slate-600">
+          {routeSpecialistId
+            ? "Turnos asignados a este especialista. Pulse un horario o un evento para crear o editar."
+            : "Seleccione un horario para crear una cita o pulse un evento para editarlo."}
+        </p>
       </div>
       <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
         <FullCalendar
@@ -108,6 +148,7 @@ export function AgendaPage() {
         initialStart={slot?.start}
         initialEnd={slot?.end}
         appointment={selected}
+        fixedSpecialistId={routeSpecialistId}
         onSaved={() => void refetch()}
       />
     </div>

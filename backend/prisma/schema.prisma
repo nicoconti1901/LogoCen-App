@@ -38,15 +38,17 @@ model User {
 }
 
 model Specialist {
-  id            String        @id @default(uuid())
-  userId        String        @unique
-  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  firstName     String
-  lastName      String
-  specialty     String
-  licenseNumber String?
-  phone         String?
-  active        Boolean       @default(true)
+  id               String        @id @default(uuid())
+  userId           String        @unique
+  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  firstName        String
+  lastName         String
+  specialty        String
+  /// URL de foto de perfil (p. ej. almacenamiento externo o data URL acotada)
+  profilePhotoUrl  String?
+  licenseNumber    String?
+  phone            String?
+  active           Boolean       @default(true)
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   appointments  Appointment[]

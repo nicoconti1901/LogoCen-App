@@ -6,14 +6,12 @@ import { useAuth } from "./contexts/AuthContext";
 import { AdminPatientsPage } from "./pages/admin/AdminPatients";
 import { AdminSpecialistsPage } from "./pages/admin/AdminSpecialists";
 import { AgendaPage } from "./pages/Agenda";
-import { AppointmentsListPage } from "./pages/AppointmentsList";
-import { DashboardPage } from "./pages/Dashboard";
 import { LoginPage } from "./pages/Login";
 
 function AdminOnly({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   if (user?.role !== "ADMIN") {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/agenda" replace />;
   }
   return <>{children}</>;
 }
@@ -24,9 +22,17 @@ export default function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route element={<PrivateRoute />}>
         <Route element={<Layout />}>
-          <Route index element={<DashboardPage />} />
+          <Route index element={<Navigate to="/agenda" replace />} />
           <Route path="agenda" element={<AgendaPage />} />
-          <Route path="appointments" element={<AppointmentsListPage />} />
+          <Route
+            path="specialists/:specialistId/agenda"
+            element={
+              <AdminOnly>
+                <AgendaPage />
+              </AdminOnly>
+            }
+          />
+          <Route path="appointments" element={<Navigate to="/agenda" replace />} />
           <Route
             path="specialists"
             element={
@@ -45,7 +51,7 @@ export default function App() {
           />
         </Route>
       </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<Navigate to="/agenda" replace />} />
     </Routes>
   );
 }

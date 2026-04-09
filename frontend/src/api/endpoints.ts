@@ -25,12 +25,18 @@ export async function fetchSpecialists(includeInactive?: boolean): Promise<Speci
   return data;
 }
 
+export async function fetchSpecialist(id: string): Promise<Specialist> {
+  const { data } = await api.get<Specialist>(`/specialists/${id}`);
+  return data;
+}
+
 export async function createSpecialist(body: {
   email: string;
   password: string;
   firstName: string;
   lastName: string;
   specialty: string;
+  profilePhotoUrl?: string | null;
   licenseNumber?: string | null;
   phone?: string | null;
 }): Promise<Specialist> {
@@ -46,6 +52,7 @@ export async function updateSpecialist(
     firstName: string;
     lastName: string;
     specialty: string;
+    profilePhotoUrl: string | null;
     licenseNumber: string | null;
     phone: string | null;
     active: boolean;
