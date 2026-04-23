@@ -13,6 +13,7 @@ const timeSchema = z
 const createSchema = z.object({
   patientId: z.string().uuid(),
   specialistId: z.string().uuid(),
+  consultorio: z.string().min(1),
   date: z.string().min(1),
   startTime: timeSchema,
   endTime: timeSchema,
@@ -24,6 +25,7 @@ const createSchema = z.object({
 const updateSchema = z.object({
   patientId: z.string().uuid().optional(),
   specialistId: z.string().uuid().optional(),
+  consultorio: z.string().min(1).optional(),
   date: z.string().optional(),
   startTime: timeSchema.optional(),
   endTime: timeSchema.optional(),
@@ -79,6 +81,7 @@ export const create = asyncHandler(async (req: Request, res: Response) => {
     {
       patientId: body.patientId,
       specialistId: body.specialistId,
+      consultorio: body.consultorio,
       appointmentDate: parseDateOnlyISO(body.date),
       startTime: body.startTime,
       endTime: body.endTime,
@@ -99,6 +102,7 @@ export const update = asyncHandler(async (req: Request, res: Response) => {
     {
       ...(body.patientId !== undefined ? { patientId: body.patientId } : {}),
       ...(body.specialistId !== undefined ? { specialistId: body.specialistId } : {}),
+      ...(body.consultorio !== undefined ? { consultorio: body.consultorio } : {}),
       ...(body.date !== undefined ? { appointmentDate: parseDateOnlyISO(body.date) } : {}),
       ...(body.startTime !== undefined ? { startTime: body.startTime } : {}),
       ...(body.endTime !== undefined ? { endTime: body.endTime } : {}),

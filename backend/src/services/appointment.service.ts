@@ -48,6 +48,25 @@ async function assertNoOverlap(
   }
 }
 
+async function assertNoConsultorioOverlap(
+  consultorio: string,
+  appointmentDate: Date,
+  startTime: string,
+  endTime: string,
+  excludeId?: string
+): Promise<void> {
+  const sameDay = await appointmentRepository.findByConsultorioAndDate(
+    consultorio,
+    appointmentDate,
+    excludeId
+  );
+  for (const row of sameDay) {
+    if (timesOverlap(startTime, endTime, row.startTime, row.endTime)) {
+      throw new AppError(409, "El consultorio ya está ocupado en ese horario");
+    }
+  }
+}
+
 export async function listAppointments(params: {
   role: Role;
   userSpecialistId: string | null;
@@ -116,6 +135,7 @@ export async function createAppointment(
   data: {
     patientId: string;
     specialistId: string;
+    consultorio: string;
     appointmentDate: Date;
     startTime: string;
     endTime: string;
@@ -135,6 +155,8 @@ export async function createAppointment(
   const startTime = assertValidTime(data.startTime);
   const endTime = assertValidTime(data.endTime);
   assertEndAfterStart(startTime, endTime);
+  const consultorio = data.consultorio.trim();
+  if (!consultorio) throw new AppError(400, "Debe indicar el consultorio");
 
   const appointmentDate = toDateOnly(data.appointmentDate);
 
@@ -147,10 +169,12 @@ export async function createAppointment(
   if (!patient) throw new AppError(400, "Paciente no encontrado");
 
   await assertNoOverlap(data.specialistId, appointmentDate, startTime, endTime);
+  await assertNoConsultorioOverlap(consultorio, appointmentDate, startTime, endTime);
 
   return appointmentRepository.create({
     patient: { connect: { id: data.patientId } },
     specialist: { connect: { id: data.specialistId } },
+    consultorio,
     appointmentDate,
     startTime,
     endTime,
@@ -165,6 +189,7 @@ export async function updateAppointment(
   data: Partial<{
     patientId: string;
     specialistId: string;
+    consultorio: string;
     appointmentDate: Date;
     startTime: string;
     endTime: string;
@@ -180,9 +205,11 @@ export async function updateAppointment(
   assertCanAccessAppointment(role, userSpecialistId, existing.specialistId);
 
   const nextSpecialistId = data.specialistId ?? existing.specialistId;
+  const nextConsultorio = data.consultorio !== undefined ? data.consultorio.trim() : existing.consultorio;
   const nextDate = data.appointmentDate !== undefined ? toDateOnly(data.appointmentDate) : existing.appointmentDate;
   const nextStart = data.startTime !== undefined ? assertValidTime(data.startTime) : existing.startTime;
   const nextEnd = data.endTime !== undefined ? assertValidTime(data.endTime) : existing.endTime;
+  if (!nextConsultorio) throw new AppError(400, "Debe indicar el consultorio");
 
   if (role === Role.SPECIALIST) {
     if (data.specialistId && data.specialistId !== userSpecialistId) {
@@ -195,12 +222,19 @@ export async function updateAppointment(
 
   assertEndAfterStart(nextStart, nextEnd);
 
-  if (data.specialistId || data.appointmentDate !== undefined || data.startTime !== undefined || data.endTime !== undefined) {
+  if (
+    data.specialistId ||
+    data.consultorio !== undefined ||
+    data.appointmentDate !== undefined ||
+    data.startTime !== undefined ||
+    data.endTime !== undefined
+  ) {
     const specialist = await specialistRepository.findById(nextSpecialistId);
     if (!specialist || !specialist.active) {
       throw new AppError(400, "Especialista inválido o inactivo");
     }
     await assertNoOverlap(nextSpecialistId, nextDate, nextStart, nextEnd, id);
+    await assertNoConsultorioOverlap(nextConsultorio, nextDate, nextStart, nextEnd, id);
   }
 
   if (data.patientId) {
@@ -211,6 +245,7 @@ export async function updateAppointment(
   return appointmentRepository.update(id, {
     ...(data.patientId !== undefined ? { patient: { connect: { id: data.patientId } } } : {}),
     ...(data.specialistId !== undefined ? { specialist: { connect: { id: data.specialistId } } } : {}),
+    ...(data.consultorio !== undefined ? { consultorio: nextConsultorio } : {}),
     ...(data.appointmentDate !== undefined ? { appointmentDate: nextDate } : {}),
     ...(data.startTime !== undefined ? { startTime: nextStart } : {}),
     ...(data.endTime !== undefined ? { endTime: nextEnd } : {}),

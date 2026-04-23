@@ -1,5 +1,3 @@
-import { formatDateOnlyISO } from "./appointmentTime.js";
-
 type AppointmentLike = {
   appointmentDate: Date;
   startTime: string;
@@ -12,7 +10,9 @@ type AppointmentLike = {
 export function enrichAppointment<T extends AppointmentLike>(a: T) {
   return {
     ...a,
-    date: formatDateOnlyISO(new Date(a.appointmentDate)),
+    // @db.Date llega como Date en UTC (00:00Z). Si se formatea en hora local
+    // puede correrse al día anterior en zonas horarias negativas.
+    date: a.appointmentDate.toISOString().slice(0, 10),
     time: { start: a.startTime, end: a.endTime },
     medical_record: a.medicalRecord ?? null,
     reason_for_visit: a.reasonForVisit ?? null,
