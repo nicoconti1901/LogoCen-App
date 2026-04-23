@@ -75,6 +75,8 @@ model Appointment {
   patient         Patient           @relation(fields: [patientId], references: [id], onDelete: Cascade)
   specialistId    String
   specialist      Specialist        @relation(fields: [specialistId], references: [id], onDelete: Cascade)
+  /// Consultorio asignado (ej. "Consultorio 1")
+  consultorio     String            @default("Consultorio 1")
   /// Fecha del turno (solo día)
   appointmentDate DateTime          @db.Date
   /// Hora inicio "HH:mm" (24 h)
@@ -89,6 +91,7 @@ model Appointment {
   payments        Payment[]
 
   @@index([specialistId, appointmentDate])
+  @@index([consultorio, appointmentDate])
   @@index([appointmentDate])
 }
 

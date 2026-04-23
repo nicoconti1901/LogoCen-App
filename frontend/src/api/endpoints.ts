@@ -62,6 +62,20 @@ export async function updateSpecialist(
   return data;
 }
 
+export type UploadedSpecialistPhoto = {
+  url: string;
+  relativeUrl: string;
+};
+
+export async function uploadSpecialistProfilePhoto(file: File): Promise<UploadedSpecialistPhoto> {
+  const formData = new FormData();
+  formData.append("photo", file);
+  const { data } = await api.post<UploadedSpecialistPhoto>("/specialists/profile-photo", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return data;
+}
+
 export async function deleteSpecialist(id: string): Promise<void> {
   await api.delete(`/specialists/${id}`);
 }
@@ -118,6 +132,7 @@ export async function fetchAppointment(id: string): Promise<Appointment> {
 export async function createAppointment(body: {
   patientId: string;
   specialistId: string;
+  consultorio: string;
   date: string;
   startTime: string;
   endTime: string;
@@ -134,6 +149,7 @@ export async function updateAppointment(
   body: Partial<{
     patientId: string;
     specialistId: string;
+    consultorio: string;
     date: string;
     startTime: string;
     endTime: string;

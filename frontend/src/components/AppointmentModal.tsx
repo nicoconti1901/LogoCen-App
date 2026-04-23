@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createAppointment,
   deleteAppointment,
+  fetchAppointments,
   fetchPatients,
   fetchSpecialists,
   updateAppointment,
@@ -40,6 +41,32 @@ function localTimeStr(d: Date): string {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+const WORKDAY_START = "07:00";
+const WORKDAY_END = "21:00";
+const SHORT_FREE_RANGE_MINUTES = 30;
+const CONSULTORIOS_BASE = [
+  "Consultorio 1",
+  "Consultorio 2",
+  "Consultorio 3",
+  "Consultorio 4",
+  "Consultorio 5",
+];
+
+function hhmmToMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(":").map(Number);
+  return h * 60 + m;
+}
+
+function minutesToHHmm(total: number): string {
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+function rangesOverlap(aStart: number, aEnd: number, bStart: number, bEnd: number): boolean {
+  return aStart < bEnd && aEnd > bStart;
+}
+
 const statusLabel: Record<AppointmentStatus, string> = {
   RESERVED: "Reservada",
   CONFIRMED: "Confirmada",
@@ -47,6 +74,10 @@ const statusLabel: Record<AppointmentStatus, string> = {
   CANCELLED: "Cancelada",
   NO_SHOW: "No asistió",
 };
+
+const labelClass = "block text-sm font-medium text-slate-700";
+const fieldClass =
+  "mt-1 w-full rounded-lg border border-slate-300/90 bg-white/90 px-3 py-2 text-slate-800 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200/70";
 
 export function AppointmentModal({
   open,
@@ -71,6 +102,7 @@ export function AppointmentModal({
 
   const [patientId, setPatientId] = useState("");
   const [specialistId, setSpecialistId] = useState("");
+  const [consultorio, setConsultorio] = useState("");
   const [dateStr, setDateStr] = useState("");
   const [startTimeStr, setStartTimeStr] = useState("");
   const [endTimeStr, setEndTimeStr] = useState("");
@@ -80,6 +112,15 @@ export function AppointmentModal({
   const [error, setError] = useState<string | null>(null);
 
   const isEdit = Boolean(appointment);
+  const consultorioDayQ = useQuery({
+    queryKey: ["appointments", "consultorio-day", dateStr],
+    queryFn: () =>
+      fetchAppointments({
+        from: dateStr,
+        to: dateStr,
+      }),
+    enabled: open && Boolean(dateStr),
+  });
 
   useEffect(() => {
     if (!open) return;
@@ -87,6 +128,7 @@ export function AppointmentModal({
     if (appointment) {
       setPatientId(appointment.patientId);
       setSpecialistId(appointment.specialistId);
+      setConsultorio(appointment.consultorio ?? "");
       setDateStr(getAppointmentDateStr(appointment));
       setStartTimeStr(getStartTimeStr(appointment));
       setEndTimeStr(getEndTimeStr(appointment));
@@ -100,6 +142,7 @@ export function AppointmentModal({
       setSpecialistId(
         fixedSpecialistId ? fixedSpecialistId : isAdmin ? "" : mySpecialistId
       );
+      setConsultorio("");
       setDateStr(localDateStr(s));
       setStartTimeStr(localTimeStr(s));
       setEndTimeStr(localTimeStr(e));
@@ -114,6 +157,7 @@ export function AppointmentModal({
       createAppointment({
         patientId,
         specialistId: isAdmin ? (fixedSpecialistId ?? specialistId) : mySpecialistId,
+        consultorio,
         date: dateStr,
         startTime: startTimeStr,
         endTime: endTimeStr,
@@ -140,6 +184,7 @@ export function AppointmentModal({
       updateAppointment(appointment!.id, {
         patientId: isAdmin ? patientId : undefined,
         specialistId: isAdmin ? (fixedSpecialistId ?? specialistId) : undefined,
+        consultorio,
         date: dateStr,
         startTime: startTimeStr,
         endTime: endTimeStr,
@@ -179,15 +224,115 @@ export function AppointmentModal({
 
   const patients = patientsQ.data ?? [];
   const specialists = specialistsQ.data ?? [];
+  const consultorioDayRows = consultorioDayQ.data ?? [];
+
+  const consultorioFreeRanges = useMemo(() => {
+    const office = consultorio.trim().toLowerCase();
+    if (!office || !dateStr) return [] as Array<{ label: string; minutes: number }>;
+
+    const startMin = hhmmToMinutes(WORKDAY_START);
+    const endMin = hhmmToMinutes(WORKDAY_END);
+
+    const occupied = consultorioDayRows
+      .filter(
+        (a) =>
+          a.id !== appointment?.id &&
+          a.status !== "CANCELLED" &&
+          a.consultorio.trim().toLowerCase() === office
+      )
+      .map((a) => ({
+        start: hhmmToMinutes(a.startTime),
+        end: hhmmToMinutes(a.endTime),
+      }))
+      .filter((r) => r.end > r.start)
+      .sort((a, b) => a.start - b.start)
+      .reduce<Array<{ start: number; end: number }>>((acc, cur) => {
+        const last = acc[acc.length - 1];
+        if (!last || cur.start > last.end) {
+          acc.push({ ...cur });
+        } else if (cur.end > last.end) {
+          last.end = cur.end;
+        }
+        return acc;
+      }, []);
+
+    const free: Array<{ label: string; minutes: number }> = [];
+    let cursor = startMin;
+    for (const r of occupied) {
+      const rs = Math.max(startMin, r.start);
+      const re = Math.min(endMin, r.end);
+      if (rs > cursor) {
+        free.push({
+          label: `${minutesToHHmm(cursor)}-${minutesToHHmm(rs)}`,
+          minutes: rs - cursor,
+        });
+      }
+      cursor = Math.max(cursor, re);
+    }
+    if (cursor < endMin) {
+      free.push({
+        label: `${minutesToHHmm(cursor)}-${minutesToHHmm(endMin)}`,
+        minutes: endMin - cursor,
+      });
+    }
+    if (free.length === 0) free.push({ label: "Sin huecos", minutes: 0 });
+    return free;
+  }, [consultorio, dateStr, consultorioDayRows, appointment?.id]);
+
+  const consultorioOptions = useMemo(() => {
+    const selectedStart = startTimeStr ? hhmmToMinutes(startTimeStr) : NaN;
+    const selectedEnd = endTimeStr ? hhmmToMinutes(endTimeStr) : NaN;
+    const hasSelectedRange =
+      Number.isFinite(selectedStart) && Number.isFinite(selectedEnd) && selectedEnd > selectedStart;
+
+    const offices = Array.from(
+      new Set([
+        ...CONSULTORIOS_BASE,
+        ...consultorioDayRows.map((a) => a.consultorio.trim()).filter(Boolean),
+      ])
+    );
+
+    return offices
+      .map((office) => {
+        const occupiedRanges = consultorioDayRows
+          .filter(
+            (a) =>
+              a.id !== appointment?.id &&
+              a.status !== "CANCELLED" &&
+              a.consultorio.trim().toLowerCase() === office.toLowerCase()
+          )
+          .map((a) => ({ start: hhmmToMinutes(a.startTime), end: hhmmToMinutes(a.endTime) }))
+          .filter((r) => r.end > r.start);
+
+        const occupiedInSelected =
+          hasSelectedRange &&
+          occupiedRanges.some((r) => rangesOverlap(selectedStart, selectedEnd, r.start, r.end));
+
+        const status = hasSelectedRange
+          ? occupiedInSelected
+            ? "Ocupado en ese horario"
+            : "Disponible en ese horario"
+          : occupiedRanges.length > 0
+            ? "Con turnos ese día"
+            : "Libre ese día";
+
+        return {
+          office,
+          occupiedInSelected,
+          status,
+        };
+      })
+      .sort((a, b) => a.office.localeCompare(b.office));
+  }, [consultorioDayRows, appointment?.id, startTimeStr, endTimeStr]);
 
   const effectiveSpecialistId = fixedSpecialistId ?? specialistId;
 
   const canSubmit = useMemo(() => {
-    if (!patientId || !dateStr || !startTimeStr || !endTimeStr) return false;
+    if (!patientId || !consultorio.trim() || !dateStr || !startTimeStr || !endTimeStr) return false;
     if (isAdmin && !effectiveSpecialistId) return false;
     if (!isAdmin && !mySpecialistId) return false;
     return true;
-  }, [patientId, dateStr, startTimeStr, endTimeStr, isAdmin, effectiveSpecialistId, mySpecialistId]);
+  }, [patientId, consultorio, dateStr, startTimeStr, endTimeStr, isAdmin, effectiveSpecialistId, mySpecialistId]);
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -200,9 +345,9 @@ export function AppointmentModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+    <div className="fixed inset-0 z-50 flex items-stretch justify-end bg-slate-950/12 p-2 backdrop-blur-[1px] sm:items-center sm:p-4">
       <div
-        className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-xl"
+        className="appointment-modal-card h-full w-full max-w-xl overflow-y-auto rounded-2xl p-6 shadow-xl sm:h-auto sm:max-h-[92vh]"
         role="dialog"
         aria-modal="true"
       >
@@ -221,11 +366,11 @@ export function AppointmentModal({
 
         <form className="mt-4 space-y-4" onSubmit={onSubmit}>
           <div>
-            <label className="block text-sm font-medium text-slate-700">Paciente</label>
+            <label className={labelClass}>Paciente</label>
             <select
               required
               disabled={!isAdmin && isEdit}
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+              className={fieldClass}
               value={patientId}
               onChange={(e) => setPatientId(e.target.value)}
             >
@@ -240,10 +385,10 @@ export function AppointmentModal({
 
           {isAdmin && !fixedSpecialistId && (
             <div>
-              <label className="block text-sm font-medium text-slate-700">Especialista</label>
+              <label className={labelClass}>Especialista</label>
               <select
                 required
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                className={fieldClass}
                 value={specialistId}
                 onChange={(e) => setSpecialistId(e.target.value)}
               >
@@ -270,33 +415,83 @@ export function AppointmentModal({
           )}
 
           <div>
-            <label className="block text-sm font-medium text-slate-700">Fecha</label>
+            <label className={labelClass}>Fecha</label>
             <input
               type="date"
               required
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+              className={fieldClass}
               value={dateStr}
               onChange={(e) => setDateStr(e.target.value)}
             />
           </div>
 
+          <div>
+            <label className={labelClass}>Consultorio</label>
+            <select
+              required
+              className={fieldClass}
+              value={consultorio}
+              onChange={(e) => setConsultorio(e.target.value)}
+            >
+              <option value="">Seleccione consultorio…</option>
+              {consultorioOptions.map((o) => (
+                <option key={o.office} value={o.office} disabled={o.occupiedInSelected}>
+                  {o.office} — {o.status}
+                </option>
+              ))}
+            </select>
+            {consultorio.trim() && dateStr && (
+              <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                <p className="text-xs font-medium text-slate-700">
+                  Disponibilidad en {consultorio.trim()} ({dateStr})
+                </p>
+                {consultorioDayQ.isLoading ? (
+                  <p className="mt-1 text-xs text-slate-500">Calculando rangos libres…</p>
+                ) : (
+                  <div className="mt-1">
+                    <p className="text-xs text-slate-600">Libres:</p>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {consultorioFreeRanges.map((r, i) => {
+                        const isNone = r.label === "Sin huecos";
+                        const isShort = !isNone && r.minutes < SHORT_FREE_RANGE_MINUTES;
+                        const cls = isNone
+                          ? "bg-slate-200 text-slate-700"
+                          : isShort
+                            ? "bg-amber-100 text-amber-800"
+                            : "bg-emerald-100 text-emerald-800";
+                        return (
+                          <span key={`${r.label}-${i}`} className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${cls}`}>
+                            {r.label}
+                          </span>
+                        );
+                      })}
+                    </div>
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      Verde: hueco util (&gt;= {SHORT_FREE_RANGE_MINUTES} min) · Amarillo: hueco corto.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <label className="block text-sm font-medium text-slate-700">Hora inicio</label>
+              <label className={labelClass}>Hora inicio</label>
               <input
                 type="time"
                 required
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                className={fieldClass}
                 value={startTimeStr}
                 onChange={(e) => setStartTimeStr(e.target.value)}
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700">Hora fin</label>
+              <label className={labelClass}>Hora fin</label>
               <input
                 type="time"
                 required
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                className={fieldClass}
                 value={endTimeStr}
                 onChange={(e) => setEndTimeStr(e.target.value)}
               />
@@ -304,9 +499,9 @@ export function AppointmentModal({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700">Estado</label>
+            <label className={labelClass}>Estado</label>
             <select
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+              className={fieldClass}
               value={status}
               onChange={(e) => setStatus(e.target.value as AppointmentStatus)}
             >
@@ -319,9 +514,9 @@ export function AppointmentModal({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700">Motivo de consulta</label>
+            <label className={labelClass}>Motivo de consulta</label>
             <textarea
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+              className={`${fieldClass} resize-y`}
               rows={2}
               value={reasonForVisit}
               onChange={(e) => setReasonForVisit(e.target.value)}
@@ -330,11 +525,9 @@ export function AppointmentModal({
 
           {isEdit && (
             <div>
-              <label className="block text-sm font-medium text-slate-700">
-                Historial / registro médico
-              </label>
+              <label className={labelClass}>Historial / registro médico</label>
               <textarea
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm"
+                className={`${fieldClass} resize-y font-mono text-sm`}
                 rows={5}
                 value={medicalRecord}
                 onChange={(e) => setMedicalRecord(e.target.value)}
@@ -348,7 +541,7 @@ export function AppointmentModal({
             <button
               type="submit"
               disabled={!canSubmit || createMut.isPending || updateMut.isPending}
-              className="rounded-lg bg-brand-600 px-4 py-2 text-white hover:bg-brand-700 disabled:opacity-50"
+              className="rounded-lg bg-brand-600 px-4 py-2 font-medium text-white shadow-sm hover:bg-brand-700 disabled:opacity-50"
             >
               {isEdit ? "Guardar" : "Crear"}
             </button>
@@ -359,7 +552,7 @@ export function AppointmentModal({
                   if (confirm("¿Eliminar esta cita?")) deleteMut.mutate();
                 }}
                 disabled={deleteMut.isPending}
-                className="rounded-lg border border-red-200 px-4 py-2 text-red-700 hover:bg-red-50"
+                className="rounded-lg border border-red-200 bg-red-50/80 px-4 py-2 text-red-700 hover:bg-red-100"
               >
                 Eliminar
               </button>
@@ -367,7 +560,7 @@ export function AppointmentModal({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg border border-slate-200 px-4 py-2 text-slate-700 hover:bg-slate-50"
+              className="rounded-lg border border-slate-200 bg-white/80 px-4 py-2 text-slate-700 hover:bg-white"
             >
               Cancelar
             </button>

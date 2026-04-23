@@ -66,6 +66,18 @@ export const update = asyncHandler(async (req: Request, res: Response) => {
   res.json(row);
 });
 
+export const uploadProfilePhoto = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.file) {
+    throw new AppError(400, "Debes seleccionar una imagen");
+  }
+  const relativeUrl = `/uploads/specialists/${req.file.filename}`;
+  const origin = `${req.protocol}://${req.get("host") ?? ""}`;
+  res.status(201).json({
+    url: `${origin}${relativeUrl}`,
+    relativeUrl,
+  });
+});
+
 export const remove = asyncHandler(async (req: Request, res: Response) => {
   await specialistService.deleteSpecialist(String(req.params.id));
   res.status(204).send();

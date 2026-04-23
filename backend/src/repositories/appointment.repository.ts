@@ -55,4 +55,16 @@ export const appointmentRepository = {
       },
     });
   },
+
+  /** Citas del mismo día y consultorio (para detectar choques de sala) */
+  findByConsultorioAndDate(consultorio: string, appointmentDate: Date, excludeId?: string) {
+    return prisma.appointment.findMany({
+      where: {
+        consultorio,
+        appointmentDate,
+        status: { notIn: [AppointmentStatus.CANCELLED] },
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+      },
+    });
+  },
 };

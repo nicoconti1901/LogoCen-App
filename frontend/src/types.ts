@@ -56,6 +56,7 @@ export type Appointment = {
   id: string;
   patientId: string;
   specialistId: string;
+  consultorio: string;
   appointmentDate: string;
   startTime: string;
   endTime: string;

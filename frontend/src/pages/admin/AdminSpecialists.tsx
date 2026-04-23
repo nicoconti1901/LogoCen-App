@@ -6,6 +6,7 @@ import {
   createSpecialist,
   deleteSpecialist,
   fetchSpecialists,
+  uploadSpecialistProfilePhoto,
   updateSpecialist,
 } from "../../api/endpoints";
 import { imageSrcCandidates, normalizeProfilePhotoUrlForStorage } from "../../lib/imageUrl";
@@ -52,7 +53,7 @@ function SpecialistAvatar({ specialist }: { specialist: Specialist }) {
   }
   const initials = `${specialist.firstName[0] ?? ""}${specialist.lastName[0] ?? ""}`.toUpperCase();
   return (
-    <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-zinc-800 to-black text-base font-bold tracking-tight text-teal-400">
+    <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-sky-100 to-blue-50 text-base font-bold tracking-tight text-sky-800">
       {initials || "?"}
     </div>
   );
@@ -73,60 +74,55 @@ function SpecialistCard({ specialist: s, size, onEdit }: SpecialistCardProps) {
 
   return (
     <article
-      className={`group relative flex flex-col overflow-hidden rounded-[1.75rem] border border-teal-500/80 bg-black shadow-[0_0_0_1px_rgba(20,184,166,0.15)] transition duration-300 hover:border-teal-400 hover:shadow-[0_20px_50px_-12px_rgba(20,184,166,0.25)] ${widthClass}`}
+      className={`group relative flex flex-col overflow-hidden rounded-[1.35rem] border border-sky-200 bg-white shadow-[0_10px_28px_-18px_rgba(15,23,42,0.35)] transition duration-300 hover:-translate-y-0.5 hover:border-sky-300 hover:shadow-[0_18px_34px_-20px_rgba(3,105,161,0.35)] ${widthClass}`}
     >
-      {/* Forma orgánica teal (referencia) */}
+      {/* Acento superior institucional */}
       <div
-        className="pointer-events-none absolute -left-20 -top-16 h-56 w-56 rounded-[42%] bg-teal-500 opacity-95 blur-[0.5px]"
+        className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-600 opacity-90"
         aria-hidden
       />
       <div
-        className="pointer-events-none absolute -left-12 -top-8 h-40 w-44 rotate-12 rounded-[50%] bg-teal-400/30"
+        className="pointer-events-none absolute -left-8 top-8 h-28 w-28 rounded-full bg-sky-100/70"
         aria-hidden
       />
 
       {!s.active && (
-        <span className="absolute right-3 top-3 z-20 rounded-full border border-zinc-700 bg-zinc-900/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-400">
+        <span className="absolute right-3 top-3 z-20 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
           Inactivo
         </span>
       )}
 
       <div className="relative z-10 flex flex-col items-center px-5 pb-6 pt-10">
-        <div className="relative mb-5 h-[5.5rem] w-[5.5rem] shrink-0 overflow-hidden rounded-full border-2 border-black bg-zinc-900 shadow-[0_8px_30px_rgba(0,0,0,0.5)] ring-2 ring-teal-500/40">
+        <div className="relative mb-5 h-[5.5rem] w-[5.5rem] shrink-0 overflow-hidden rounded-full border-2 border-white bg-slate-100 shadow-[0_10px_24px_-10px_rgba(3,105,161,0.55)] ring-2 ring-sky-200">
           <SpecialistAvatar specialist={s} />
         </div>
 
-        <h2 className="text-center text-xl font-bold tracking-tight text-white">
+        <h2 className="text-center text-xl font-bold tracking-tight text-slate-900">
           {s.lastName}, {s.firstName}
         </h2>
-        <p className="mt-2 w-full max-w-[min(100%,280px)] text-center text-sm leading-snug text-zinc-400 sm:max-w-none">
+        <p className="mt-2 w-full max-w-[min(100%,280px)] text-center text-sm leading-snug text-slate-600 sm:max-w-none">
           {s.specialty}
         </p>
 
-        {/* Estrellas decorativas (sin dato de rating en el sistema) */}
-        <div className="mt-3 flex gap-0.5 text-teal-500" aria-hidden>
-          {"★★★★★".split("").map((ch, i) => (
-            <span key={i} className="text-lg leading-none">
-              {ch}
-            </span>
-          ))}
-        </div>
+        <span className="mt-3 rounded-full border border-sky-200 bg-sky-50 px-2.5 py-0.5 text-[11px] font-medium text-sky-700">
+          Perfil médico
+        </span>
 
-        <p className="mt-3 max-w-full truncate px-1 text-center font-mono text-[10px] text-zinc-500" title={s.user.email}>
+        <p className="mt-3 max-w-full truncate px-1 text-center font-mono text-[10px] text-slate-500" title={s.user.email}>
           {s.user.email}
         </p>
 
         <div className="mt-7 flex w-full gap-2.5">
           <Link
             to={`/specialists/${s.id}/agenda`}
-            className="flex-1 rounded-full bg-teal-500 py-2.5 text-center text-sm font-bold text-black transition hover:bg-teal-400 active:scale-[0.98]"
+            className="flex-1 rounded-full bg-sky-600 py-2.5 text-center text-sm font-semibold text-white transition hover:bg-sky-700 active:scale-[0.98]"
           >
             Ver agenda
           </Link>
           <button
             type="button"
             onClick={onEdit}
-            className="flex-1 rounded-full bg-teal-500 py-2.5 text-sm font-bold text-black transition hover:bg-teal-400 active:scale-[0.98]"
+            className="flex-1 rounded-full border border-slate-300 bg-white py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 active:scale-[0.98]"
           >
             Editar
           </button>
@@ -235,6 +231,15 @@ function SpecialistFormModal({ open, title, editing, onClose }: FormModalProps) 
     onError: (err) => setFormError(parseApiError(err)),
   });
 
+  const uploadPhotoMut = useMutation({
+    mutationFn: (file: File) => uploadSpecialistProfilePhoto(file),
+    onSuccess: ({ url }) => {
+      setForm((prev) => ({ ...prev, profilePhotoUrl: url }));
+      setFormError(null);
+    },
+    onError: (err) => setFormError(parseApiError(err)),
+  });
+
   if (!open) return null;
 
   function onSubmit(e: FormEvent) {
@@ -243,7 +248,7 @@ function SpecialistFormModal({ open, title, editing, onClose }: FormModalProps) 
     else createMut.mutate();
   }
 
-  const pending = createMut.isPending || updateMut.isPending || deleteMut.isPending;
+  const pending = createMut.isPending || updateMut.isPending || deleteMut.isPending || uploadPhotoMut.isPending;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
@@ -281,9 +286,25 @@ function SpecialistFormModal({ open, title, editing, onClose }: FormModalProps) 
               value={form.profilePhotoUrl}
               onChange={(e) => setForm((f) => ({ ...f, profilePhotoUrl: e.target.value }))}
             />
+            <label className="mt-3 block text-sm font-medium text-slate-600">o subir imagen</label>
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              className="mt-1.5 block w-full cursor-pointer rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-sm text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-sky-600 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-white hover:file:bg-sky-700"
+              disabled={pending}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                uploadPhotoMut.mutate(file);
+                e.currentTarget.value = "";
+              }}
+            />
+            {uploadPhotoMut.isPending && (
+              <p className="mt-1.5 text-xs text-slate-500">Subiendo imagen…</p>
+            )}
             <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
-              Imagen por URL (HTTPS). Google Drive: usá el enlace de compartir; lo convertimos para que se vea en la tarjeta. El archivo debe estar como{" "}
-              <strong className="font-medium text-slate-700">Cualquier persona con el enlace</strong> (lector).
+              Podés cargar una URL (HTTPS) o subir la imagen directo al servidor (máx. 5MB; jpg/png/webp/gif). Si pegás un enlace de Google
+              Drive, intentamos convertirlo automáticamente.
             </p>
           </div>
           <div className="sm:col-span-2">
@@ -429,35 +450,34 @@ export function AdminSpecialistsPage() {
 
   return (
     <div className="space-y-8">
-      {/* Bloque oscuro: mismo lenguaje visual que la referencia */}
-      <section className="overflow-hidden rounded-3xl border border-zinc-800 bg-black px-4 py-8 shadow-2xl sm:px-8 sm:py-10">
+      <section className="overflow-hidden rounded-3xl border border-sky-100 bg-gradient-to-br from-sky-50 to-white px-4 py-8 shadow-[0_20px_40px_-30px_rgba(15,23,42,0.4)] sm:px-8 sm:py-10">
         <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
           <div className="max-w-2xl">
-            <h1 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">Especialistas</h1>
-            <p className="mt-3 text-sm leading-relaxed text-zinc-400 sm:text-base">
+            <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">Especialistas</h1>
+            <p className="mt-3 text-sm leading-relaxed text-slate-600 sm:text-base">
               Equipo médico en un vistazo. Abrí la agenda de cada profesional o sumá nuevos perfiles.
             </p>
           </div>
           <button
             type="button"
             onClick={openCreate}
-            className="inline-flex shrink-0 items-center justify-center rounded-full bg-teal-500 px-7 py-3 text-sm font-bold text-black shadow-[0_0_24px_rgba(20,184,166,0.35)] transition hover:bg-teal-400 active:scale-[0.98]"
+            className="inline-flex shrink-0 items-center justify-center rounded-full bg-sky-600 px-7 py-3 text-sm font-semibold text-white shadow-[0_10px_26px_-12px_rgba(3,105,161,0.45)] transition hover:bg-sky-700 active:scale-[0.98]"
           >
             Agregar especialista
           </button>
         </div>
 
         {isLoading && (
-          <div className="mt-10 flex items-center gap-3 rounded-2xl border border-zinc-800 bg-zinc-950/80 px-5 py-4 text-zinc-400">
-            <span className="inline-flex h-5 w-5 animate-spin rounded-full border-2 border-teal-500 border-t-transparent" />
+          <div className="mt-10 flex items-center gap-3 rounded-2xl border border-sky-100 bg-white px-5 py-4 text-slate-600">
+            <span className="inline-flex h-5 w-5 animate-spin rounded-full border-2 border-sky-500 border-t-transparent" />
             Cargando equipo…
           </div>
         )}
 
         {!isLoading && data.length === 0 && (
-          <div className="mt-10 rounded-3xl border border-dashed border-zinc-700 bg-zinc-950/50 px-8 py-16 text-center">
-            <p className="text-sm font-medium text-zinc-300 sm:text-base">No hay especialistas todavía.</p>
-            <p className="mt-2 text-sm text-zinc-500">Creá el primero con el botón de arriba.</p>
+          <div className="mt-10 rounded-3xl border border-dashed border-sky-200 bg-white/70 px-8 py-16 text-center">
+            <p className="text-sm font-medium text-slate-700 sm:text-base">No hay especialistas todavía.</p>
+            <p className="mt-2 text-sm text-slate-500">Creá el primero con el botón de arriba.</p>
           </div>
         )}
 
@@ -468,7 +488,7 @@ export function AdminSpecialistsPage() {
                 <button
                   type="button"
                   onClick={() => scrollCards(-1)}
-                  className="absolute left-0 top-1/2 z-10 hidden -translate-x-1 -translate-y-1/2 rounded-full border border-teal-500/50 bg-black/80 p-2.5 text-teal-400 shadow-lg backdrop-blur-sm transition hover:bg-teal-500/20 md:flex"
+                  className="absolute left-0 top-1/2 z-10 hidden -translate-x-1 -translate-y-1/2 rounded-full border border-sky-200 bg-white/95 p-2.5 text-sky-700 shadow-lg backdrop-blur-sm transition hover:bg-sky-50 md:flex"
                   aria-label="Anterior"
                 >
                   <span className="text-xl leading-none">‹</span>
@@ -476,7 +496,7 @@ export function AdminSpecialistsPage() {
                 <button
                   type="button"
                   onClick={() => scrollCards(1)}
-                  className="absolute right-0 top-1/2 z-10 hidden -translate-y-1/2 translate-x-1 rounded-full border border-teal-500/50 bg-black/80 p-2.5 text-teal-400 shadow-lg backdrop-blur-sm transition hover:bg-teal-500/20 md:flex"
+                  className="absolute right-0 top-1/2 z-10 hidden -translate-y-1/2 translate-x-1 rounded-full border border-sky-200 bg-white/95 p-2.5 text-sky-700 shadow-lg backdrop-blur-sm transition hover:bg-sky-50 md:flex"
                   aria-label="Siguiente"
                 >
                   <span className="text-xl leading-none">›</span>
