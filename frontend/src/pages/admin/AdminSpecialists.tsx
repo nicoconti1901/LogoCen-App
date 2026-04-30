@@ -10,12 +10,14 @@ import {
   updateSpecialist,
 } from "../../api/endpoints";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { useAuth } from "../../contexts/AuthContext";
 import { imageSrcCandidates, normalizeProfilePhotoUrlForStorage } from "../../lib/imageUrl";
 import type { Specialist } from "../../types";
 
 const emptyForm = {
   email: "",
   password: "",
+  confirmPassword: "",
   firstName: "",
   lastName: "",
   specialty: "",
@@ -64,10 +66,12 @@ type SpecialistCardProps = {
   specialist: Specialist;
   /** fluid = ocupa el ancho de la celda (grilla pocos ítems); compact = ancho fijo en carrusel scroll */
   size: "fluid" | "compact";
+  canEdit: boolean;
+  canViewAgenda: boolean;
   onEdit: () => void;
 };
 
-function SpecialistCard({ specialist: s, size, onEdit }: SpecialistCardProps) {
+function SpecialistCard({ specialist: s, size, canEdit, canViewAgenda, onEdit }: SpecialistCardProps) {
   const widthClass =
     size === "fluid"
       ? "w-full"
@@ -109,24 +113,24 @@ function SpecialistCard({ specialist: s, size, onEdit }: SpecialistCardProps) {
           Perfil médico
         </span>
 
-        <p className="mt-3 max-w-full truncate px-1 text-center font-mono text-[10px] text-slate-500" title={s.user.email}>
-          {s.user.email}
-        </p>
-
         <div className="mt-7 flex w-full gap-2.5">
-          <Link
-            to={`/specialists/${s.id}/agenda`}
-            className="flex-1 rounded-full bg-sky-600 py-2.5 text-center text-sm font-semibold text-white transition hover:bg-sky-700 active:scale-[0.98]"
-          >
-            Ver agenda
-          </Link>
-          <button
-            type="button"
-            onClick={onEdit}
-            className="flex-1 rounded-full border border-slate-300 bg-white py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 active:scale-[0.98]"
-          >
-            Editar
-          </button>
+          {canViewAgenda && (
+            <Link
+              to={`/specialists/${s.id}/agenda`}
+              className="flex-1 rounded-full bg-sky-600 py-2.5 text-center text-sm font-semibold text-white transition hover:bg-sky-700 active:scale-[0.98]"
+            >
+              Ver agenda
+            </Link>
+          )}
+          {canEdit && (
+            <button
+              type="button"
+              onClick={onEdit}
+              className="flex-1 rounded-full border border-slate-300 bg-white py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 active:scale-[0.98]"
+            >
+              Editar
+            </button>
+          )}
         </div>
       </div>
     </article>
@@ -138,6 +142,7 @@ type FormModalProps = {
   title: string;
   editing: Specialist | null;
   onClose: () => void;
+  canDelete: boolean;
 };
 
 function parseApiError(err: unknown): string {
@@ -159,7 +164,7 @@ function parseApiError(err: unknown): string {
   return err.message || "No se pudo conectar con el servidor";
 }
 
-function SpecialistFormModal({ open, title, editing, onClose }: FormModalProps) {
+function SpecialistFormModal({ open, title, editing, onClose, canDelete }: FormModalProps) {
   const qc = useQueryClient();
   const [form, setForm] = useState(emptyForm);
   const [formError, setFormError] = useState<string | null>(null);
@@ -175,6 +180,7 @@ function SpecialistFormModal({ open, title, editing, onClose }: FormModalProps) 
     setForm({
       email: editing.user.email,
       password: "",
+      confirmPassword: "",
       firstName: editing.firstName,
       lastName: editing.lastName,
       specialty: editing.specialty,
@@ -246,11 +252,22 @@ function SpecialistFormModal({ open, title, editing, onClose }: FormModalProps) 
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
+    if (!editing) {
+      if (form.password !== form.confirmPassword) {
+        setFormError("La confirmación de contraseña no coincide");
+        return;
+      }
+    } else if (form.password && form.password !== form.confirmPassword) {
+      setFormError("La confirmación de contraseña no coincide");
+      return;
+    }
     if (editing) updateMut.mutate();
     else createMut.mutate();
   }
 
   const pending = createMut.isPending || updateMut.isPending || deleteMut.isPending || uploadPhotoMut.isPending;
+  const passwordNeedsConfirmation = !editing || Boolean(form.password);
+  const passwordMismatch = passwordNeedsConfirmation && form.password !== form.confirmPassword;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
@@ -328,6 +345,24 @@ function SpecialistFormModal({ open, title, editing, onClose }: FormModalProps) 
               value={form.password}
               onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
             />
+            <p className="mt-1 text-xs text-slate-500">
+              Debe tener al menos 8 caracteres, mayúscula, minúscula, número y símbolo.
+            </p>
+          </div>
+          <div className="sm:col-span-2">
+            <label className="text-sm font-medium text-slate-600">
+              Confirmar contraseña {editing && "(si cambia contraseña)"}
+            </label>
+            <input
+              type="password"
+              required={!editing || Boolean(form.password)}
+              className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 transition focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+              value={form.confirmPassword}
+              onChange={(e) => setForm((f) => ({ ...f, confirmPassword: e.target.value }))}
+            />
+            {passwordMismatch && (
+              <p className="mt-1 text-xs text-red-600">La confirmación de contraseña no coincide.</p>
+            )}
           </div>
           <div>
             <label className="text-sm font-medium text-slate-600">Nombre</label>
@@ -375,7 +410,7 @@ function SpecialistFormModal({ open, title, editing, onClose }: FormModalProps) 
           <div className="flex flex-wrap gap-2 sm:col-span-2">
             <button
               type="submit"
-              disabled={pending}
+              disabled={pending || passwordMismatch}
               className="rounded-xl bg-gradient-to-r from-brand-600 to-sky-600 px-5 py-2.5 font-semibold text-white shadow-md shadow-brand-500/25 transition hover:brightness-105 disabled:opacity-50"
             >
               {editing ? "Guardar" : "Crear especialista"}
@@ -387,7 +422,7 @@ function SpecialistFormModal({ open, title, editing, onClose }: FormModalProps) 
             >
               Cancelar
             </button>
-            {editing && (
+            {editing && canDelete && (
               <button
                 type="button"
                 disabled={pending}
@@ -418,9 +453,12 @@ function SpecialistFormModal({ open, title, editing, onClose }: FormModalProps) 
 }
 
 export function AdminSpecialistsPage() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "ADMIN";
+  const mySpecialistId = user?.specialistId ?? null;
   const { data = [], isLoading } = useQuery({
     queryKey: ["specialists", "admin"],
-    queryFn: () => fetchSpecialists(true),
+    queryFn: () => fetchSpecialists(isAdmin),
   });
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -471,13 +509,15 @@ export function AdminSpecialistsPage() {
               Equipo médico en un vistazo. Abrí la agenda de cada profesional o sumá nuevos perfiles.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={openCreate}
-            className="inline-flex shrink-0 items-center justify-center rounded-full bg-sky-600 px-7 py-3 text-sm font-semibold text-white shadow-[0_10px_26px_-12px_rgba(3,105,161,0.45)] transition hover:bg-sky-700 active:scale-[0.98]"
-          >
-            Agregar especialista
-          </button>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={openCreate}
+              className="inline-flex shrink-0 items-center justify-center rounded-full bg-sky-600 px-7 py-3 text-sm font-semibold text-white shadow-[0_10px_26px_-12px_rgba(3,105,161,0.45)] transition hover:bg-sky-700 active:scale-[0.98]"
+            >
+              Agregar especialista
+            </button>
+          )}
         </div>
 
         {isLoading && (
@@ -523,7 +563,14 @@ export function AdminSpecialistsPage() {
                 className="flex snap-x snap-mandatory gap-6 overflow-x-auto pb-4 pt-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:px-8"
               >
                 {data.map((s) => (
-                  <SpecialistCard key={s.id} specialist={s} size="compact" onEdit={() => openEdit(s)} />
+                  <SpecialistCard
+                    key={s.id}
+                    specialist={s}
+                    size="compact"
+                    canEdit={isAdmin || s.id === mySpecialistId}
+                    canViewAgenda={isAdmin || s.id === mySpecialistId}
+                    onEdit={() => openEdit(s)}
+                  />
                 ))}
               </div>
             ) : (
@@ -531,7 +578,14 @@ export function AdminSpecialistsPage() {
                 className={`grid w-full gap-6 px-4 sm:px-6 md:px-8 ${gridClass(count)}`}
               >
                 {data.map((s) => (
-                  <SpecialistCard key={s.id} specialist={s} size="fluid" onEdit={() => openEdit(s)} />
+                  <SpecialistCard
+                    key={s.id}
+                    specialist={s}
+                    size="fluid"
+                    canEdit={isAdmin || s.id === mySpecialistId}
+                    canViewAgenda={isAdmin || s.id === mySpecialistId}
+                    onEdit={() => openEdit(s)}
+                  />
                 ))}
               </div>
             )}
@@ -543,6 +597,7 @@ export function AdminSpecialistsPage() {
         open={modalOpen}
         title={editing ? "Editar especialista" : "Nuevo especialista"}
         editing={editing}
+        canDelete={isAdmin}
         onClose={closeModal}
       />
     </div>

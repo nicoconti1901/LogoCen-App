@@ -1,3 +1,4 @@
+import { Role } from "@prisma/client";
 import type { Request, Response } from "express";
 import { z } from "zod";
 import * as patientService from "../services/patient.service.js";
@@ -23,19 +24,27 @@ const updateClinicalHistorySchema = createClinicalHistorySchema.partial();
 
 export const list = asyncHandler(async (req: Request, res: Response) => {
   const search = typeof req.query.search === "string" ? req.query.search : undefined;
-  const specialistId = typeof req.query.specialistId === "string" ? req.query.specialistId : undefined;
+  const requestedSpecialistId = typeof req.query.specialistId === "string" ? req.query.specialistId : undefined;
+  const specialistId =
+    req.user?.role === Role.SPECIALIST ? req.user.specialistId ?? undefined : requestedSpecialistId;
   const rows = await patientService.listPatients({ search, specialistId });
   res.json(rows);
 });
 
 export const getById = asyncHandler(async (req: Request, res: Response) => {
-  const row = await patientService.getPatientById(String(req.params.id));
+  const row = await patientService.getPatientById(String(req.params.id), {
+    role: req.user!.role,
+    specialistId: req.user!.specialistId,
+  });
   res.json(row);
 });
 
 export const create = asyncHandler(async (req: Request, res: Response) => {
   const body = createSchema.parse(req.body);
-  const row = await patientService.createPatient(body);
+  const row = await patientService.createPatient(body, {
+    role: req.user!.role,
+    specialistId: req.user!.specialistId,
+  });
   res.status(201).json(row);
 });
 
@@ -51,7 +60,10 @@ export const remove = asyncHandler(async (req: Request, res: Response) => {
 });
 
 export const listClinicalHistory = asyncHandler(async (req: Request, res: Response) => {
-  const rows = await patientService.listClinicalHistory(String(req.params.id));
+  const rows = await patientService.listClinicalHistory(String(req.params.id), {
+    role: req.user!.role,
+    specialistId: req.user!.specialistId,
+  });
   res.json(rows);
 });
 

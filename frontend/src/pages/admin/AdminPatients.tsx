@@ -13,6 +13,7 @@ import {
   updatePatient,
 } from "../../api/endpoints";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { useAuth } from "../../contexts/AuthContext";
 import type { AppointmentStatus, ClinicalHistoryEntry, Patient, Specialist } from "../../types";
 
 const emptyForm = {
@@ -43,6 +44,8 @@ const appointmentStatusLabel: Record<AppointmentStatus, string> = {
 };
 
 export function AdminPatientsPage() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "ADMIN";
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [specialistFilter, setSpecialistFilter] = useState("");
@@ -63,6 +66,7 @@ export function AdminPatientsPage() {
   const { data: specialists = [] } = useQuery({
     queryKey: ["specialists", "for-patients"],
     queryFn: () => fetchSpecialists(),
+    enabled: isAdmin,
   });
 
   const [editing, setEditing] = useState<Patient | null>(null);
@@ -198,18 +202,20 @@ export function AdminPatientsPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        <select
-          className="min-w-64 rounded-lg border border-slate-300 px-3 py-2"
-          value={specialistFilter}
-          onChange={(e) => setSpecialistFilter(e.target.value)}
-        >
-          <option value="">Todos los especialistas</option>
-          {specialists.map((s) => (
-            <option key={s.id} value={s.id}>
-              {fullName(s)} - {s.specialty}
-            </option>
-          ))}
-        </select>
+        {isAdmin && (
+          <select
+            className="min-w-64 rounded-lg border border-slate-300 px-3 py-2"
+            value={specialistFilter}
+            onChange={(e) => setSpecialistFilter(e.target.value)}
+          >
+            <option value="">Todos los especialistas</option>
+            {specialists.map((s) => (
+              <option key={s.id} value={s.id}>
+                {fullName(s)} - {s.specialty}
+              </option>
+            ))}
+          </select>
+        )}
         <button
           type="button"
           className="rounded-lg bg-brand-600 px-4 py-2 text-white hover:bg-brand-700"
@@ -273,24 +279,28 @@ export function AdminPatientsPage() {
                         <span aria-hidden>🩺</span>
                         Historia clínica
                       </button>
-                      <button
-                        type="button"
-                        className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 transition hover:border-blue-300 hover:bg-blue-100"
-                        onClick={() => startEdit(p)}
-                        title="Editar paciente"
-                      >
-                        <span aria-hidden>✏️</span>
-                        Editar
-                      </button>
-                      <button
-                        type="button"
-                        className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 transition hover:border-red-300 hover:bg-red-100"
-                        onClick={() => setPendingDeletePatientId(p.id)}
-                        title="Eliminar paciente"
-                      >
-                        <span aria-hidden>🗑️</span>
-                        Eliminar
-                      </button>
+                      {isAdmin && (
+                        <>
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 transition hover:border-blue-300 hover:bg-blue-100"
+                            onClick={() => startEdit(p)}
+                            title="Editar paciente"
+                          >
+                            <span aria-hidden>✏️</span>
+                            Editar
+                          </button>
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 transition hover:border-red-300 hover:bg-red-100"
+                            onClick={() => setPendingDeletePatientId(p.id)}
+                            title="Eliminar paciente"
+                          >
+                            <span aria-hidden>🗑️</span>
+                            Eliminar
+                          </button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -359,22 +369,24 @@ export function AdminPatientsPage() {
                   onChange={(e) => setForm((f) => ({ ...f, birthDate: e.target.value }))}
                 />
               </div>
-              <div>
-                <label className="text-sm text-slate-600">Especialista</label>
-                <select
-                  required
-                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
-                  value={form.specialistId}
-                  onChange={(e) => setForm((f) => ({ ...f, specialistId: e.target.value }))}
-                >
-                  <option value="">Seleccionar especialista</option>
-                  {specialists.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {fullName(s)} - {s.specialty}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {isAdmin && (
+                <div>
+                  <label className="text-sm text-slate-600">Especialista</label>
+                  <select
+                    required
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                    value={form.specialistId}
+                    onChange={(e) => setForm((f) => ({ ...f, specialistId: e.target.value }))}
+                  >
+                    <option value="">Seleccionar especialista</option>
+                    {specialists.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {fullName(s)} - {s.specialty}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="sm:col-span-2">
                 <label className="text-sm text-slate-600">Notas</label>
                 <textarea

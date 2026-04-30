@@ -80,10 +80,7 @@ export async function listAppointments(params: {
 }) {
   const where: Prisma.AppointmentWhereInput = {};
 
-  if (params.role === Role.SPECIALIST) {
-    if (!params.userSpecialistId) throw new AppError(403, "Sin perfil de especialista");
-    where.specialistId = params.userSpecialistId;
-  } else if (params.specialistId) {
+  if (params.specialistId) {
     where.specialistId = params.specialistId;
   }
 

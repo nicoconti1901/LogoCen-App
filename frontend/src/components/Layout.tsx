@@ -8,7 +8,7 @@ const linkClass = ({ isActive }: { isActive: boolean }) =>
 
 export function Layout() {
   const { user, logout } = useAuth();
-  const isAdmin = user?.role === "ADMIN";
+  const canAccessAdminSections = user?.role === "ADMIN" || user?.role === "SPECIALIST";
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -20,7 +20,7 @@ export function Layout() {
               <NavLink to="/agenda" className={linkClass}>
                 Agenda
               </NavLink>
-              {isAdmin && (
+              {canAccessAdminSections && (
                 <>
                   <NavLink to="/specialists" className={linkClass}>
                     Especialistas

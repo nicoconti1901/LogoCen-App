@@ -8,9 +8,20 @@ export async function listPatients(filters?: { search?: string; specialistId?: s
   return patientRepository.findMany(filters);
 }
 
-export async function getPatientById(id: string) {
+function assertSpecialistPatientAccess(
+  patientSpecialistId: string | null,
+  user?: { role: Role; specialistId: string | null }
+) {
+  if (!user || user.role !== Role.SPECIALIST) return;
+  if (!user.specialistId || patientSpecialistId !== user.specialistId) {
+    throw new AppError(403, "Sin permisos sobre este paciente");
+  }
+}
+
+export async function getPatientById(id: string, user?: { role: Role; specialistId: string | null }) {
   const p = await patientRepository.findById(id);
   if (!p) throw new AppError(404, "Paciente no encontrado");
+  assertSpecialistPatientAccess(p.specialistId, user);
   return p;
 }
 
@@ -23,9 +34,11 @@ export async function createPatient(data: {
   birthDate?: Date | null;
   notes?: string | null;
   specialistId?: string | null;
-}) {
-  if (data.specialistId) {
-    const specialist = await specialistRepository.findById(data.specialistId);
+}, user?: { role: Role; specialistId: string | null }) {
+  const specialistId = user?.role === Role.SPECIALIST ? user.specialistId : data.specialistId;
+
+  if (specialistId) {
+    const specialist = await specialistRepository.findById(specialistId);
     if (!specialist || !specialist.active) throw new AppError(400, "Especialista inválido o inactivo");
   }
   return patientRepository.create({
@@ -36,7 +49,7 @@ export async function createPatient(data: {
     documentId: data.documentId?.trim() || null,
     birthDate: data.birthDate ?? null,
     notes: data.notes?.trim() || null,
-    ...(data.specialistId ? { specialist: { connect: { id: data.specialistId } } } : {}),
+    ...(specialistId ? { specialist: { connect: { id: specialistId } } } : {}),
   });
 }
 
@@ -79,8 +92,8 @@ export async function deletePatient(id: string) {
   await patientRepository.delete(id);
 }
 
-export async function listClinicalHistory(patientId: string) {
-  await getPatientById(patientId);
+export async function listClinicalHistory(patientId: string, user?: { role: Role; specialistId: string | null }) {
+  await getPatientById(patientId, user);
   return clinicalHistoryRepository.findByPatientId(patientId);
 }
 

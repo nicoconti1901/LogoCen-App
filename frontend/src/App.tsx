@@ -1,20 +1,10 @@
-import type { ReactNode } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { Layout } from "./components/Layout";
 import { PrivateRoute } from "./components/PrivateRoute";
-import { useAuth } from "./contexts/AuthContext";
 import { AdminPatientsPage } from "./pages/admin/AdminPatients";
 import { AdminSpecialistsPage } from "./pages/admin/AdminSpecialists";
 import { AgendaPage } from "./pages/Agenda";
 import { LoginPage } from "./pages/Login";
-
-function AdminOnly({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
-  if (user?.role !== "ADMIN") {
-    return <Navigate to="/agenda" replace />;
-  }
-  return <>{children}</>;
-}
 
 export default function App() {
   return (
@@ -26,28 +16,16 @@ export default function App() {
           <Route path="agenda" element={<AgendaPage />} />
           <Route
             path="specialists/:specialistId/agenda"
-            element={
-              <AdminOnly>
-                <AgendaPage />
-              </AdminOnly>
-            }
+            element={<AgendaPage />}
           />
           <Route path="appointments" element={<Navigate to="/agenda" replace />} />
           <Route
             path="specialists"
-            element={
-              <AdminOnly>
-                <AdminSpecialistsPage />
-              </AdminOnly>
-            }
+            element={<AdminSpecialistsPage />}
           />
           <Route
             path="patients"
-            element={
-              <AdminOnly>
-                <AdminPatientsPage />
-              </AdminOnly>
-            }
+            element={<AdminPatientsPage />}
           />
         </Route>
       </Route>
