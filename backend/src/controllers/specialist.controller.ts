@@ -7,10 +7,14 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 
 /** URLs largas (p. ej. Drive con query) o data URLs superaban 2048 y rompían el POST. */
 const optionalUrl = z.union([z.string().max(32_000), z.literal(""), z.null()]).optional();
+const strongPassword = z
+  .string()
+  .min(8)
+  .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).+$/, "La contraseña debe tener mayúscula, minúscula, número y símbolo");
 
 const createSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(8),
+  password: strongPassword,
   firstName: z.string().min(1),
   lastName: z.string().min(1),
   specialty: z.string().min(1),
@@ -21,7 +25,7 @@ const createSchema = z.object({
 
 const updateSchema = z.object({
   email: z.string().email().optional(),
-  password: z.string().min(8).optional(),
+  password: strongPassword.optional(),
   firstName: z.string().min(1).optional(),
   lastName: z.string().min(1).optional(),
   specialty: z.string().min(1).optional(),
@@ -61,8 +65,15 @@ export const create = asyncHandler(async (req: Request, res: Response) => {
 });
 
 export const update = asyncHandler(async (req: Request, res: Response) => {
+  const id = String(req.params.id);
+  if (req.user?.role === Role.SPECIALIST && req.user.specialistId !== id) {
+    throw new AppError(403, "Sin permisos");
+  }
   const body = updateSchema.parse(req.body);
-  const row = await specialistService.updateSpecialist(String(req.params.id), body);
+  if (req.user?.role === Role.SPECIALIST && "active" in body) {
+    delete (body as { active?: boolean }).active;
+  }
+  const row = await specialistService.updateSpecialist(id, body);
   res.json(row);
 });
 

@@ -10,14 +10,15 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchAppointments, fetchSpecialist } from "../api/endpoints";
 import { getAppointmentDateStr, toCalendarEnd, toCalendarStart } from "../lib/appointmentDisplay";
 import { AppointmentModal } from "../components/AppointmentModal";
+import { useAuth } from "../contexts/AuthContext";
 import type { Appointment } from "../types";
 
 const statusLabel: Record<Appointment["status"], string> = {
-  RESERVED: "Reservada",
-  CONFIRMED: "Confirmada",
-  ATTENDED: "Atendida",
-  CANCELLED: "Cancelada",
-  NO_SHOW: "No asistió",
+  RESERVED: "RESERVADO",
+  CONFIRMED: "CONFIRMADO",
+  ATTENDED: "FINALIZADO",
+  CANCELLED: "CANCELÓ",
+  NO_SHOW: "NO ASISTIÓ",
 };
 
 const CONSULTORIOS_BASE = [
@@ -31,10 +32,14 @@ const CONSULTORIOS_BASE = [
 const WORKDAY_START = "07:00";
 const WORKDAY_END = "21:00";
 
+function patientNameUpper(lastName: string, firstName: string): string {
+  return `${lastName}, ${firstName}`.toUpperCase();
+}
+
 function toEvent(a: Appointment): EventInput {
   return {
     id: a.id,
-    title: `${a.patient.lastName}, ${a.patient.firstName}`,
+    title: patientNameUpper(a.patient.lastName, a.patient.firstName),
     start: toCalendarStart(a),
     end: toCalendarEnd(a),
     classNames: ["appt-event", `status-${a.status.toLowerCase()}`],
@@ -45,7 +50,7 @@ function toEvent(a: Appointment): EventInput {
 function renderEventContent(arg: EventContentArg) {
   const raw = arg.event.extendedProps.raw as Appointment | undefined;
   if (!raw) return <span>{arg.event.title}</span>;
-  const patient = `${raw.patient.lastName}, ${raw.patient.firstName}`;
+  const patient = patientNameUpper(raw.patient.lastName, raw.patient.firstName);
   const specialist = `${raw.specialist.lastName}, ${raw.specialist.firstName}`;
   const consultorio = raw.consultorio;
   return (
@@ -81,6 +86,7 @@ function minutesToHHmm(total: number): string {
 }
 
 export function AgendaPage() {
+  const { user } = useAuth();
   const { specialistId: routeSpecialistId } = useParams<{ specialistId?: string }>();
   const [range, setRange] = useState<{ from: string; to: string } | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -107,6 +113,11 @@ export function AgendaPage() {
     enabled: Boolean(range),
   });
 
+  const visibleAppointments = useMemo(
+    () => (routeSpecialistId ? data.filter((a) => a.specialistId === routeSpecialistId) : data),
+    [data, routeSpecialistId]
+  );
+
   const onDatesSet = useCallback((arg: { start: Date; end: Date }) => {
     setRange({
       from: arg.start.toISOString(),
@@ -114,7 +125,7 @@ export function AgendaPage() {
     });
   }, []);
 
-  const events = data.map(toEvent);
+  const events = visibleAppointments.map(toEvent);
 
   const consultorioSituations = useMemo(() => {
     const today = todayStr();
@@ -132,7 +143,7 @@ export function AgendaPage() {
       }
     >();
 
-    const todays = data.filter((a) => getAppointmentDateStr(a) === today);
+    const todays = visibleAppointments.filter((a) => getAppointmentDateStr(a) === today);
     for (const a of todays) {
       const office = a.consultorio?.trim() || "Sin consultorio";
       const row = byOffice.get(office) ?? {
@@ -211,7 +222,7 @@ export function AgendaPage() {
         return { office, ...s, freeRanges: free };
       })
       .sort((a, b) => a.office.localeCompare(b.office));
-  }, [data]);
+  }, [visibleAppointments]);
 
   function onSelect(sel: DateSelectArg) {
     setSelected(null);
@@ -222,6 +233,8 @@ export function AgendaPage() {
   function onEventClick(info: EventClickArg) {
     const raw = info.event.extendedProps.raw as Appointment | undefined;
     if (!raw) return;
+    if (user?.role === "SPECIALIST" && user.specialistId && raw.specialistId !== user.specialistId) return;
+    if (routeSpecialistId && raw.specialistId !== routeSpecialistId) return;
 
     const start = info.event.start;
     if (!start) return;
@@ -297,7 +310,7 @@ export function AgendaPage() {
                   <p className="text-xs text-slate-500">
                     Próximo:{" "}
                     {c.next
-                      ? `${c.next.startTime} · ${c.next.patient.lastName}, ${c.next.patient.firstName}`
+                      ? `${c.next.startTime} · ${patientNameUpper(c.next.patient.lastName, c.next.patient.firstName)}`
                       : "Sin próximos"}
                   </p>
                   <p className="mt-1 text-xs text-slate-600">

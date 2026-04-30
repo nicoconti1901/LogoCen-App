@@ -146,10 +146,14 @@ body {
   color: #064e3b !important;
 }
 
-.status-cancelled,
+.status-cancelled {
+  background: #fecaca !important;
+  color: #991b1b !important;
+}
+
 .status-no_show {
-  background: #cbd5e1 !important;
-  color: #334155 !important;
+  background: #fed7aa !important;
+  color: #9a3412 !important;
 }
 
 .agenda-pill {

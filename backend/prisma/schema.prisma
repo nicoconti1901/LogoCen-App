@@ -27,6 +27,12 @@ enum PaymentStatus {
   REFUNDED
 }
 
+enum AppointmentPaymentMethod {
+  TRANSFER_TO_LOGOCEN
+  TRANSFER_TO_SPECIALIST
+  CASH_TO_LOGOCEN
+}
+
 model User {
   id           String      @id @default(uuid())
   email        String      @unique
@@ -52,6 +58,8 @@ model Specialist {
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   appointments  Appointment[]
+  patients      Patient[]
+  clinicalHistoryEntries ClinicalHistoryEntry[]
 }
 
 model Patient {
@@ -63,9 +71,29 @@ model Patient {
   documentId   String?
   birthDate    DateTime?
   notes        String?
+  specialistId String?
+  specialist   Specialist?   @relation(fields: [specialistId], references: [id], onDelete: SetNull)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   appointments Appointment[]
+  clinicalHistoryEntries ClinicalHistoryEntry[]
+
+  @@index([specialistId])
+}
+
+model ClinicalHistoryEntry {
+  id           String      @id @default(uuid())
+  patientId    String
+  patient      Patient     @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  specialistId String?
+  specialist   Specialist? @relation(fields: [specialistId], references: [id], onDelete: SetNull)
+  recordDate   DateTime    @db.Date
+  diagnosis    String      @db.Text
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@index([patientId, recordDate])
+  @@index([specialistId])
 }
 
 /// Cita: paciente, especialista, fecha, franja horaria, estado, registro médico, motivo.
@@ -86,6 +114,7 @@ model Appointment {
   status          AppointmentStatus @default(RESERVED)
   medicalRecord   String?           @db.Text
   reasonForVisit  String?
+  paymentMethod   AppointmentPaymentMethod?
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
   payments        Payment[]
