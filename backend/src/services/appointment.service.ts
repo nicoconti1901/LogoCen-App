@@ -1,4 +1,4 @@
-import { AppointmentStatus, Prisma, Role } from "@prisma/client";
+import { AppointmentPaymentMethod, AppointmentStatus, Prisma, Role } from "@prisma/client";
 import { appointmentRepository } from "../repositories/appointment.repository.js";
 import { patientRepository } from "../repositories/patient.repository.js";
 import { specialistRepository } from "../repositories/specialist.repository.js";
@@ -140,6 +140,7 @@ export async function createAppointment(
     startTime: string;
     endTime: string;
     status?: AppointmentStatus;
+    paymentMethod?: AppointmentPaymentMethod | null;
     medicalRecord?: string | null;
     reasonForVisit?: string | null;
   },
@@ -179,6 +180,7 @@ export async function createAppointment(
     startTime,
     endTime,
     status: data.status ?? AppointmentStatus.RESERVED,
+    paymentMethod: data.paymentMethod ?? null,
     medicalRecord: data.medicalRecord?.trim() || null,
     reasonForVisit: data.reasonForVisit?.trim() || null,
   });
@@ -194,6 +196,7 @@ export async function updateAppointment(
     startTime: string;
     endTime: string;
     status: AppointmentStatus;
+    paymentMethod: AppointmentPaymentMethod | null;
     medicalRecord: string | null;
     reasonForVisit: string | null;
   }>,
@@ -250,6 +253,7 @@ export async function updateAppointment(
     ...(data.startTime !== undefined ? { startTime: nextStart } : {}),
     ...(data.endTime !== undefined ? { endTime: nextEnd } : {}),
     ...(data.status !== undefined ? { status: data.status } : {}),
+    ...(data.paymentMethod !== undefined ? { paymentMethod: data.paymentMethod } : {}),
     ...(data.medicalRecord !== undefined ? { medicalRecord: data.medicalRecord?.trim() || null } : {}),
     ...(data.reasonForVisit !== undefined ? { reasonForVisit: data.reasonForVisit?.trim() || null } : {}),
   });

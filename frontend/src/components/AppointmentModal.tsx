@@ -10,7 +10,8 @@ import {
 } from "../api/endpoints";
 import { getAppointmentDateStr, getEndTimeStr, getStartTimeStr } from "../lib/appointmentDisplay";
 import { useAuth } from "../contexts/AuthContext";
-import type { Appointment, AppointmentStatus } from "../types";
+import { ConfirmDialog } from "./ConfirmDialog";
+import type { Appointment, AppointmentPaymentMethod, AppointmentStatus } from "../types";
 
 type Props = {
   open: boolean;
@@ -68,16 +69,30 @@ function rangesOverlap(aStart: number, aEnd: number, bStart: number, bEnd: numbe
 }
 
 const statusLabel: Record<AppointmentStatus, string> = {
-  RESERVED: "Reservada",
-  CONFIRMED: "Confirmada",
-  ATTENDED: "Atendida",
-  CANCELLED: "Cancelada",
-  NO_SHOW: "No asistió",
+  RESERVED: "RESERVADO",
+  CONFIRMED: "CONFIRMADO",
+  ATTENDED: "FINALIZADO",
+  CANCELLED: "CANCELÓ",
+  NO_SHOW: "NO ASISTIÓ",
+};
+const paymentMethods: AppointmentPaymentMethod[] = [
+  "TRANSFER_TO_LOGOCEN",
+  "TRANSFER_TO_SPECIALIST",
+  "CASH_TO_LOGOCEN",
+];
+const paymentMethodLabel: Record<AppointmentPaymentMethod, string> = {
+  TRANSFER_TO_LOGOCEN: "Transferencia a LogoCen",
+  TRANSFER_TO_SPECIALIST: "Transferencia al especialista",
+  CASH_TO_LOGOCEN: "Efectivo a LogoCen",
 };
 
 const labelClass = "block text-sm font-medium text-slate-700";
 const fieldClass =
   "mt-1 w-full rounded-lg border border-slate-300/90 bg-white/90 px-3 py-2 text-slate-800 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200/70";
+
+function patientNameUpper(lastName: string, firstName: string): string {
+  return `${lastName}, ${firstName}`.toUpperCase();
+}
 
 export function AppointmentModal({
   open,
@@ -107,9 +122,11 @@ export function AppointmentModal({
   const [startTimeStr, setStartTimeStr] = useState("");
   const [endTimeStr, setEndTimeStr] = useState("");
   const [status, setStatus] = useState<AppointmentStatus>("RESERVED");
+  const [paymentMethod, setPaymentMethod] = useState<AppointmentPaymentMethod>("TRANSFER_TO_LOGOCEN");
   const [medicalRecord, setMedicalRecord] = useState("");
   const [reasonForVisit, setReasonForVisit] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const isEdit = Boolean(appointment);
   const consultorioDayQ = useQuery({
@@ -133,6 +150,7 @@ export function AppointmentModal({
       setStartTimeStr(getStartTimeStr(appointment));
       setEndTimeStr(getEndTimeStr(appointment));
       setStatus(appointment.status);
+      setPaymentMethod(appointment.paymentMethod ?? "TRANSFER_TO_LOGOCEN");
       setMedicalRecord(appointment.medicalRecord ?? "");
       setReasonForVisit(appointment.reasonForVisit ?? "");
     } else {
@@ -147,6 +165,7 @@ export function AppointmentModal({
       setStartTimeStr(localTimeStr(s));
       setEndTimeStr(localTimeStr(e));
       setStatus("RESERVED");
+      setPaymentMethod("TRANSFER_TO_LOGOCEN");
       setMedicalRecord("");
       setReasonForVisit("");
     }
@@ -162,6 +181,7 @@ export function AppointmentModal({
         startTime: startTimeStr,
         endTime: endTimeStr,
         status,
+        paymentMethod,
         medicalRecord: medicalRecord || null,
         reasonForVisit: reasonForVisit || null,
       }),
@@ -189,6 +209,7 @@ export function AppointmentModal({
         startTime: startTimeStr,
         endTime: endTimeStr,
         status,
+        paymentMethod,
         medicalRecord: medicalRecord || null,
         reasonForVisit: reasonForVisit || null,
       }),
@@ -377,7 +398,7 @@ export function AppointmentModal({
               <option value="">Seleccione…</option>
               {patients.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.lastName}, {p.firstName} — {p.email}
+                  {patientNameUpper(p.lastName, p.firstName)} — {p.email}
                 </option>
               ))}
             </select>
@@ -512,6 +533,20 @@ export function AppointmentModal({
               ))}
             </select>
           </div>
+          <div>
+            <label className={labelClass}>Forma de pago</label>
+            <select
+              className={fieldClass}
+              value={paymentMethod}
+              onChange={(e) => setPaymentMethod(e.target.value as AppointmentPaymentMethod)}
+            >
+              {paymentMethods.map((method) => (
+                <option key={method} value={method}>
+                  {paymentMethodLabel[method]}
+                </option>
+              ))}
+            </select>
+          </div>
 
           <div>
             <label className={labelClass}>Motivo de consulta</label>
@@ -548,9 +583,7 @@ export function AppointmentModal({
             {isEdit && (
               <button
                 type="button"
-                onClick={() => {
-                  if (confirm("¿Eliminar esta cita?")) deleteMut.mutate();
-                }}
+                onClick={() => setShowDeleteConfirm(true)}
                 disabled={deleteMut.isPending}
                 className="rounded-lg border border-red-200 bg-red-50/80 px-4 py-2 text-red-700 hover:bg-red-100"
               >
@@ -567,6 +600,19 @@ export function AppointmentModal({
           </div>
         </form>
       </div>
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        title="Eliminar cita"
+        message="Esta acción eliminará la cita de forma permanente."
+        confirmLabel="Eliminar"
+        tone="danger"
+        busy={deleteMut.isPending}
+        onCancel={() => setShowDeleteConfirm(false)}
+        onConfirm={() => {
+          deleteMut.mutate();
+          setShowDeleteConfirm(false);
+        }}
+      />
     </div>
   );
 }

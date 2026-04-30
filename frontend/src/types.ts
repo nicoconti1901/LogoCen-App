@@ -8,6 +8,10 @@ export type AppointmentStatus =
   | "NO_SHOW";
 
 export type PaymentStatus = "PENDING" | "PAID" | "FAILED" | "REFUNDED";
+export type AppointmentPaymentMethod =
+  | "TRANSFER_TO_LOGOCEN"
+  | "TRANSFER_TO_SPECIALIST"
+  | "CASH_TO_LOGOCEN";
 
 export type AuthUser = {
   id: string;
@@ -36,6 +40,19 @@ export type Patient = {
   documentId: string | null;
   birthDate: string | null;
   notes: string | null;
+  specialistId: string | null;
+  specialist: Pick<Specialist, "id" | "firstName" | "lastName" | "specialty"> | null;
+};
+
+export type ClinicalHistoryEntry = {
+  id: string;
+  patientId: string;
+  specialistId: string | null;
+  recordDate: string;
+  diagnosis: string;
+  createdAt: string;
+  updatedAt: string;
+  specialist: Pick<Specialist, "id" | "firstName" | "lastName" | "specialty"> | null;
 };
 
 export type Specialist = {
@@ -61,6 +78,7 @@ export type Appointment = {
   startTime: string;
   endTime: string;
   status: AppointmentStatus;
+  paymentMethod: AppointmentPaymentMethod | null;
   medicalRecord: string | null;
   reasonForVisit: string | null;
   date?: string;

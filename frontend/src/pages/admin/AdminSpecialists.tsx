@@ -9,6 +9,7 @@ import {
   uploadSpecialistProfilePhoto,
   updateSpecialist,
 } from "../../api/endpoints";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { imageSrcCandidates, normalizeProfilePhotoUrlForStorage } from "../../lib/imageUrl";
 import type { Specialist } from "../../types";
 
@@ -162,6 +163,7 @@ function SpecialistFormModal({ open, title, editing, onClose }: FormModalProps) 
   const qc = useQueryClient();
   const [form, setForm] = useState(emptyForm);
   const [formError, setFormError] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -389,9 +391,7 @@ function SpecialistFormModal({ open, title, editing, onClose }: FormModalProps) 
               <button
                 type="button"
                 disabled={pending}
-                onClick={() => {
-                  if (confirm("¿Eliminar este especialista y su usuario?")) deleteMut.mutate();
-                }}
+                onClick={() => setShowDeleteConfirm(true)}
                 className="rounded-xl border border-red-200 bg-red-50/80 px-5 py-2.5 font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
               >
                 Eliminar
@@ -400,6 +400,19 @@ function SpecialistFormModal({ open, title, editing, onClose }: FormModalProps) 
           </div>
         </form>
       </div>
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        title="Eliminar especialista"
+        message="Se eliminará el especialista y su usuario asociado."
+        confirmLabel="Eliminar"
+        tone="danger"
+        busy={deleteMut.isPending}
+        onCancel={() => setShowDeleteConfirm(false)}
+        onConfirm={() => {
+          deleteMut.mutate();
+          setShowDeleteConfirm(false);
+        }}
+      />
     </div>
   );
 }

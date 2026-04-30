@@ -1,4 +1,4 @@
-import { AppointmentStatus, Role } from "@prisma/client";
+import { AppointmentPaymentMethod, AppointmentStatus, Role } from "@prisma/client";
 import type { Request, Response } from "express";
 import { z } from "zod";
 import * as appointmentService from "../services/appointment.service.js";
@@ -18,6 +18,7 @@ const createSchema = z.object({
   startTime: timeSchema,
   endTime: timeSchema,
   status: z.nativeEnum(AppointmentStatus).optional(),
+  paymentMethod: z.nativeEnum(AppointmentPaymentMethod).optional().nullable(),
   medicalRecord: z.string().optional().nullable(),
   reasonForVisit: z.string().optional().nullable(),
 });
@@ -30,6 +31,7 @@ const updateSchema = z.object({
   startTime: timeSchema.optional(),
   endTime: timeSchema.optional(),
   status: z.nativeEnum(AppointmentStatus).optional(),
+  paymentMethod: z.nativeEnum(AppointmentPaymentMethod).optional().nullable(),
   medicalRecord: z.string().optional().nullable(),
   reasonForVisit: z.string().optional().nullable(),
 });
@@ -86,6 +88,7 @@ export const create = asyncHandler(async (req: Request, res: Response) => {
       startTime: body.startTime,
       endTime: body.endTime,
       status: body.status,
+      paymentMethod: body.paymentMethod,
       medicalRecord: body.medicalRecord,
       reasonForVisit: body.reasonForVisit,
     },
@@ -107,6 +110,7 @@ export const update = asyncHandler(async (req: Request, res: Response) => {
       ...(body.startTime !== undefined ? { startTime: body.startTime } : {}),
       ...(body.endTime !== undefined ? { endTime: body.endTime } : {}),
       ...(body.status !== undefined ? { status: body.status } : {}),
+      ...(body.paymentMethod !== undefined ? { paymentMethod: body.paymentMethod } : {}),
       ...(body.medicalRecord !== undefined ? { medicalRecord: body.medicalRecord } : {}),
       ...(body.reasonForVisit !== undefined ? { reasonForVisit: body.reasonForVisit } : {}),
     },

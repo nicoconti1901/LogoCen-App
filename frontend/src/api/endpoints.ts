@@ -6,6 +6,7 @@ import type {
   Patient,
   Payment,
   Specialist,
+  ClinicalHistoryEntry,
 } from "../types";
 
 export async function login(email: string, password: string): Promise<LoginResponse> {
@@ -80,9 +81,12 @@ export async function deleteSpecialist(id: string): Promise<void> {
   await api.delete(`/specialists/${id}`);
 }
 
-export async function fetchPatients(search?: string): Promise<Patient[]> {
+export async function fetchPatients(search?: string, specialistId?: string): Promise<Patient[]> {
   const { data } = await api.get<Patient[]>("/patients", {
-    params: search ? { search } : {},
+    params: {
+      ...(search ? { search } : {}),
+      ...(specialistId ? { specialistId } : {}),
+    },
   });
   return data;
 }
@@ -95,6 +99,7 @@ export async function createPatient(body: {
   documentId?: string | null;
   birthDate?: string | null;
   notes?: string | null;
+  specialistId?: string | null;
 }): Promise<Patient> {
   const { data } = await api.post<Patient>("/patients", body);
   return data;
@@ -107,6 +112,32 @@ export async function updatePatient(id: string, body: Partial<Patient>): Promise
 
 export async function deletePatient(id: string): Promise<void> {
   await api.delete(`/patients/${id}`);
+}
+
+export async function fetchPatientClinicalHistory(patientId: string): Promise<ClinicalHistoryEntry[]> {
+  const { data } = await api.get<ClinicalHistoryEntry[]>(`/patients/${patientId}/clinical-history`);
+  return data;
+}
+
+export async function createPatientClinicalHistory(
+  patientId: string,
+  body: { recordDate: string; diagnosis: string }
+): Promise<ClinicalHistoryEntry> {
+  const { data } = await api.post<ClinicalHistoryEntry>(`/patients/${patientId}/clinical-history`, body);
+  return data;
+}
+
+export async function updatePatientClinicalHistory(
+  patientId: string,
+  entryId: string,
+  body: Partial<{ recordDate: string; diagnosis: string }>
+): Promise<ClinicalHistoryEntry> {
+  const { data } = await api.patch<ClinicalHistoryEntry>(`/patients/${patientId}/clinical-history/${entryId}`, body);
+  return data;
+}
+
+export async function deletePatientClinicalHistory(patientId: string, entryId: string): Promise<void> {
+  await api.delete(`/patients/${patientId}/clinical-history/${entryId}`);
 }
 
 export type AppointmentListParams = {
@@ -137,6 +168,7 @@ export async function createAppointment(body: {
   startTime: string;
   endTime: string;
   status?: string;
+  paymentMethod?: string | null;
   medicalRecord?: string | null;
   reasonForVisit?: string | null;
 }): Promise<Appointment> {
@@ -154,6 +186,7 @@ export async function updateAppointment(
     startTime: string;
     endTime: string;
     status: string;
+    paymentMethod: string | null;
     medicalRecord: string | null;
     reasonForVisit: string | null;
   }>
