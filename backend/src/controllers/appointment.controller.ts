@@ -20,6 +20,8 @@ const createSchema = z.object({
   endTime: timeSchema,
   status: z.nativeEnum(AppointmentStatus).optional(),
   paymentMethod: z.nativeEnum(AppointmentPaymentMethod).optional().nullable(),
+  paymentCompleted: z.boolean().optional(),
+  paymentDate: z.string().optional().nullable(),
   medicalRecord: z.string().optional().nullable(),
   reasonForVisit: z.string().optional().nullable(),
 });
@@ -33,6 +35,9 @@ const updateSchema = z.object({
   endTime: timeSchema.optional(),
   status: z.nativeEnum(AppointmentStatus).optional(),
   paymentMethod: z.nativeEnum(AppointmentPaymentMethod).optional().nullable(),
+  paymentCompleted: z.boolean().optional(),
+  paymentDate: z.string().optional().nullable(),
+  specialistSettledAt: z.coerce.date().optional().nullable(),
   medicalRecord: z.string().optional().nullable(),
   reasonForVisit: z.string().optional().nullable(),
 });
@@ -94,6 +99,8 @@ export const create = asyncHandler(async (req: Request, res: Response) => {
       endTime: body.endTime,
       status: body.status,
       paymentMethod: body.paymentMethod,
+      paymentCompleted: body.paymentCompleted,
+      paymentDate: body.paymentDate ? parseDateOnlyISO(body.paymentDate) : null,
       medicalRecord: body.medicalRecord,
       reasonForVisit: body.reasonForVisit,
     },
@@ -116,6 +123,11 @@ export const update = asyncHandler(async (req: Request, res: Response) => {
       ...(body.endTime !== undefined ? { endTime: body.endTime } : {}),
       ...(body.status !== undefined ? { status: body.status } : {}),
       ...(body.paymentMethod !== undefined ? { paymentMethod: body.paymentMethod } : {}),
+      ...(body.paymentCompleted !== undefined ? { paymentCompleted: body.paymentCompleted } : {}),
+      ...(body.paymentDate !== undefined
+        ? { paymentDate: body.paymentDate ? parseDateOnlyISO(body.paymentDate) : null }
+        : {}),
+      ...(body.specialistSettledAt !== undefined ? { specialistSettledAt: body.specialistSettledAt } : {}),
       ...(body.medicalRecord !== undefined ? { medicalRecord: body.medicalRecord } : {}),
       ...(body.reasonForVisit !== undefined ? { reasonForVisit: body.reasonForVisit } : {}),
     },

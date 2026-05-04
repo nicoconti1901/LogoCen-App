@@ -140,6 +140,12 @@ model Appointment {
   medicalRecord   String?           @db.Text
   reasonForVisit  String?
   paymentMethod   AppointmentPaymentMethod?
+  /// Indica si el cobro de este turno ya fue efectivamente realizado
+  paymentCompleted Boolean          @default(false)
+  /// Fecha en la que se realizó el pago (si corresponde)
+  paymentDate     DateTime?         @db.Date
+  /// Fecha/hora en que LogoCen rindió este turno al especialista (solo aplica para TRANSFER_TO_SPECIALIST)
+  specialistSettledAt DateTime?
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
   payments        Payment[]

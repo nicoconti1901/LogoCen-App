@@ -85,6 +85,9 @@ export type Appointment = {
   endTime: string;
   status: AppointmentStatus;
   paymentMethod: AppointmentPaymentMethod | null;
+  paymentCompleted: boolean;
+  paymentDate: string | null;
+  specialistSettledAt: string | null;
   medicalRecord: string | null;
   reasonForVisit: string | null;
   date?: string;
