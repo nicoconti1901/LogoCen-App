@@ -1,7 +1,10 @@
-import { Role, type Prisma } from "@prisma/client";
+import { Role, Weekday, type Prisma } from "@prisma/client";
 import { prisma } from "../config/database.js";
 
-const include = { user: { select: { id: true, email: true } } } satisfies Prisma.SpecialistInclude;
+const include = {
+  user: { select: { id: true, email: true } },
+  availabilities: { orderBy: [{ weekday: "asc" }, { startTime: "asc" }] },
+} satisfies Prisma.SpecialistInclude;
 
 export type SpecialistWithUser = Prisma.SpecialistGetPayload<{ include: typeof include }>;
 
@@ -30,6 +33,9 @@ export const specialistRepository = {
     profilePhotoUrl?: string | null;
     licenseNumber?: string | null;
     phone?: string | null;
+    consultationFee?: Prisma.Decimal | number | string | null;
+    transferAlias?: string | null;
+    availabilities?: Array<{ weekday: Weekday; startTime: string; endTime: string }>;
   }): Promise<SpecialistWithUser> {
     return prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
@@ -48,6 +54,19 @@ export const specialistRepository = {
           profilePhotoUrl: input.profilePhotoUrl ?? null,
           licenseNumber: input.licenseNumber ?? null,
           phone: input.phone ?? null,
+          consultationFee: input.consultationFee ?? null,
+          transferAlias: input.transferAlias ?? null,
+          availabilities: input.availabilities?.length
+            ? {
+                createMany: {
+                  data: input.availabilities.map((a) => ({
+                    weekday: a.weekday,
+                    startTime: a.startTime,
+                    endTime: a.endTime,
+                  })),
+                },
+              }
+            : undefined,
         },
         include,
       });
@@ -66,6 +85,9 @@ export const specialistRepository = {
       profilePhotoUrl?: string | null;
       licenseNumber?: string | null;
       phone?: string | null;
+      consultationFee?: Prisma.Decimal | number | string | null;
+      transferAlias?: string | null;
+      availabilities?: Array<{ weekday: Weekday; startTime: string; endTime: string }>;
       active?: boolean;
     }
   ): Promise<SpecialistWithUser> {
@@ -89,7 +111,27 @@ export const specialistRepository = {
           ...(data.profilePhotoUrl !== undefined ? { profilePhotoUrl: data.profilePhotoUrl } : {}),
           ...(data.licenseNumber !== undefined ? { licenseNumber: data.licenseNumber } : {}),
           ...(data.phone !== undefined ? { phone: data.phone } : {}),
+          ...(data.consultationFee !== undefined ? { consultationFee: data.consultationFee } : {}),
+          ...(data.transferAlias !== undefined ? { transferAlias: data.transferAlias } : {}),
           ...(data.active !== undefined ? { active: data.active } : {}),
+          ...(data.availabilities !== undefined
+            ? {
+                availabilities: {
+                  deleteMany: {},
+                  ...(data.availabilities.length
+                    ? {
+                        createMany: {
+                          data: data.availabilities.map((a) => ({
+                            weekday: a.weekday,
+                            startTime: a.startTime,
+                            endTime: a.endTime,
+                          })),
+                        },
+                      }
+                    : {}),
+                },
+              }
+            : {}),
         },
         include,
       });

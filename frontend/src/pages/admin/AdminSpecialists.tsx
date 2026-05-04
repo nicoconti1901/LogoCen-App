@@ -24,7 +24,48 @@ const emptyForm = {
   profilePhotoUrl: "",
   licenseNumber: "",
   phone: "",
+  consultationFee: "",
+  transferAlias: "",
+  availabilities: [] as Array<{
+    weekday: "MONDAY" | "TUESDAY" | "WEDNESDAY" | "THURSDAY" | "FRIDAY" | "SATURDAY" | "SUNDAY";
+    startTime: string;
+    endTime: string;
+  }>,
 };
+
+const weekdayOptions = [
+  { value: "MONDAY", label: "Lunes" },
+  { value: "TUESDAY", label: "Martes" },
+  { value: "WEDNESDAY", label: "Miércoles" },
+  { value: "THURSDAY", label: "Jueves" },
+  { value: "FRIDAY", label: "Viernes" },
+  { value: "SATURDAY", label: "Sábado" },
+  { value: "SUNDAY", label: "Domingo" },
+] as const;
+
+const weekdayLabel: Record<
+  "MONDAY" | "TUESDAY" | "WEDNESDAY" | "THURSDAY" | "FRIDAY" | "SATURDAY" | "SUNDAY",
+  string
+> = {
+  MONDAY: "Lunes",
+  TUESDAY: "Martes",
+  WEDNESDAY: "Miércoles",
+  THURSDAY: "Jueves",
+  FRIDAY: "Viernes",
+  SATURDAY: "Sábado",
+  SUNDAY: "Domingo",
+};
+
+function formatArsAmount(value: string | null): string | null {
+  if (!value) return null;
+  const normalized = Number(value.replace(",", "."));
+  if (!Number.isFinite(normalized)) return null;
+  const formatted = new Intl.NumberFormat("es-AR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(normalized);
+  return `$${formatted}`;
+}
 
 function SpecialistAvatar({ specialist }: { specialist: Specialist }) {
   const [broken, setBroken] = useState(false);
@@ -77,6 +118,9 @@ function SpecialistCard({ specialist: s, size, canEdit, canViewAgenda, onEdit }:
       ? "w-full"
       : "w-full min-w-[260px] max-w-[300px] shrink-0 snap-center";
 
+  const availabilityText = s.availabilities.length
+    ? s.availabilities.map((a) => `${weekdayLabel[a.weekday]} ${a.startTime}-${a.endTime}`).join(" · ")
+    : "Sin disponibilidad cargada";
   return (
     <article
       className={`group relative flex flex-col overflow-hidden rounded-[1.35rem] border border-sky-200 bg-white shadow-[0_10px_28px_-18px_rgba(15,23,42,0.35)] transition duration-300 hover:-translate-y-0.5 hover:border-sky-300 hover:shadow-[0_18px_34px_-20px_rgba(3,105,161,0.35)] ${widthClass}`}
@@ -109,9 +153,18 @@ function SpecialistCard({ specialist: s, size, canEdit, canViewAgenda, onEdit }:
           {s.specialty}
         </p>
 
-        <span className="mt-3 rounded-full border border-sky-200 bg-sky-50 px-2.5 py-0.5 text-[11px] font-medium text-sky-700">
-          Perfil médico
-        </span>
+        <div className="mt-3 w-full space-y-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-left">
+          <p className="text-[11px] text-slate-600">
+            <span className="font-semibold text-slate-700">Atiende:</span> {availabilityText}
+          </p>
+          <p className="text-[11px] text-slate-600">
+            <span className="font-semibold text-slate-700">Valor consulta:</span>{" "}
+            {formatArsAmount(s.consultationFee) ?? "No configurado"}
+          </p>
+          <p className="truncate text-[11px] text-slate-600">
+            <span className="font-semibold text-slate-700">Alias:</span> {s.transferAlias || "No configurado"}
+          </p>
+        </div>
 
         <div className="mt-7 flex w-full gap-2.5">
           {canViewAgenda && (
@@ -187,6 +240,13 @@ function SpecialistFormModal({ open, title, editing, onClose, canDelete }: FormM
       profilePhotoUrl: editing.profilePhotoUrl ?? "",
       licenseNumber: editing.licenseNumber ?? "",
       phone: editing.phone ?? "",
+      consultationFee: editing.consultationFee ?? "",
+      transferAlias: editing.transferAlias ?? "",
+      availabilities: editing.availabilities.map((a) => ({
+        weekday: a.weekday,
+        startTime: a.startTime,
+        endTime: a.endTime,
+      })),
     });
   }, [open, editing]);
 
@@ -201,6 +261,9 @@ function SpecialistFormModal({ open, title, editing, onClose, canDelete }: FormM
         profilePhotoUrl: normalizeProfilePhotoUrlForStorage(form.profilePhotoUrl),
         licenseNumber: form.licenseNumber || null,
         phone: form.phone || null,
+        consultationFee: form.consultationFee || null,
+        transferAlias: form.transferAlias || null,
+        availabilities: form.availabilities,
       }),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["specialists"] });
@@ -221,6 +284,9 @@ function SpecialistFormModal({ open, title, editing, onClose, canDelete }: FormM
         profilePhotoUrl: normalizeProfilePhotoUrlForStorage(form.profilePhotoUrl),
         licenseNumber: form.licenseNumber || null,
         phone: form.phone || null,
+        consultationFee: form.consultationFee || null,
+        transferAlias: form.transferAlias || null,
+        availabilities: form.availabilities,
       }),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["specialists"] });
@@ -406,6 +472,120 @@ function SpecialistFormModal({ open, title, editing, onClose, canDelete }: FormM
               value={form.phone}
               onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
             />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-slate-600">Valor consulta (ARS)</label>
+            <input
+              inputMode="decimal"
+              placeholder="Ej. 25000"
+              className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 transition focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+              value={form.consultationFee}
+              onChange={(e) => setForm((f) => ({ ...f, consultationFee: e.target.value }))}
+            />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-slate-600">Alias para transferencias</label>
+            <input
+              placeholder="Ej. nombre.apellido.mp"
+              className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 transition focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+              value={form.transferAlias}
+              onChange={(e) => setForm((f) => ({ ...f, transferAlias: e.target.value }))}
+            />
+          </div>
+          <div className="sm:col-span-2 rounded-xl border border-slate-200 bg-slate-50/50 p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <label className="text-sm font-medium text-slate-600">Disponibilidad semanal</label>
+              <button
+                type="button"
+                className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                onClick={() =>
+                  setForm((f) => ({
+                    ...f,
+                    availabilities: [...f.availabilities, { weekday: "MONDAY", startTime: "08:00", endTime: "12:00" }],
+                  }))
+                }
+              >
+                + Agregar franja
+              </button>
+            </div>
+            {form.availabilities.length === 0 ? (
+              <p className="text-xs text-slate-500">Sin disponibilidad. No se podrán asignar turnos.</p>
+            ) : (
+              <div className="space-y-2">
+                {form.availabilities.map((a, idx) => (
+                  <div key={`${a.weekday}-${idx}`} className="grid gap-2 sm:grid-cols-[1fr_120px_120px_auto]">
+                    <select
+                      className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm"
+                      value={a.weekday}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          availabilities: f.availabilities.map((row, i) =>
+                            i === idx
+                              ? {
+                                  ...row,
+                                  weekday: e.target.value as
+                                    | "MONDAY"
+                                    | "TUESDAY"
+                                    | "WEDNESDAY"
+                                    | "THURSDAY"
+                                    | "FRIDAY"
+                                    | "SATURDAY"
+                                    | "SUNDAY",
+                                }
+                              : row
+                          ),
+                        }))
+                      }
+                    >
+                      {weekdayOptions.map((w) => (
+                        <option key={w.value} value={w.value}>
+                          {w.label}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="time"
+                      className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm"
+                      value={a.startTime}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          availabilities: f.availabilities.map((row, i) =>
+                            i === idx ? { ...row, startTime: e.target.value } : row
+                          ),
+                        }))
+                      }
+                    />
+                    <input
+                      type="time"
+                      className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm"
+                      value={a.endTime}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          availabilities: f.availabilities.map((row, i) =>
+                            i === idx ? { ...row, endTime: e.target.value } : row
+                          ),
+                        }))
+                      }
+                    />
+                    <button
+                      type="button"
+                      className="rounded-lg border border-red-200 bg-red-50 px-2 py-2 text-xs font-medium text-red-700 hover:bg-red-100"
+                      onClick={() =>
+                        setForm((f) => ({
+                          ...f,
+                          availabilities: f.availabilities.filter((_, i) => i !== idx),
+                        }))
+                      }
+                    >
+                      Quitar
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
           <div className="flex flex-wrap gap-2 sm:col-span-2">
             <button

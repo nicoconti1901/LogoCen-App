@@ -14,7 +14,6 @@ enum Role {
 
 enum AppointmentStatus {
   RESERVED
-  CONFIRMED
   ATTENDED
   CANCELLED
   NO_SHOW
@@ -31,6 +30,16 @@ enum AppointmentPaymentMethod {
   TRANSFER_TO_LOGOCEN
   TRANSFER_TO_SPECIALIST
   CASH_TO_LOGOCEN
+}
+
+enum Weekday {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
 }
 
 model User {
@@ -54,12 +63,28 @@ model Specialist {
   profilePhotoUrl  String?
   licenseNumber    String?
   phone            String?
+  consultationFee  Decimal?      @db.Decimal(12, 2)
+  transferAlias    String?
   active           Boolean       @default(true)
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   appointments  Appointment[]
   patients      Patient[]
   clinicalHistoryEntries ClinicalHistoryEntry[]
+  availabilities SpecialistAvailability[]
+}
+
+model SpecialistAvailability {
+  id           String     @id @default(uuid())
+  specialistId String
+  specialist   Specialist @relation(fields: [specialistId], references: [id], onDelete: Cascade)
+  weekday      Weekday
+  startTime    String
+  endTime      String
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([specialistId, weekday])
 }
 
 model Patient {

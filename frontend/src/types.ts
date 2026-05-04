@@ -1,11 +1,6 @@
 export type Role = "ADMIN" | "SPECIALIST";
 
-export type AppointmentStatus =
-  | "RESERVED"
-  | "CONFIRMED"
-  | "ATTENDED"
-  | "CANCELLED"
-  | "NO_SHOW";
+export type AppointmentStatus = "RESERVED" | "ATTENDED" | "CANCELLED" | "NO_SHOW";
 
 export type PaymentStatus = "PENDING" | "PAID" | "FAILED" | "REFUNDED";
 export type AppointmentPaymentMethod =
@@ -64,8 +59,19 @@ export type Specialist = {
   profilePhotoUrl: string | null;
   licenseNumber: string | null;
   phone: string | null;
+  consultationFee: string | null;
+  transferAlias: string | null;
+  availabilities: SpecialistAvailability[];
   active: boolean;
   user: { id: string; email: string };
+};
+
+export type SpecialistAvailability = {
+  id: string;
+  specialistId: string;
+  weekday: "MONDAY" | "TUESDAY" | "WEDNESDAY" | "THURSDAY" | "FRIDAY" | "SATURDAY" | "SUNDAY";
+  startTime: string;
+  endTime: string;
 };
 
 /** Respuesta API enriquecida: fecha, franja horaria, snake_case opcional */

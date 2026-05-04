@@ -37,7 +37,6 @@ function patientNameUpper(lastName: string, firstName: string): string {
 
 const appointmentStatusLabel: Record<AppointmentStatus, string> = {
   RESERVED: "RESERVADO",
-  CONFIRMED: "CONFIRMADO",
   ATTENDED: "FINALIZADO",
   CANCELLED: "CANCELÓ",
   NO_SHOW: "NO ASISTIÓ",
