@@ -29,6 +29,35 @@ function assertEndAfterStart(startTime: string, endTime: string): void {
   }
 }
 
+function weekdayFromDate(d: Date): "SUNDAY" | "MONDAY" | "TUESDAY" | "WEDNESDAY" | "THURSDAY" | "FRIDAY" | "SATURDAY" {
+  const map = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"] as const;
+  return map[d.getDay()];
+}
+
+function assertInsideAvailability(
+  specialist: Awaited<ReturnType<typeof specialistRepository.findById>>,
+  appointmentDate: Date,
+  startTime: string,
+  endTime: string
+): void {
+  const availabilities = specialist?.availabilities ?? [];
+  if (availabilities.length === 0) {
+    throw new AppError(400, "El especialista no tiene disponibilidad configurada");
+  }
+  const weekday = weekdayFromDate(appointmentDate);
+  const startM = timeToMinutes(startTime);
+  const endM = timeToMinutes(endTime);
+  const allowed = availabilities.some((a) => {
+    if (a.weekday !== weekday) return false;
+    const rangeStart = timeToMinutes(a.startTime);
+    const rangeEnd = timeToMinutes(a.endTime);
+    return startM >= rangeStart && endM <= rangeEnd;
+  });
+  if (!allowed) {
+    throw new AppError(400, "El especialista no atiende en ese día y horario");
+  }
+}
+
 async function assertNoOverlap(
   specialistId: string,
   appointmentDate: Date,
@@ -162,6 +191,7 @@ export async function createAppointment(
   if (!specialist || !specialist.active) {
     throw new AppError(400, "Especialista inválido o inactivo");
   }
+  assertInsideAvailability(specialist, appointmentDate, startTime, endTime);
 
   const patient = await patientRepository.findById(data.patientId);
   if (!patient) throw new AppError(400, "Paciente no encontrado");
@@ -233,6 +263,7 @@ export async function updateAppointment(
     if (!specialist || !specialist.active) {
       throw new AppError(400, "Especialista inválido o inactivo");
     }
+    assertInsideAvailability(specialist, nextDate, nextStart, nextEnd);
     await assertNoOverlap(nextSpecialistId, nextDate, nextStart, nextEnd, id);
     await assertNoConsultorioOverlap(nextConsultorio, nextDate, nextStart, nextEnd, id);
   }

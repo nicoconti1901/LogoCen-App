@@ -4,30 +4,108 @@ import interactionPlugin from "@fullcalendar/interaction";
 import FullCalendar from "@fullcalendar/react";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import type { DateSelectArg, EventClickArg, EventContentArg, EventInput } from "@fullcalendar/core";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { fetchAppointments, fetchSpecialist } from "../api/endpoints";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { deleteAppointment, fetchAppointments, fetchSpecialist, fetchSpecialists } from "../api/endpoints";
 import { getAppointmentDateStr, toCalendarEnd, toCalendarStart } from "../lib/appointmentDisplay";
 import { AppointmentModal } from "../components/AppointmentModal";
 import { useAuth } from "../contexts/AuthContext";
-import type { Appointment } from "../types";
+import type { Appointment, Specialist } from "../types";
+
+/** Intervalos de atención (minutos desde medianoche) para un día de calendario, recortados al rango de la grilla. */
+function availabilityIntervalsForCalendarDay(
+  specialist: Specialist,
+  day: Date
+): Array<{ s: number; e: number }> {
+  const wd = (["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"] as const)[day.getDay()];
+  const gridStart = hhmmToMinutes(WORKDAY_START);
+  const gridEnd = hhmmToMinutes(WORKDAY_END);
+  return specialist.availabilities
+    .filter((a) => a.weekday === wd)
+    .map((a) => {
+      const s = Math.max(hhmmToMinutes(a.startTime), gridStart);
+      const e = Math.min(hhmmToMinutes(a.endTime), gridEnd);
+      return { s, e };
+    })
+    .filter((x) => x.e > x.s);
+}
+
+/**
+ * Bloques de fondo en el calendario = exactamente cuándo atiende el especialista (misma lógica que la validación).
+ * La grilla queda neutra; solo estos bloques marcan “podés asignar acá”.
+ */
+function buildAvailabilityBackgroundEvents(
+  specialist: Specialist | undefined,
+  range: { from: string; to: string } | null,
+  routeSpecialistId: string | undefined
+): EventInput[] {
+  if (!routeSpecialistId || !specialist?.availabilities?.length || !range) return [];
+  const viewStart = new Date(range.from);
+  const viewEnd = new Date(range.to);
+  const out: EventInput[] = [];
+  const d = new Date(viewStart.getFullYear(), viewStart.getMonth(), viewStart.getDate());
+  const lastExclusive = new Date(viewEnd.getFullYear(), viewEnd.getMonth(), viewEnd.getDate());
+  while (d < lastExclusive) {
+    const intervals = availabilityIntervalsForCalendarDay(specialist, d);
+    for (const iv of intervals) {
+      const startDt = new Date(d);
+      startDt.setHours(Math.floor(iv.s / 60), iv.s % 60, 0, 0);
+      const endDt = new Date(d);
+      endDt.setHours(Math.floor(iv.e / 60), iv.e % 60, 0, 0);
+      out.push({
+        id: `avail-bg-${startDt.getTime()}-${iv.s}-${iv.e}`,
+        start: startDt,
+        end: endDt,
+        display: "background",
+        classNames: ["specialist-avail-bg"],
+      });
+    }
+    d.setDate(d.getDate() + 1);
+  }
+  return out;
+}
+
+/** El intervalo [segmentStart, segmentEnd) debe caer entero dentro de alguna franja de ese mismo día local. */
+function isSegmentWithinAvailabilityOnDay(
+  segmentStart: Date,
+  segmentEnd: Date,
+  specialist: Specialist
+): boolean {
+  if (segmentEnd <= segmentStart) return false;
+  const intervals = availabilityIntervalsForCalendarDay(specialist, segmentStart);
+  if (!intervals.length) return false;
+  const sm = segmentStart.getHours() * 60 + segmentStart.getMinutes();
+  const em = segmentEnd.getHours() * 60 + segmentEnd.getMinutes();
+  return intervals.some((iv) => sm >= iv.s && em <= iv.e);
+}
+
+function isSelectionWithinSpecialistAvailability(start: Date, end: Date, specialist: Specialist): boolean {
+  if (!specialist.availabilities?.length) return false;
+  const startMs = start.getTime();
+  const endMs = end.getTime();
+  if (endMs <= startMs) return false;
+  let dayCursor = new Date(start);
+  dayCursor.setHours(0, 0, 0, 0);
+  while (dayCursor < end) {
+    const nextMidnight = new Date(dayCursor);
+    nextMidnight.setDate(nextMidnight.getDate() + 1);
+    const segStart = new Date(Math.max(startMs, dayCursor.getTime()));
+    const segEnd = new Date(Math.min(endMs, nextMidnight.getTime()));
+    if (segEnd > segStart && !isSegmentWithinAvailabilityOnDay(segStart, segEnd, specialist)) {
+      return false;
+    }
+    dayCursor = nextMidnight;
+  }
+  return true;
+}
 
 const statusLabel: Record<Appointment["status"], string> = {
   RESERVED: "RESERVADO",
-  CONFIRMED: "CONFIRMADO",
   ATTENDED: "FINALIZADO",
   CANCELLED: "CANCELÓ",
   NO_SHOW: "NO ASISTIÓ",
 };
-
-const CONSULTORIOS_BASE = [
-  "Consultorio 1",
-  "Consultorio 2",
-  "Consultorio 3",
-  "Consultorio 4",
-  "Consultorio 5",
-];
 
 const WORKDAY_START = "07:00";
 const WORKDAY_END = "21:00";
@@ -48,6 +126,7 @@ function toEvent(a: Appointment): EventInput {
 }
 
 function renderEventContent(arg: EventContentArg) {
+  if (arg.event.display === "background") return null;
   const raw = arg.event.extendedProps.raw as Appointment | undefined;
   if (!raw) return <span>{arg.event.title}</span>;
   const patient = patientNameUpper(raw.patient.lastName, raw.patient.firstName);
@@ -68,26 +147,15 @@ function todayStr(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function nowHHmm(): string {
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
 function hhmmToMinutes(hhmm: string): number {
   const [h, m] = hhmm.split(":").map(Number);
   return h * 60 + m;
 }
 
-function minutesToHHmm(total: number): string {
-  const h = Math.floor(total / 60);
-  const m = total % 60;
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-}
-
 export function AgendaPage() {
   const { user } = useAuth();
   const { specialistId: routeSpecialistId } = useParams<{ specialistId?: string }>();
+  const calendarRef = useRef<InstanceType<typeof FullCalendar>>(null);
   const [range, setRange] = useState<{ from: string; to: string } | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [eventActionOpen, setEventActionOpen] = useState(false);
@@ -95,6 +163,11 @@ export function AgendaPage() {
   const [selected, setSelected] = useState<Appointment | null>(null);
   const [clickedAppointment, setClickedAppointment] = useState<Appointment | null>(null);
   const [clickedSlot, setClickedSlot] = useState<{ start: Date; end: Date } | null>(null);
+  const [showQuickSlots, setShowQuickSlots] = useState(false);
+  const [quickSlotsLimit, setQuickSlotsLimit] = useState<5 | 10>(5);
+  const [unavailableOpen, setUnavailableOpen] = useState(false);
+  const [deleteTargetAppointmentId, setDeleteTargetAppointmentId] = useState<string | null>(null);
+  const qc = useQueryClient();
 
   const specialistQ = useQuery({
     queryKey: ["specialist", routeSpecialistId],
@@ -118,6 +191,15 @@ export function AgendaPage() {
     [data, routeSpecialistId]
   );
 
+  const dayCellClassNames = useCallback(
+    (arg: { date: Date }) => {
+      if (!routeSpecialistId || !specialistQ.data) return [];
+      const intervals = availabilityIntervalsForCalendarDay(specialistQ.data, arg.date);
+      return intervals.length ? [] : ["agenda-fc-day-no-hours"];
+    },
+    [routeSpecialistId, specialistQ.data]
+  );
+
   const onDatesSet = useCallback((arg: { start: Date; end: Date }) => {
     setRange({
       from: arg.start.toISOString(),
@@ -127,104 +209,79 @@ export function AgendaPage() {
 
   const events = visibleAppointments.map(toEvent);
 
-  const consultorioSituations = useMemo(() => {
-    const today = todayStr();
-    const now = nowHHmm();
-    const startMin = hhmmToMinutes(WORKDAY_START);
-    const endMin = hhmmToMinutes(WORKDAY_END);
-    const byOffice = new Map<
-      string,
-      {
-        count: number;
-        occupiedNow: boolean;
-        next?: Appointment;
-        freeRanges: string[];
-        occupiedRanges: Array<{ start: number; end: number }>;
-      }
-    >();
+  const availabilityBackgroundEvents = useMemo(
+    () => buildAvailabilityBackgroundEvents(routeSpecialistId ? specialistQ.data : undefined, range, routeSpecialistId),
+    [routeSpecialistId, specialistQ.data, range]
+  );
 
-    const todays = visibleAppointments.filter((a) => getAppointmentDateStr(a) === today);
-    for (const a of todays) {
-      const office = a.consultorio?.trim() || "Sin consultorio";
-      const row = byOffice.get(office) ?? {
-        count: 0,
-        occupiedNow: false,
-        freeRanges: [],
-        occupiedRanges: [],
-      };
+  const calendarEvents = useMemo(
+    () => [...availabilityBackgroundEvents, ...events],
+    [availabilityBackgroundEvents, events]
+  );
 
-      const blocksOffice = a.status !== "CANCELLED";
-      if (blocksOffice) {
-        row.count += 1;
-        row.occupiedRanges.push({
-          start: hhmmToMinutes(a.startTime),
-          end: hhmmToMinutes(a.endTime),
-        });
-      }
+  const todayIso = todayStr();
+  const specialistsSummaryQ = useQuery({
+    queryKey: ["specialists", "agenda-day-strip"],
+    queryFn: () => fetchSpecialists(false),
+  });
 
-      const blocksNow =
-        blocksOffice &&
-        a.status !== "NO_SHOW" &&
-        a.status !== "ATTENDED" &&
-        a.startTime <= now &&
-        a.endTime > now;
-      if (blocksNow) row.occupiedNow = true;
+  const todayAllAppointmentsQ = useQuery({
+    queryKey: ["appointments", "today-all", todayIso],
+    queryFn: () => fetchAppointments({ from: todayIso, to: todayIso }),
+  });
 
-      const canBeNext =
-        a.status !== "CANCELLED" &&
-        a.status !== "NO_SHOW" &&
-        a.startTime >= now;
-      if (canBeNext) {
-        if (!row.next || a.startTime < row.next.startTime) row.next = a;
-      }
+  const specialistDayBoard = useMemo(() => {
+    const all = specialistsSummaryQ.data ?? [];
+    const activeAll = all.filter((s) => s.active);
+    const active =
+      user?.role === "SPECIALIST" && user.specialistId
+        ? activeAll.filter((s) => s.id === user.specialistId)
+        : activeAll.slice(0, 5);
+    const appts = todayAllAppointmentsQ.data ?? [];
+    const today = todayIso;
+    return active.map((s) => ({
+      specialist: s,
+      appointments: appts
+        .filter((a) => a.specialistId === s.id && getAppointmentDateStr(a) === today)
+        .sort((a, b) => a.startTime.localeCompare(b.startTime)),
+    }));
+  }, [specialistsSummaryQ.data, todayAllAppointmentsQ.data, todayIso, user?.role, user?.specialistId]);
 
-      byOffice.set(office, row);
-    }
+  const totalActiveSpecialists = useMemo(
+    () => (specialistsSummaryQ.data ?? []).filter((s) => s.active).length,
+    [specialistsSummaryQ.data]
+  );
+  const isSingleSpecialistDayBoard = specialistDayBoard.length === 1;
+  const canDeleteClickedAppointment =
+    Boolean(clickedAppointment) &&
+    (user?.role === "ADMIN" ||
+      (user?.role === "SPECIALIST" &&
+        Boolean(user.specialistId) &&
+        user.specialistId === clickedAppointment?.specialistId));
 
-    const offices = Array.from(
-      new Set([...CONSULTORIOS_BASE, ...Array.from(byOffice.keys())])
-    );
-
-    return offices
-      .map((office) => {
-        const s = byOffice.get(office) ?? {
-          count: 0,
-          occupiedNow: false,
-          next: undefined,
-          freeRanges: [],
-          occupiedRanges: [],
-        };
-
-        const merged = s.occupiedRanges
-          .filter((r) => r.end > r.start)
-          .sort((a, b) => a.start - b.start)
-          .reduce<Array<{ start: number; end: number }>>((acc, cur) => {
-            const last = acc[acc.length - 1];
-            if (!last || cur.start > last.end) {
-              acc.push({ ...cur });
-            } else if (cur.end > last.end) {
-              last.end = cur.end;
-            }
-            return acc;
-          }, []);
-
-        const free: string[] = [];
-        let cursor = startMin;
-        for (const r of merged) {
-          const rs = Math.max(startMin, r.start);
-          const re = Math.min(endMin, r.end);
-          if (rs > cursor) free.push(`${minutesToHHmm(cursor)}-${minutesToHHmm(rs)}`);
-          cursor = Math.max(cursor, re);
-        }
-        if (cursor < endMin) free.push(`${minutesToHHmm(cursor)}-${minutesToHHmm(endMin)}`);
-        if (free.length === 0) free.push("Sin huecos");
-
-        return { office, ...s, freeRanges: free };
-      })
-      .sort((a, b) => a.office.localeCompare(b.office));
-  }, [visibleAppointments]);
+  const deleteFromActionMut = useMutation({
+    mutationFn: (id: string) => deleteAppointment(id),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["appointments"] });
+      await refetch();
+      setDeleteTargetAppointmentId(null);
+      setClickedAppointment(null);
+      setClickedSlot(null);
+    },
+  });
 
   function onSelect(sel: DateSelectArg) {
+    if (routeSpecialistId) {
+      if (!specialistQ.data) {
+        queueMicrotask(() => calendarRef.current?.getApi().unselect());
+        return;
+      }
+      if (!isSelectionWithinSpecialistAvailability(sel.start, sel.end, specialistQ.data)) {
+        queueMicrotask(() => calendarRef.current?.getApi().unselect());
+        setUnavailableOpen(true);
+        return;
+      }
+    }
     setSelected(null);
     setSlot({ start: sel.start, end: sel.end });
     setModalOpen(true);
@@ -247,6 +304,59 @@ export function AgendaPage() {
   const specialistLabel = specialistQ.data
     ? `${specialistQ.data.lastName}, ${specialistQ.data.firstName}`
     : null;
+
+  const quickAvailableSlots = useMemo(() => {
+    if (!routeSpecialistId || !specialistQ.data) return [] as Array<{ start: Date; end: Date; label: string }>;
+    const specialistAvailabilities = specialistQ.data.availabilities;
+    if (!specialistAvailabilities.length) return [];
+
+    const byDate = new Map<string, Array<{ start: number; end: number }>>();
+    for (const a of visibleAppointments) {
+      if (a.specialistId !== routeSpecialistId || a.status === "CANCELLED") continue;
+      const key = getAppointmentDateStr(a);
+      const row = byDate.get(key) ?? [];
+      row.push({ start: hhmmToMinutes(a.startTime), end: hhmmToMinutes(a.endTime) });
+      byDate.set(key, row);
+    }
+
+    const weekdayIdx: Record<string, number> = {
+      SUNDAY: 0,
+      MONDAY: 1,
+      TUESDAY: 2,
+      WEDNESDAY: 3,
+      THURSDAY: 4,
+      FRIDAY: 5,
+      SATURDAY: 6,
+    };
+    const now = new Date();
+    const found: Array<{ start: Date; end: Date; label: string }> = [];
+    for (let addDays = 0; addDays < 45 && found.length < quickSlotsLimit; addDays++) {
+      const day = new Date(now);
+      day.setHours(0, 0, 0, 0);
+      day.setDate(day.getDate() + addDays);
+      const dateKey = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+      const occupied = byDate.get(dateKey) ?? [];
+      for (const avail of specialistAvailabilities) {
+        if (weekdayIdx[avail.weekday] !== day.getDay()) continue;
+        const startM = Math.max(hhmmToMinutes(avail.startTime), hhmmToMinutes(WORKDAY_START));
+        const endM = Math.min(hhmmToMinutes(avail.endTime), hhmmToMinutes(WORKDAY_END));
+        for (let m = startM; m + 30 <= endM && found.length < quickSlotsLimit; m += 30) {
+          const candidateStart = new Date(day);
+          candidateStart.setHours(Math.floor(m / 60), m % 60, 0, 0);
+          if (candidateStart <= now) continue;
+          const candidateEnd = new Date(candidateStart.getTime() + 30 * 60 * 1000);
+          const overlaps = occupied.some((o) => m < o.end && m + 30 > o.start);
+          if (overlaps) continue;
+          found.push({
+            start: candidateStart,
+            end: candidateEnd,
+            label: `${candidateStart.toLocaleDateString("es-AR")} ${String(candidateStart.getHours()).padStart(2, "0")}:${String(candidateStart.getMinutes()).padStart(2, "0")}`,
+          });
+        }
+      }
+    }
+    return found;
+  }, [routeSpecialistId, specialistQ.data, visibleAppointments, quickSlotsLimit]);
 
   return (
     <div className="agenda-page-bg agenda-page-fullbleed">
@@ -276,49 +386,133 @@ export function AgendaPage() {
             "Agenda"
           )}
         </h1>
-        <p className="max-w-4xl text-slate-200/90">
-          {routeSpecialistId
-            ? "Turnos asignados a este especialista. Pulse un horario o un evento para crear o editar."
-            : "Seleccione un horario para crear una cita o pulse un evento para editarlo."}
-        </p>
+        {routeSpecialistId && (
+          <div className="mt-2 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowQuickSlots(true)}
+              className="rounded-lg bg-cyan-500/90 px-3 py-1.5 text-sm font-medium text-white hover:bg-cyan-500"
+            >
+              Turnos directos disponibles
+            </button>
+          </div>
+        )}
       </div>
       <div className="agenda-light rounded-2xl border border-slate-200/60 p-3 shadow-[0_20px_50px_-22px_rgba(15,23,42,0.45)]">
-        <div className="mb-3 rounded-xl border border-slate-200/80 bg-white/65 p-3 backdrop-blur-[3px]">
-          <div className="mb-2 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-slate-800">Situación de consultorios (hoy)</h2>
-            <span className="text-xs text-slate-500">{todayStr()}</span>
+        <div className="mb-4 rounded-xl border border-slate-200/80 bg-white/80 p-5 shadow-sm backdrop-blur-[3px]">
+          <div className="mb-4">
+            <h2 className="text-base font-semibold tracking-tight text-slate-900">Agenda del día</h2>
+            <p className="mt-0.5 text-xs capitalize text-slate-600">
+              {new Date(todayIso + "T12:00:00").toLocaleDateString("es-AR", {
+                weekday: "long",
+                day: "numeric",
+                month: "long",
+                year: "numeric",
+              })}
+            </p>
           </div>
-          {consultorioSituations.length === 0 ? (
-            <p className="text-xs text-slate-500">No hay turnos cargados para hoy en esta vista.</p>
+          {specialistsSummaryQ.isLoading || todayAllAppointmentsQ.isLoading ? (
+            <p className="text-sm text-slate-500">Cargando agenda del día…</p>
+          ) : specialistDayBoard.length === 0 ? (
+            <p className="text-sm text-slate-500">No hay especialistas activos para mostrar.</p>
           ) : (
-            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-              {consultorioSituations.map((c) => (
-                <div key={c.office} className="rounded-lg border border-slate-200/90 bg-white/78 px-3 py-2 backdrop-blur-[2px]">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="truncate text-sm font-medium text-slate-800">{c.office}</p>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                        c.occupiedNow
-                          ? "bg-amber-100 text-amber-800"
-                          : "bg-emerald-100 text-emerald-800"
+            <>
+              <div
+                className={`grid gap-4 ${isSingleSpecialistDayBoard ? "grid-cols-1" : ""}`}
+                style={
+                  isSingleSpecialistDayBoard
+                    ? undefined
+                    : { gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }
+                }
+              >
+                {specialistDayBoard.map(({ specialist: s, appointments: dayAppts }) => {
+                  const name = `${s.lastName}, ${s.firstName}`;
+                  const canLinkAgenda = user?.role === "ADMIN" || (user?.role === "SPECIALIST" && user.specialistId === s.id);
+                  return (
+                    <div
+                      key={s.id}
+                      className={`rounded-xl border border-slate-200 bg-white px-4 py-4 shadow-sm ${
+                        isSingleSpecialistDayBoard
+                          ? "flex flex-col gap-3 lg:flex-row lg:items-start"
+                          : "flex min-h-[10rem] flex-col"
                       }`}
                     >
-                      {c.occupiedNow ? "Ocupado" : "Libre"}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-xs text-slate-500">Turnos hoy: {c.count}</p>
-                  <p className="text-xs text-slate-500">
-                    Próximo:{" "}
-                    {c.next
-                      ? `${c.next.startTime} · ${patientNameUpper(c.next.patient.lastName, c.next.patient.firstName)}`
-                      : "Sin próximos"}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-600">
-                    Libres: <span className="font-medium">{c.freeRanges.join(" | ")}</span>
-                  </p>
-                </div>
-              ))}
-            </div>
+                      <div
+                        className={`${
+                          isSingleSpecialistDayBoard
+                            ? "border-b border-slate-100 pb-2 lg:min-w-[260px] lg:border-b-0 lg:border-r lg:pb-0 lg:pr-4"
+                            : "border-b border-slate-100 pb-2"
+                        }`}
+                      >
+                        {canLinkAgenda ? (
+                          <Link
+                            to={`/specialists/${s.id}/agenda`}
+                            className="block truncate text-sm font-bold text-sky-800 hover:text-sky-950 hover:underline"
+                          >
+                            {name}
+                          </Link>
+                        ) : (
+                          <p className="truncate text-sm font-bold text-slate-900">{name}</p>
+                        )}
+                        <p className="mt-0.5 truncate text-[11px] text-slate-600">{s.specialty}</p>
+                      </div>
+                      <ul
+                        className={`text-[11px] leading-tight ${
+                          isSingleSpecialistDayBoard
+                            ? "mt-1 flex-1 whitespace-nowrap overflow-x-auto overflow-y-hidden space-y-0"
+                            : "mt-2 flex-1 space-y-1.5 overflow-y-auto"
+                        }`}
+                      >
+                        {dayAppts.length === 0 ? (
+                          <li className="rounded-md bg-slate-50 px-3 py-2.5 text-center text-slate-500">Sin turnos hoy</li>
+                        ) : (
+                          dayAppts.map((a) => {
+                            const patient = patientNameUpper(a.patient.lastName, a.patient.firstName);
+                            const muted = a.status === "CANCELLED";
+                            const dayCellTone =
+                              a.status === "ATTENDED"
+                                ? "bg-emerald-50 border-emerald-200"
+                                : a.status === "CANCELLED"
+                                  ? "bg-rose-50 border-rose-200"
+                                  : a.status === "NO_SHOW"
+                                    ? "bg-amber-50 border-amber-200"
+                                    : "bg-sky-50 border-sky-200";
+                            return (
+                              <li
+                                key={a.id}
+                                className={`rounded-md border px-3 py-2 ${dayCellTone} ${
+                                  isSingleSpecialistDayBoard
+                                    ? "mr-2 inline-block min-w-[210px] align-top"
+                                    : ""
+                                } ${muted ? "opacity-60" : ""}`}
+                              >
+                                <div className="flex items-start justify-between gap-1">
+                                  <span className="font-semibold text-slate-800">
+                                    {a.startTime}–{a.endTime}
+                                  </span>
+                                  <span
+                                    className={`shrink-0 rounded px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide agenda-pill status-${a.status.toLowerCase()}`}
+                                  >
+                                    {statusLabel[a.status]}
+                                  </span>
+                                </div>
+                                <p className={`mt-0.5 truncate text-slate-700 ${muted ? "line-through" : ""}`}>{patient}</p>
+                                <p className="truncate text-slate-500">({a.consultorio.trim() || "—"})</p>
+                              </li>
+                            );
+                          })
+                        )}
+                      </ul>
+                    </div>
+                  );
+                })}
+              </div>
+              {totalActiveSpecialists > 5 && (
+                <p className="mt-3 text-center text-[11px] text-slate-500">
+                  Mostrando 5 de {totalActiveSpecialists} profesionales activos. El resto aparece en la grilla o en Especialistas.
+                </p>
+              )}
+            </>
           )}
         </div>
         <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
@@ -328,33 +522,43 @@ export function AgendaPage() {
             </span>
           ))}
         </div>
-        <FullCalendar
-          plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
-          initialView="timeGridWeek"
-          headerToolbar={{
-            left: "prev,next today",
-            center: "title",
-            right: "dayGridMonth,timeGridWeek,timeGridDay",
-          }}
-          locale={esLocale}
-          slotMinTime="07:00:00"
-          slotMaxTime="21:00:00"
-          allDaySlot={false}
-          height="auto"
-          nowIndicator
-          expandRows
-          eventTimeFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
-          slotLabelFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
-          selectable
-          selectMirror
-          dayMaxEvents
-          weekends
-          events={events}
-          eventContent={renderEventContent}
-          select={onSelect}
-          eventClick={onEventClick}
-          datesSet={onDatesSet}
-        />
+        {routeSpecialistId && specialistQ.data && !specialistQ.data.availabilities.length ? (
+          <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-950">
+            Este especialista no tiene franjas de atención cargadas: no se podrán asignar turnos hasta que un administrador
+            las configure.
+          </div>
+        ) : null}
+        <div className={routeSpecialistId ? "agenda-specialist-slots" : undefined}>
+          <FullCalendar
+            ref={calendarRef}
+            plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
+            initialView="timeGridWeek"
+            headerToolbar={{
+              left: "prev,next today",
+              center: "title",
+              right: "dayGridMonth,timeGridWeek,timeGridDay",
+            }}
+            locale={esLocale}
+            slotMinTime="07:00:00"
+            slotMaxTime="21:00:00"
+            allDaySlot={false}
+            height="auto"
+            nowIndicator
+            expandRows
+            eventTimeFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
+            slotLabelFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
+            selectable={!routeSpecialistId || Boolean(specialistQ.data)}
+            selectMirror
+            dayMaxEvents
+            weekends
+            dayCellClassNames={routeSpecialistId ? dayCellClassNames : undefined}
+            events={calendarEvents}
+            eventContent={renderEventContent}
+            select={onSelect}
+            eventClick={onEventClick}
+            datesSet={onDatesSet}
+          />
+        </div>
       </div>
 
         <AppointmentModal
@@ -400,6 +604,15 @@ export function AgendaPage() {
                   className="rounded-lg border border-slate-300 px-4 py-2 font-medium text-slate-700 hover:bg-slate-50"
                   onClick={() => {
                     if (!clickedSlot) return;
+                    if (routeSpecialistId && specialistQ.data) {
+                      if (!isSelectionWithinSpecialistAvailability(clickedSlot.start, clickedSlot.end, specialistQ.data)) {
+                        setEventActionOpen(false);
+                        setClickedAppointment(null);
+                        setClickedSlot(null);
+                        setUnavailableOpen(true);
+                        return;
+                      }
+                    }
                     setEventActionOpen(false);
                     setClickedAppointment(null);
                     setClickedSlot(null);
@@ -410,6 +623,19 @@ export function AgendaPage() {
                 >
                   Nueva cita en este horario
                 </button>
+                {canDeleteClickedAppointment && (
+                  <button
+                    type="button"
+                    className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 font-medium text-red-700 hover:bg-red-100"
+                    onClick={() => {
+                      if (!clickedAppointment) return;
+                      setDeleteTargetAppointmentId(clickedAppointment.id);
+                      setEventActionOpen(false);
+                    }}
+                  >
+                    Eliminar turno
+                  </button>
+                )}
                 <button
                   type="button"
                   className="rounded-lg px-4 py-2 text-slate-600 hover:bg-slate-100"
@@ -421,6 +647,110 @@ export function AgendaPage() {
                 >
                   Cancelar
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {deleteTargetAppointmentId && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+            <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+              <h3 className="text-lg font-semibold text-slate-900">Eliminar turno</h3>
+              <p className="mt-2 text-sm text-slate-600">
+                Esta acción eliminará el turno de forma permanente.
+              </p>
+              <div className="mt-5 flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="rounded-lg px-4 py-2 text-slate-600 hover:bg-slate-100"
+                  disabled={deleteFromActionMut.isPending}
+                  onClick={() => setDeleteTargetAppointmentId(null)}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="rounded-lg bg-red-600 px-4 py-2 font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                  disabled={deleteFromActionMut.isPending}
+                  onClick={() => {
+                    if (!deleteTargetAppointmentId) return;
+                    deleteFromActionMut.mutate(deleteTargetAppointmentId);
+                  }}
+                >
+                  {deleteFromActionMut.isPending ? "Eliminando..." : "Eliminar"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {unavailableOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+            <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+              <h3 className="text-lg font-semibold text-slate-900">Turno no disponible</h3>
+              <p className="mt-2 text-sm text-slate-600">
+                El especialista no atiende en ese día y horario. Elegí un horario dentro de un bloque violeta de “franja
+                de atención” en la grilla.
+              </p>
+              <div className="mt-5 flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="rounded-lg bg-brand-600 px-4 py-2 font-medium text-white hover:bg-brand-700"
+                  onClick={() => setUnavailableOpen(false)}
+                >
+                  Entendido
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {showQuickSlots && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+            <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-slate-900">Turnos directos disponibles</h3>
+                <button
+                  type="button"
+                  className="rounded-lg px-2 py-1 text-slate-500 hover:bg-slate-100"
+                  onClick={() => setShowQuickSlots(false)}
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="mt-3 flex items-center gap-2 text-sm">
+                <button
+                  type="button"
+                  onClick={() => setQuickSlotsLimit(5)}
+                  className={`rounded-lg px-3 py-1 ${quickSlotsLimit === 5 ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-700"}`}
+                >
+                  Primeros 5
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setQuickSlotsLimit(10)}
+                  className={`rounded-lg px-3 py-1 ${quickSlotsLimit === 10 ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-700"}`}
+                >
+                  Primeros 10
+                </button>
+              </div>
+              <div className="mt-4 space-y-2">
+                {quickAvailableSlots.length === 0 ? (
+                  <p className="text-sm text-slate-500">No hay disponibilidad próxima con la configuración actual.</p>
+                ) : (
+                  quickAvailableSlots.map((slotItem, idx) => (
+                    <button
+                      key={`${slotItem.start.toISOString()}-${idx}`}
+                      type="button"
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                      onClick={() => {
+                        setShowQuickSlots(false);
+                        setSelected(null);
+                        setSlot({ start: slotItem.start, end: slotItem.end });
+                        setModalOpen(true);
+                      }}
+                    >
+                      {slotItem.label}
+                    </button>
+                  ))
+                )}
               </div>
             </div>
           </div>

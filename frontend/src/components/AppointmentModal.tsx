@@ -24,13 +24,7 @@ type Props = {
   onSaved: () => void;
 };
 
-const statuses: AppointmentStatus[] = [
-  "RESERVED",
-  "CONFIRMED",
-  "ATTENDED",
-  "CANCELLED",
-  "NO_SHOW",
-];
+const statuses: AppointmentStatus[] = ["RESERVED", "ATTENDED", "CANCELLED", "NO_SHOW"];
 
 function localDateStr(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -70,7 +64,6 @@ function rangesOverlap(aStart: number, aEnd: number, bStart: number, bEnd: numbe
 
 const statusLabel: Record<AppointmentStatus, string> = {
   RESERVED: "RESERVADO",
-  CONFIRMED: "CONFIRMADO",
   ATTENDED: "FINALIZADO",
   CANCELLED: "CANCELÓ",
   NO_SHOW: "NO ASISTIÓ",
@@ -85,13 +78,23 @@ const paymentMethodLabel: Record<AppointmentPaymentMethod, string> = {
   TRANSFER_TO_SPECIALIST: "Transferencia al especialista",
   CASH_TO_LOGOCEN: "Efectivo a LogoCen",
 };
-
 const labelClass = "block text-sm font-medium text-slate-700";
 const fieldClass =
   "mt-1 w-full rounded-lg border border-slate-300/90 bg-white/90 px-3 py-2 text-slate-800 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200/70";
 
 function patientNameUpper(lastName: string, firstName: string): string {
   return `${lastName}, ${firstName}`.toUpperCase();
+}
+
+function formatArsAmount(value: string | null): string | null {
+  if (!value) return null;
+  const normalized = Number(value.replace(",", "."));
+  if (!Number.isFinite(normalized)) return null;
+  const formatted = new Intl.NumberFormat("es-AR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(normalized);
+  return `$${formatted}`;
 }
 
 export function AppointmentModal({
@@ -112,7 +115,7 @@ export function AppointmentModal({
   const specialistsQ = useQuery({
     queryKey: ["specialists"],
     queryFn: () => fetchSpecialists(false),
-    enabled: open && isAdmin && !fixedSpecialistId,
+    enabled: open && isAdmin,
   });
 
   const [patientId, setPatientId] = useState("");
@@ -347,6 +350,9 @@ export function AppointmentModal({
   }, [consultorioDayRows, appointment?.id, startTimeStr, endTimeStr]);
 
   const effectiveSpecialistId = fixedSpecialistId ?? specialistId;
+  const selectedSpecialist = isAdmin
+    ? specialists.find((s) => s.id === effectiveSpecialistId) ?? null
+    : null;
 
   const canSubmit = useMemo(() => {
     if (!patientId || !consultorio.trim() || !dateStr || !startTimeStr || !endTimeStr) return false;
@@ -428,7 +434,6 @@ export function AppointmentModal({
               Especialista fijo para esta vista de agenda.
             </p>
           )}
-
           {!isAdmin && (
             <p className="text-sm text-slate-600">
               Especialista: <strong>{user?.specialist?.lastName}</strong>
@@ -547,6 +552,20 @@ export function AppointmentModal({
               ))}
             </select>
           </div>
+          {selectedSpecialist && (
+            <div className="rounded-lg border border-sky-100 bg-sky-50/70 px-3 py-2 text-xs text-slate-700">
+              <p>
+                Valor consulta:{" "}
+                <strong>
+                  {formatArsAmount(selectedSpecialist.consultationFee) ?? "No configurado"}
+                </strong>
+              </p>
+              <p>
+                Alias transferencia:{" "}
+                <strong>{selectedSpecialist.transferAlias || "No configurado"}</strong>
+              </p>
+            </div>
+          )}
 
           <div>
             <label className={labelClass}>Motivo de consulta</label>

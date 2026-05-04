@@ -3,9 +3,24 @@ import { userRepository } from "../repositories/user.repository.js";
 import { AppError } from "../middleware/errorHandler.js";
 import { normalizeProfilePhotoUrlForStorage } from "../utils/imageUrl.js";
 import { hashPassword } from "../utils/password.js";
+import { Weekday } from "@prisma/client";
+import { assertValidTime, timeToMinutes } from "../utils/appointmentTime.js";
 
 function normProfilePhotoUrl(url: string | null | undefined): string | null {
   return normalizeProfilePhotoUrlForStorage(url);
+}
+
+function normalizeAvailabilities(
+  availabilities: Array<{ weekday: Weekday; startTime: string; endTime: string }>
+): Array<{ weekday: Weekday; startTime: string; endTime: string }> {
+  return availabilities.map((a) => {
+    const startTime = assertValidTime(a.startTime);
+    const endTime = assertValidTime(a.endTime);
+    if (timeToMinutes(endTime) <= timeToMinutes(startTime)) {
+      throw new AppError(400, "La franja de disponibilidad debe tener fin posterior al inicio");
+    }
+    return { weekday: a.weekday, startTime, endTime };
+  });
 }
 
 export async function listSpecialists(includeInactive = false) {
@@ -27,6 +42,9 @@ export async function createSpecialist(data: {
   profilePhotoUrl?: string | null;
   licenseNumber?: string | null;
   phone?: string | null;
+  consultationFee?: string | number | null;
+  transferAlias?: string | null;
+  availabilities?: Array<{ weekday: Weekday; startTime: string; endTime: string }>;
 }) {
   const email = data.email.toLowerCase().trim();
   const exists = await userRepository.findByEmail(email);
@@ -43,6 +61,9 @@ export async function createSpecialist(data: {
     profilePhotoUrl: normProfilePhotoUrl(data.profilePhotoUrl),
     licenseNumber: data.licenseNumber?.trim() || null,
     phone: data.phone?.trim() || null,
+    consultationFee: data.consultationFee === "" ? null : (data.consultationFee ?? null),
+    transferAlias: data.transferAlias?.trim() || null,
+    availabilities: data.availabilities ? normalizeAvailabilities(data.availabilities) : [],
   });
 }
 
@@ -57,6 +78,9 @@ export async function updateSpecialist(
     profilePhotoUrl: string | null;
     licenseNumber: string | null;
     phone: string | null;
+    consultationFee: string | number | null;
+    transferAlias: string | null;
+    availabilities: Array<{ weekday: Weekday; startTime: string; endTime: string }>;
     active: boolean;
   }>
 ) {
@@ -85,6 +109,13 @@ export async function updateSpecialist(
         : {}),
       ...(data.licenseNumber !== undefined ? { licenseNumber: data.licenseNumber?.trim() || null } : {}),
       ...(data.phone !== undefined ? { phone: data.phone?.trim() || null } : {}),
+      ...(data.consultationFee !== undefined
+        ? { consultationFee: data.consultationFee === "" ? null : data.consultationFee }
+        : {}),
+      ...(data.transferAlias !== undefined ? { transferAlias: data.transferAlias?.trim() || null } : {}),
+      ...(data.availabilities !== undefined
+        ? { availabilities: normalizeAvailabilities(data.availabilities) }
+        : {}),
       ...(data.active !== undefined ? { active: data.active } : {}),
     });
   } catch (e) {

@@ -1,4 +1,4 @@
-import { Role } from "@prisma/client";
+import { Role, Weekday } from "@prisma/client";
 import type { Request, Response } from "express";
 import { z } from "zod";
 import * as specialistService from "../services/specialist.service.js";
@@ -11,6 +11,16 @@ const strongPassword = z
   .string()
   .min(8)
   .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).+$/, "La contraseña debe tener mayúscula, minúscula, número y símbolo");
+const timeSchema = z
+  .string()
+  .regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Use HH:mm (24 h)");
+const optionalMoney = z.union([z.number().nonnegative(), z.string().regex(/^\d+(\.\d{1,2})?$/), z.literal(""), z.null()]).optional();
+const optionalAlias = z.union([z.string().max(120), z.literal(""), z.null()]).optional();
+const availabilitySchema = z.object({
+  weekday: z.nativeEnum(Weekday),
+  startTime: timeSchema,
+  endTime: timeSchema,
+});
 
 const createSchema = z.object({
   email: z.string().email(),
@@ -21,6 +31,9 @@ const createSchema = z.object({
   profilePhotoUrl: optionalUrl,
   licenseNumber: z.union([z.string().max(500), z.literal(""), z.null()]).optional(),
   phone: z.union([z.string().max(50), z.literal(""), z.null()]).optional(),
+  consultationFee: optionalMoney,
+  transferAlias: optionalAlias,
+  availabilities: z.array(availabilitySchema).optional(),
 });
 
 const updateSchema = z.object({
@@ -32,6 +45,9 @@ const updateSchema = z.object({
   profilePhotoUrl: optionalUrl,
   licenseNumber: z.union([z.string().max(500), z.literal(""), z.null()]).optional(),
   phone: z.union([z.string().max(50), z.literal(""), z.null()]).optional(),
+  consultationFee: optionalMoney,
+  transferAlias: optionalAlias,
+  availabilities: z.array(availabilitySchema).optional(),
   active: z.boolean().optional(),
 });
 

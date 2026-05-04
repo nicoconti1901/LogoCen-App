@@ -40,6 +40,13 @@ export async function createSpecialist(body: {
   profilePhotoUrl?: string | null;
   licenseNumber?: string | null;
   phone?: string | null;
+  consultationFee?: string | number | null;
+  transferAlias?: string | null;
+  availabilities?: Array<{
+    weekday: "MONDAY" | "TUESDAY" | "WEDNESDAY" | "THURSDAY" | "FRIDAY" | "SATURDAY" | "SUNDAY";
+    startTime: string;
+    endTime: string;
+  }>;
 }): Promise<Specialist> {
   const { data } = await api.post<Specialist>("/specialists", body);
   return data;
@@ -56,6 +63,13 @@ export async function updateSpecialist(
     profilePhotoUrl: string | null;
     licenseNumber: string | null;
     phone: string | null;
+    consultationFee: string | number | null;
+    transferAlias: string | null;
+    availabilities: Array<{
+      weekday: "MONDAY" | "TUESDAY" | "WEDNESDAY" | "THURSDAY" | "FRIDAY" | "SATURDAY" | "SUNDAY";
+      startTime: string;
+      endTime: string;
+    }>;
     active: boolean;
   }>
 ): Promise<Specialist> {
