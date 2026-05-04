@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { Layout } from "./components/Layout";
 import { PrivateRoute } from "./components/PrivateRoute";
 import { AdminPatientsPage } from "./pages/admin/AdminPatients";
+import { AdminBalancePage } from "./pages/admin/AdminBalance";
 import { AdminSpecialistsPage } from "./pages/admin/AdminSpecialists";
 import { AgendaPage } from "./pages/Agenda";
 import { LoginPage } from "./pages/Login";
@@ -26,6 +27,10 @@ export default function App() {
           <Route
             path="patients"
             element={<AdminPatientsPage />}
+          />
+          <Route
+            path="balance"
+            element={<AdminBalancePage />}
           />
         </Route>
       </Route>

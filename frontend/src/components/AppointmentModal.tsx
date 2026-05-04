@@ -126,6 +126,8 @@ export function AppointmentModal({
   const [endTimeStr, setEndTimeStr] = useState("");
   const [status, setStatus] = useState<AppointmentStatus>("RESERVED");
   const [paymentMethod, setPaymentMethod] = useState<AppointmentPaymentMethod>("TRANSFER_TO_LOGOCEN");
+  const [paymentCompleted, setPaymentCompleted] = useState(false);
+  const [paymentDateStr, setPaymentDateStr] = useState("");
   const [medicalRecord, setMedicalRecord] = useState("");
   const [reasonForVisit, setReasonForVisit] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -154,6 +156,8 @@ export function AppointmentModal({
       setEndTimeStr(getEndTimeStr(appointment));
       setStatus(appointment.status);
       setPaymentMethod(appointment.paymentMethod ?? "TRANSFER_TO_LOGOCEN");
+      setPaymentCompleted(appointment.paymentCompleted ?? false);
+      setPaymentDateStr(appointment.paymentDate ?? "");
       setMedicalRecord(appointment.medicalRecord ?? "");
       setReasonForVisit(appointment.reasonForVisit ?? "");
     } else {
@@ -169,6 +173,8 @@ export function AppointmentModal({
       setEndTimeStr(localTimeStr(e));
       setStatus("RESERVED");
       setPaymentMethod("TRANSFER_TO_LOGOCEN");
+      setPaymentCompleted(false);
+      setPaymentDateStr(localDateStr(s));
       setMedicalRecord("");
       setReasonForVisit("");
     }
@@ -185,6 +191,8 @@ export function AppointmentModal({
         endTime: endTimeStr,
         status,
         paymentMethod,
+        paymentCompleted,
+        paymentDate: paymentCompleted ? paymentDateStr : null,
         medicalRecord: medicalRecord || null,
         reasonForVisit: reasonForVisit || null,
       }),
@@ -213,6 +221,8 @@ export function AppointmentModal({
         endTime: endTimeStr,
         status,
         paymentMethod,
+        paymentCompleted,
+        paymentDate: paymentCompleted ? paymentDateStr : null,
         medicalRecord: medicalRecord || null,
         reasonForVisit: reasonForVisit || null,
       }),
@@ -356,10 +366,22 @@ export function AppointmentModal({
 
   const canSubmit = useMemo(() => {
     if (!patientId || !consultorio.trim() || !dateStr || !startTimeStr || !endTimeStr) return false;
+    if (paymentCompleted && !paymentDateStr) return false;
     if (isAdmin && !effectiveSpecialistId) return false;
     if (!isAdmin && !mySpecialistId) return false;
     return true;
-  }, [patientId, consultorio, dateStr, startTimeStr, endTimeStr, isAdmin, effectiveSpecialistId, mySpecialistId]);
+  }, [
+    patientId,
+    consultorio,
+    dateStr,
+    startTimeStr,
+    endTimeStr,
+    paymentCompleted,
+    paymentDateStr,
+    isAdmin,
+    effectiveSpecialistId,
+    mySpecialistId,
+  ]);
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -552,6 +574,34 @@ export function AppointmentModal({
               ))}
             </select>
           </div>
+          <div>
+            <label className={labelClass}>Pago realizado</label>
+            <select
+              className={fieldClass}
+              value={paymentCompleted ? "YES" : "NO"}
+              onChange={(e) => {
+                const isPaid = e.target.value === "YES";
+                setPaymentCompleted(isPaid);
+                if (!isPaid) setPaymentDateStr("");
+                else if (!paymentDateStr) setPaymentDateStr(dateStr || localDateStr(new Date()));
+              }}
+            >
+              <option value="NO">No</option>
+              <option value="YES">Sí</option>
+            </select>
+          </div>
+          {paymentCompleted && (
+            <div>
+              <label className={labelClass}>Fecha de pago</label>
+              <input
+                type="date"
+                required
+                className={fieldClass}
+                value={paymentDateStr}
+                onChange={(e) => setPaymentDateStr(e.target.value)}
+              />
+            </div>
+          )}
           {selectedSpecialist && (
             <div className="rounded-lg border border-sky-100 bg-sky-50/70 px-3 py-2 text-xs text-slate-700">
               <p>

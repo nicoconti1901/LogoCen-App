@@ -183,6 +183,8 @@ export async function createAppointment(body: {
   endTime: string;
   status?: string;
   paymentMethod?: string | null;
+  paymentCompleted?: boolean;
+  paymentDate?: string | null;
   medicalRecord?: string | null;
   reasonForVisit?: string | null;
 }): Promise<Appointment> {
@@ -201,6 +203,9 @@ export async function updateAppointment(
     endTime: string;
     status: string;
     paymentMethod: string | null;
+    paymentCompleted: boolean;
+    paymentDate: string | null;
+    specialistSettledAt: string | null;
     medicalRecord: string | null;
     reasonForVisit: string | null;
   }>

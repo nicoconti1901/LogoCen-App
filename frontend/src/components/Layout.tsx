@@ -28,6 +28,11 @@ export function Layout() {
                   <NavLink to="/patients" className={linkClass}>
                     Pacientes
                   </NavLink>
+                  {user?.role === "ADMIN" && (
+                    <NavLink to="/balance" className={linkClass}>
+                      Balance
+                    </NavLink>
+                  )}
                 </>
               )}
             </nav>

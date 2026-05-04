@@ -167,6 +167,8 @@ export async function createAppointment(
     endTime: string;
     status?: AppointmentStatus;
     paymentMethod?: AppointmentPaymentMethod | null;
+    paymentCompleted?: boolean;
+    paymentDate?: Date | null;
     medicalRecord?: string | null;
     reasonForVisit?: string | null;
   },
@@ -208,6 +210,8 @@ export async function createAppointment(
     endTime,
     status: data.status ?? AppointmentStatus.RESERVED,
     paymentMethod: data.paymentMethod ?? null,
+    paymentCompleted: data.paymentCompleted ?? false,
+    paymentDate: data.paymentCompleted ? (data.paymentDate ?? null) : null,
     medicalRecord: data.medicalRecord?.trim() || null,
     reasonForVisit: data.reasonForVisit?.trim() || null,
   });
@@ -224,6 +228,9 @@ export async function updateAppointment(
     endTime: string;
     status: AppointmentStatus;
     paymentMethod: AppointmentPaymentMethod | null;
+    paymentCompleted: boolean;
+    paymentDate: Date | null;
+    specialistSettledAt: Date | null;
     medicalRecord: string | null;
     reasonForVisit: string | null;
   }>,
@@ -247,6 +254,9 @@ export async function updateAppointment(
     }
     if (data.patientId && data.patientId !== existing.patientId) {
       throw new AppError(403, "No puede cambiar el paciente");
+    }
+    if (data.specialistSettledAt !== undefined) {
+      throw new AppError(403, "No puede marcar rendiciones");
     }
   }
 
@@ -282,6 +292,18 @@ export async function updateAppointment(
     ...(data.endTime !== undefined ? { endTime: nextEnd } : {}),
     ...(data.status !== undefined ? { status: data.status } : {}),
     ...(data.paymentMethod !== undefined ? { paymentMethod: data.paymentMethod } : {}),
+    ...(data.paymentCompleted !== undefined ? { paymentCompleted: data.paymentCompleted } : {}),
+    ...((data.paymentDate !== undefined || data.paymentCompleted === false)
+      ? {
+          paymentDate:
+            data.paymentCompleted === false
+              ? null
+              : data.paymentDate !== undefined
+                ? data.paymentDate
+                : existing.paymentDate,
+        }
+      : {}),
+    ...(data.specialistSettledAt !== undefined ? { specialistSettledAt: data.specialistSettledAt } : {}),
     ...(data.medicalRecord !== undefined ? { medicalRecord: data.medicalRecord?.trim() || null } : {}),
     ...(data.reasonForVisit !== undefined ? { reasonForVisit: data.reasonForVisit?.trim() || null } : {}),
   });
