@@ -1,11 +1,12 @@
 import esLocale from "@fullcalendar/core/locales/es";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
+import listPlugin from "@fullcalendar/list";
 import FullCalendar from "@fullcalendar/react";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import type { DateSelectArg, EventClickArg, EventContentArg, EventInput } from "@fullcalendar/core";
-import { useCallback, useMemo, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useSearchParams, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { deleteAppointment, fetchAppointments, fetchSpecialist, fetchSpecialists } from "../api/endpoints";
 import { getAppointmentDateStr, toCalendarEnd, toCalendarStart } from "../lib/appointmentDisplay";
@@ -107,8 +108,8 @@ const statusLabel: Record<Appointment["status"], string> = {
   NO_SHOW: "NO ASISTIÓ",
 };
 
-const WORKDAY_START = "07:00";
-const WORKDAY_END = "21:00";
+const WORKDAY_START = "08:00";
+const WORKDAY_END = "20:00";
 
 function patientNameUpper(lastName: string, firstName: string): string {
   return `${lastName}, ${firstName}`.toUpperCase();
@@ -131,18 +132,35 @@ function renderEventContent(arg: EventContentArg) {
   if (!raw) return <span>{arg.event.title}</span>;
   const patient = patientNameUpper(raw.patient.lastName, raw.patient.firstName);
   const specialist = `${raw.specialist.lastName}, ${raw.specialist.firstName}`;
-  const consultorio = raw.consultorio;
+  const consultorio = raw.consultorio.trim() || "Sin consultorio";
+  const isListView = arg.view.type.startsWith("list");
+
+  if (isListView) {
+    return (
+      <div className="appt-list-event-content">
+        <span className="appt-list-patient">{patient}</span>
+        <span className="appt-list-specialist">{specialist}</span>
+        <span className="appt-list-office">{consultorio}</span>
+      </div>
+    );
+  }
+
   return (
     <div className="appt-event-content">
       <div className="appt-event-patient">Pac: {patient}</div>
       <div className="appt-event-specialist">Esp: {specialist}</div>
-      <div className="appt-event-office">Cons: {consultorio}</div>
+      <div className="appt-event-office">{consultorio}</div>
     </div>
   );
 }
 
 function todayStr(): string {
   const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function dateToIsoLocal(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
@@ -155,6 +173,7 @@ function hhmmToMinutes(hhmm: string): number {
 export function AgendaPage() {
   const { user } = useAuth();
   const { specialistId: routeSpecialistId } = useParams<{ specialistId?: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
   const calendarRef = useRef<InstanceType<typeof FullCalendar>>(null);
   const [range, setRange] = useState<{ from: string; to: string } | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -166,38 +185,42 @@ export function AgendaPage() {
   const [showQuickSlots, setShowQuickSlots] = useState(false);
   const [quickSlotsLimit, setQuickSlotsLimit] = useState<5 | 10>(5);
   const [unavailableOpen, setUnavailableOpen] = useState(false);
+  const [unavailableHintOpen, setUnavailableHintOpen] = useState(false);
   const [deleteTargetAppointmentId, setDeleteTargetAppointmentId] = useState<string | null>(null);
   const qc = useQueryClient();
+  const shouldOpenQuickSlots = searchParams.get("new") === "1";
+  const effectiveSpecialistId = routeSpecialistId ?? (user?.role === "SPECIALIST" ? user.specialistId ?? undefined : undefined);
 
   const specialistQ = useQuery({
-    queryKey: ["specialist", routeSpecialistId],
-    queryFn: () => fetchSpecialist(routeSpecialistId!),
-    enabled: Boolean(routeSpecialistId),
+    queryKey: ["specialist", effectiveSpecialistId],
+    queryFn: () => fetchSpecialist(effectiveSpecialistId!),
+    enabled: Boolean(effectiveSpecialistId),
   });
 
   const { data = [], refetch } = useQuery({
-    queryKey: ["appointments", range?.from, range?.to, routeSpecialistId],
+    queryKey: ["appointments", range?.from, range?.to, effectiveSpecialistId],
     queryFn: () =>
       fetchAppointments({
         from: range!.from,
         to: range!.to,
-        ...(routeSpecialistId ? { specialistId: routeSpecialistId } : {}),
+        ...(effectiveSpecialistId ? { specialistId: effectiveSpecialistId } : {}),
       }),
     enabled: Boolean(range),
   });
 
   const visibleAppointments = useMemo(
-    () => (routeSpecialistId ? data.filter((a) => a.specialistId === routeSpecialistId) : data),
-    [data, routeSpecialistId]
+    () => (effectiveSpecialistId ? data.filter((a) => a.specialistId === effectiveSpecialistId) : data),
+    [data, effectiveSpecialistId]
   );
+  const todayIso = todayStr();
 
   const dayCellClassNames = useCallback(
     (arg: { date: Date }) => {
-      if (!routeSpecialistId || !specialistQ.data) return [];
+      if (!effectiveSpecialistId || !specialistQ.data) return [];
       const intervals = availabilityIntervalsForCalendarDay(specialistQ.data, arg.date);
       return intervals.length ? [] : ["agenda-fc-day-no-hours"];
     },
-    [routeSpecialistId, specialistQ.data]
+    [effectiveSpecialistId, specialistQ.data]
   );
 
   const onDatesSet = useCallback((arg: { start: Date; end: Date }) => {
@@ -207,11 +230,26 @@ export function AgendaPage() {
     });
   }, []);
 
+  const eventClassNames = useCallback(
+    (arg: { event: { display: string; start: Date | null } }) => {
+      if (arg.event.display === "background") return [];
+      const start = arg.event.start;
+      if (!start) return [];
+      return dateToIsoLocal(start) === todayIso ? ["agenda-event-today"] : [];
+    },
+    [todayIso]
+  );
+
   const events = visibleAppointments.map(toEvent);
 
   const availabilityBackgroundEvents = useMemo(
-    () => buildAvailabilityBackgroundEvents(routeSpecialistId ? specialistQ.data : undefined, range, routeSpecialistId),
-    [routeSpecialistId, specialistQ.data, range]
+    () =>
+      buildAvailabilityBackgroundEvents(
+        effectiveSpecialistId ? specialistQ.data : undefined,
+        range,
+        effectiveSpecialistId
+      ),
+    [effectiveSpecialistId, specialistQ.data, range]
   );
 
   const calendarEvents = useMemo(
@@ -219,7 +257,6 @@ export function AgendaPage() {
     [availabilityBackgroundEvents, events]
   );
 
-  const todayIso = todayStr();
   const specialistsSummaryQ = useQuery({
     queryKey: ["specialists", "agenda-day-strip"],
     queryFn: () => fetchSpecialists(false),
@@ -271,13 +308,34 @@ export function AgendaPage() {
   });
 
   function onSelect(sel: DateSelectArg) {
-    if (routeSpecialistId) {
+    if (effectiveSpecialistId) {
       if (!specialistQ.data) {
+        queueMicrotask(() => calendarRef.current?.getApi().unselect());
+        return;
+      }
+      if (sel.allDay) {
+        const intervals = availabilityIntervalsForCalendarDay(specialistQ.data, sel.start);
+        if (!intervals.length) {
+          queueMicrotask(() => calendarRef.current?.getApi().unselect());
+          setUnavailableHintOpen(true);
+          setUnavailableOpen(true);
+          return;
+        }
+        const firstInterval = intervals[0];
+        const start = new Date(sel.start);
+        start.setHours(Math.floor(firstInterval.s / 60), firstInterval.s % 60, 0, 0);
+        const endMinutes = Math.min(firstInterval.s + 30, firstInterval.e);
+        const end = new Date(sel.start);
+        end.setHours(Math.floor(endMinutes / 60), endMinutes % 60, 0, 0);
+        setSelected(null);
+        setSlot({ start, end });
+        setModalOpen(true);
         queueMicrotask(() => calendarRef.current?.getApi().unselect());
         return;
       }
       if (!isSelectionWithinSpecialistAvailability(sel.start, sel.end, specialistQ.data)) {
         queueMicrotask(() => calendarRef.current?.getApi().unselect());
+        setUnavailableHintOpen(true);
         setUnavailableOpen(true);
         return;
       }
@@ -291,7 +349,7 @@ export function AgendaPage() {
     const raw = info.event.extendedProps.raw as Appointment | undefined;
     if (!raw) return;
     if (user?.role === "SPECIALIST" && user.specialistId && raw.specialistId !== user.specialistId) return;
-    if (routeSpecialistId && raw.specialistId !== routeSpecialistId) return;
+    if (effectiveSpecialistId && raw.specialistId !== effectiveSpecialistId) return;
 
     const start = info.event.start;
     if (!start) return;
@@ -301,18 +359,14 @@ export function AgendaPage() {
     setEventActionOpen(true);
   }
 
-  const specialistLabel = specialistQ.data
-    ? `${specialistQ.data.lastName}, ${specialistQ.data.firstName}`
-    : null;
-
   const quickAvailableSlots = useMemo(() => {
-    if (!routeSpecialistId || !specialistQ.data) return [] as Array<{ start: Date; end: Date; label: string }>;
+    if (!effectiveSpecialistId || !specialistQ.data) return [] as Array<{ start: Date; end: Date; label: string }>;
     const specialistAvailabilities = specialistQ.data.availabilities;
     if (!specialistAvailabilities.length) return [];
 
     const byDate = new Map<string, Array<{ start: number; end: number }>>();
     for (const a of visibleAppointments) {
-      if (a.specialistId !== routeSpecialistId || a.status === "CANCELLED") continue;
+      if (a.specialistId !== effectiveSpecialistId || a.status === "CANCELLED") continue;
       const key = getAppointmentDateStr(a);
       const row = byDate.get(key) ?? [];
       row.push({ start: hhmmToMinutes(a.startTime), end: hhmmToMinutes(a.endTime) });
@@ -334,6 +388,7 @@ export function AgendaPage() {
       const day = new Date(now);
       day.setHours(0, 0, 0, 0);
       day.setDate(day.getDate() + addDays);
+      if (day.getDay() === 0 || day.getDay() === 6) continue;
       const dateKey = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
       const occupied = byDate.get(dateKey) ?? [];
       for (const avail of specialistAvailabilities) {
@@ -350,54 +405,35 @@ export function AgendaPage() {
           found.push({
             start: candidateStart,
             end: candidateEnd,
-            label: `${candidateStart.toLocaleDateString("es-AR")} ${String(candidateStart.getHours()).padStart(2, "0")}:${String(candidateStart.getMinutes()).padStart(2, "0")}`,
+            label: `${candidateStart.toLocaleDateString("es-AR", {
+              weekday: "long",
+              day: "2-digit",
+              month: "2-digit",
+            })} - ${String(candidateStart.getHours()).padStart(2, "0")}:${String(candidateStart.getMinutes()).padStart(2, "0")}`,
           });
         }
       }
     }
     return found;
-  }, [routeSpecialistId, specialistQ.data, visibleAppointments, quickSlotsLimit]);
+  }, [effectiveSpecialistId, specialistQ.data, visibleAppointments, quickSlotsLimit]);
+
+  useEffect(() => {
+    if (!effectiveSpecialistId || !shouldOpenQuickSlots) return;
+    setShowQuickSlots(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete("new");
+    setSearchParams(next, { replace: true });
+  }, [effectiveSpecialistId, shouldOpenQuickSlots, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (!unavailableHintOpen) return;
+    const timer = window.setTimeout(() => setUnavailableHintOpen(false), 3500);
+    return () => window.clearTimeout(timer);
+  }, [unavailableHintOpen]);
 
   return (
     <div className="agenda-page-bg agenda-page-fullbleed">
       <div className="mx-auto w-full max-w-7xl space-y-4 px-4 py-4 sm:px-6">
-      <div>
-        {routeSpecialistId && (
-          <div className="mb-3">
-            <Link
-              to="/specialists"
-              className="text-sm font-medium text-cyan-200 hover:text-cyan-100 hover:underline"
-            >
-              ← Volver a especialistas
-            </Link>
-          </div>
-        )}
-        <h1 className="text-2xl font-semibold text-slate-50 drop-shadow-sm">
-          {routeSpecialistId ? (
-            <>
-              Agenda
-              {specialistLabel && (
-                <span className="block text-base font-normal text-slate-200 sm:inline sm:before:content-['_—_']">
-                  {specialistLabel}
-                </span>
-              )}
-            </>
-          ) : (
-            "Agenda"
-          )}
-        </h1>
-        {routeSpecialistId && (
-          <div className="mt-2 flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setShowQuickSlots(true)}
-              className="rounded-lg bg-cyan-500/90 px-3 py-1.5 text-sm font-medium text-white hover:bg-cyan-500"
-            >
-              Turnos directos disponibles
-            </button>
-          </div>
-        )}
-      </div>
       <div className="agenda-light rounded-2xl border border-slate-200/60 p-3 shadow-[0_20px_50px_-22px_rgba(15,23,42,0.45)]">
         <div className="mb-4 rounded-xl border border-slate-200/80 bg-white/80 p-5 shadow-sm backdrop-blur-[3px]">
           <div className="mb-4">
@@ -455,6 +491,14 @@ export function AgendaPage() {
                           <p className="truncate text-sm font-bold text-slate-900">{name}</p>
                         )}
                         <p className="mt-0.5 truncate text-[11px] text-slate-600">{s.specialty}</p>
+                        {canLinkAgenda && (
+                          <Link
+                            to={`/specialists/${s.id}/agenda?new=1`}
+                            className="mt-2 inline-flex items-center rounded-md bg-cyan-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-cyan-700"
+                          >
+                            Agendar turno
+                          </Link>
+                        )}
                       </div>
                       <ul
                         className={`text-[11px] leading-tight ${
@@ -522,37 +566,59 @@ export function AgendaPage() {
             </span>
           ))}
         </div>
-        {routeSpecialistId && specialistQ.data && !specialistQ.data.availabilities.length ? (
+        {effectiveSpecialistId && specialistQ.data && !specialistQ.data.availabilities.length ? (
           <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-950">
             Este especialista no tiene franjas de atención cargadas: no se podrán asignar turnos hasta que un administrador
             las configure.
           </div>
         ) : null}
-        <div className={routeSpecialistId ? "agenda-specialist-slots" : undefined}>
+        {unavailableHintOpen && (
+          <div className="mb-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-800 shadow-sm">
+            Fuera de franja de atención: seleccioná un horario dentro de los bloques habilitados para este especialista.
+          </div>
+        )}
+        <div className={effectiveSpecialistId ? "agenda-specialist-slots" : undefined}>
           <FullCalendar
             ref={calendarRef}
-            plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
-            initialView="timeGridWeek"
+            plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin, listPlugin]}
+            initialView={effectiveSpecialistId ? "timeGridWeek" : "listWeek"}
+            initialDate={todayIso}
             headerToolbar={{
               left: "prev,next today",
               center: "title",
-              right: "dayGridMonth,timeGridWeek,timeGridDay",
+              right: effectiveSpecialistId ? "dayGridMonth,timeGridWeek,timeGridDay" : "dayGridMonth,listWeek,timeGridDay",
             }}
+            views={
+              effectiveSpecialistId
+                ? undefined
+                : {
+                    listWeek: {
+                      type: "list",
+                      duration: { days: 7 },
+                    },
+                  }
+            }
             locale={esLocale}
-            slotMinTime="07:00:00"
-            slotMaxTime="21:00:00"
+            slotMinTime={`${WORKDAY_START}:00`}
+            slotMaxTime={`${WORKDAY_END}:00`}
             allDaySlot={false}
             height="auto"
             nowIndicator
             expandRows
             eventTimeFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
             slotLabelFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
-            selectable={!routeSpecialistId || Boolean(specialistQ.data)}
+            selectable={!effectiveSpecialistId || Boolean(specialistQ.data)}
             selectMirror
             dayMaxEvents
-            weekends
-            dayCellClassNames={routeSpecialistId ? dayCellClassNames : undefined}
+            eventMaxStack={3}
+            slotEventOverlap={false}
+            weekends={false}
+            eventOrder="start,-duration,title"
+            eventMinHeight={36}
+            eventShortHeight={28}
+            dayCellClassNames={effectiveSpecialistId ? dayCellClassNames : undefined}
             events={calendarEvents}
+            eventClassNames={eventClassNames}
             eventContent={renderEventContent}
             select={onSelect}
             eventClick={onEventClick}
@@ -571,7 +637,7 @@ export function AgendaPage() {
           initialStart={slot?.start}
           initialEnd={slot?.end}
           appointment={selected}
-          fixedSpecialistId={routeSpecialistId}
+          fixedSpecialistId={effectiveSpecialistId}
           onSaved={() => void refetch()}
         />
 
@@ -604,7 +670,7 @@ export function AgendaPage() {
                   className="rounded-lg border border-slate-300 px-4 py-2 font-medium text-slate-700 hover:bg-slate-50"
                   onClick={() => {
                     if (!clickedSlot) return;
-                    if (routeSpecialistId && specialistQ.data) {
+                    if (effectiveSpecialistId && specialistQ.data) {
                       if (!isSelectionWithinSpecialistAvailability(clickedSlot.start, clickedSlot.end, specialistQ.data)) {
                         setEventActionOpen(false);
                         setClickedAppointment(null);

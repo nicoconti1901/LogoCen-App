@@ -109,10 +109,11 @@ type SpecialistCardProps = {
   size: "fluid" | "compact";
   canEdit: boolean;
   canViewAgenda: boolean;
+  canViewFinancialData: boolean;
   onEdit: () => void;
 };
 
-function SpecialistCard({ specialist: s, size, canEdit, canViewAgenda, onEdit }: SpecialistCardProps) {
+function SpecialistCard({ specialist: s, size, canEdit, canViewAgenda, canViewFinancialData, onEdit }: SpecialistCardProps) {
   const widthClass =
     size === "fluid"
       ? "w-full"
@@ -157,13 +158,17 @@ function SpecialistCard({ specialist: s, size, canEdit, canViewAgenda, onEdit }:
           <p className="text-[11px] text-slate-600">
             <span className="font-semibold text-slate-700">Atiende:</span> {availabilityText}
           </p>
-          <p className="text-[11px] text-slate-600">
-            <span className="font-semibold text-slate-700">Valor consulta:</span>{" "}
-            {formatArsAmount(s.consultationFee) ?? "No configurado"}
-          </p>
-          <p className="truncate text-[11px] text-slate-600">
-            <span className="font-semibold text-slate-700">Alias:</span> {s.transferAlias || "No configurado"}
-          </p>
+          {canViewFinancialData && (
+            <>
+              <p className="text-[11px] text-slate-600">
+                <span className="font-semibold text-slate-700">Valor consulta:</span>{" "}
+                {formatArsAmount(s.consultationFee) ?? "No configurado"}
+              </p>
+              <p className="truncate text-[11px] text-slate-600">
+                <span className="font-semibold text-slate-700">Alias:</span> {s.transferAlias || "No configurado"}
+              </p>
+            </>
+          )}
         </div>
 
         <div className="mt-7 flex w-full gap-2.5">
@@ -402,34 +407,36 @@ function SpecialistFormModal({ open, title, editing, onClose, canDelete }: FormM
               onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
             />
           </div>
-          <div className="sm:col-span-2">
-            <label className="text-sm font-medium text-slate-600">Contraseña {editing && "(opcional)"}</label>
-            <input
-              type="password"
-              required={!editing}
-              className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 transition focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-              value={form.password}
-              onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-            />
-            <p className="mt-1 text-xs text-slate-500">
-              Debe tener al menos 8 caracteres, mayúscula, minúscula, número y símbolo.
-            </p>
-          </div>
-          <div className="sm:col-span-2">
-            <label className="text-sm font-medium text-slate-600">
-              Confirmar contraseña {editing && "(si cambia contraseña)"}
-            </label>
-            <input
-              type="password"
-              required={!editing || Boolean(form.password)}
-              className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 transition focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-              value={form.confirmPassword}
-              onChange={(e) => setForm((f) => ({ ...f, confirmPassword: e.target.value }))}
-            />
-            {passwordMismatch && (
-              <p className="mt-1 text-xs text-red-600">La confirmación de contraseña no coincide.</p>
-            )}
-          </div>
+          {!editing && (
+            <>
+              <div className="sm:col-span-2">
+                <label className="text-sm font-medium text-slate-600">Contraseña</label>
+                <input
+                  type="password"
+                  required
+                  className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 transition focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                  value={form.password}
+                  onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                  Debe tener al menos 8 caracteres, mayúscula, minúscula, número y símbolo.
+                </p>
+              </div>
+              <div className="sm:col-span-2">
+                <label className="text-sm font-medium text-slate-600">Confirmar contraseña</label>
+                <input
+                  type="password"
+                  required
+                  className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 transition focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                  value={form.confirmPassword}
+                  onChange={(e) => setForm((f) => ({ ...f, confirmPassword: e.target.value }))}
+                />
+                {passwordMismatch && (
+                  <p className="mt-1 text-xs text-red-600">La confirmación de contraseña no coincide.</p>
+                )}
+              </div>
+            </>
+          )}
           <div>
             <label className="text-sm font-medium text-slate-600">Nombre</label>
             <input
@@ -749,6 +756,7 @@ export function AdminSpecialistsPage() {
                     size="compact"
                     canEdit={isAdmin || s.id === mySpecialistId}
                     canViewAgenda={isAdmin || s.id === mySpecialistId}
+                    canViewFinancialData={isAdmin}
                     onEdit={() => openEdit(s)}
                   />
                 ))}
@@ -764,6 +772,7 @@ export function AdminSpecialistsPage() {
                     size="fluid"
                     canEdit={isAdmin || s.id === mySpecialistId}
                     canViewAgenda={isAdmin || s.id === mySpecialistId}
+                    canViewFinancialData={isAdmin}
                     onEdit={() => openEdit(s)}
                   />
                 ))}

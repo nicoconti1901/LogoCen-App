@@ -9,6 +9,7 @@ export function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [showResetHelp, setShowResetHelp] = useState(false);
 
   if (token) {
     return <Navigate to="/" replace />;
@@ -81,7 +82,23 @@ export function LoginPage() {
           >
             {pending ? "Entrando…" : "Entrar"}
           </button>
+          <button
+            type="button"
+            className="w-full text-sm font-medium text-sky-700 hover:text-sky-900 hover:underline"
+            onClick={() => setShowResetHelp((v) => !v)}
+          >
+            {showResetHelp ? "Ocultar ayuda" : "¿Olvidaste tu contraseña?"}
+          </button>
         </form>
+        {showResetHelp && (
+          <div className="mt-4 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+            <p className="font-medium">Recuperación de contraseña</p>
+            <p>
+              Por ahora la recuperación se gestiona manualmente. Solicitá el cambio de contraseña a un administrador de
+              LogoCen.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
