@@ -2,6 +2,7 @@ import axios from "axios";
 import { FormEvent, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
+import iconoImg from "../assets/icono.png";
 
 export function LoginPage() {
   const { login, token } = useAuth();
@@ -37,10 +38,15 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-brand-50 to-slate-100 px-4">
-      <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-lg">
-        <h1 className="text-center text-2xl font-semibold text-brand-900">LogoCen</h1>
-        <p className="mt-1 text-center text-sm text-slate-500">Gestión de citas médicas</p>
+    <div className="login-page-bg flex min-h-screen items-center justify-center px-4">
+      <div className="login-card w-full max-w-md rounded-2xl p-8">
+        <h1 className="text-center text-2xl font-semibold tracking-tight text-brand-900">LogoCen</h1>
+        <div className="mt-2 flex items-center justify-center gap-3" aria-hidden="true">
+          <img src={iconoImg} alt="" className="h-6 w-6 object-contain opacity-90" />
+          <span className="h-px w-12 bg-sky-200" />
+          <img src={iconoImg} alt="" className="h-6 w-6 object-contain opacity-90" />
+        </div>
+        <p className="mt-1 text-center text-sm text-slate-600">Gestión de citas médicas</p>
         <form className="mt-8 space-y-4" onSubmit={onSubmit}>
           <div>
             <label className="block text-sm font-medium text-slate-700" htmlFor="email">

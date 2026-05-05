@@ -133,13 +133,17 @@ function renderEventContent(arg: EventContentArg) {
   const patient = patientNameUpper(raw.patient.lastName, raw.patient.firstName);
   const specialist = `${raw.specialist.lastName}, ${raw.specialist.firstName}`;
   const consultorio = raw.consultorio.trim() || "Sin consultorio";
+  const status = statusLabel[raw.status];
   const isListView = arg.view.type.startsWith("list");
 
   if (isListView) {
     return (
       <div className="appt-list-event-content">
-        <span className="appt-list-patient">{patient}</span>
-        <span className="appt-list-specialist">{specialist}</span>
+        <span className="appt-list-left">
+          <span className="appt-list-patient">{patient}</span>
+          <span className="appt-list-specialist">{specialist}</span>
+        </span>
+        <span className={`appt-list-status status-chip-${raw.status.toLowerCase()}`}>{status}</span>
         <span className="appt-list-office">{consultorio}</span>
       </div>
     );
@@ -148,8 +152,11 @@ function renderEventContent(arg: EventContentArg) {
   return (
     <div className="appt-event-content">
       <div className="appt-event-patient">Pac: {patient}</div>
-      <div className="appt-event-specialist">Esp: {specialist}</div>
-      <div className="appt-event-office">{consultorio}</div>
+      <div className="appt-event-meta-block">
+        <div className="appt-event-specialist">Esp: {specialist}</div>
+        <div className={`appt-event-status status-chip-${raw.status.toLowerCase()}`}>{status}</div>
+        <div className="appt-event-office">{consultorio}</div>
+      </div>
     </div>
   );
 }
@@ -614,8 +621,8 @@ export function AgendaPage() {
             slotEventOverlap={false}
             weekends={false}
             eventOrder="start,-duration,title"
-            eventMinHeight={36}
-            eventShortHeight={28}
+            eventMinHeight={50}
+            eventShortHeight={40}
             dayCellClassNames={effectiveSpecialistId ? dayCellClassNames : undefined}
             events={calendarEvents}
             eventClassNames={eventClassNames}
