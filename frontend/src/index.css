@@ -8,16 +8,96 @@ body {
 }
 
 .agenda-page-bg {
-  --agenda-page-photo: url("https://commons.wikimedia.org/wiki/Special:FilePath/A_waiting_room_at_a_medical_healthcare_clinic,_doctor%27s_office,_hospital.jpg");
+  --agenda-page-photo: url("./assets/fondo-home.png");
+  --agenda-tile-height: 900px;
   position: relative;
   overflow: hidden;
   background-image:
-    linear-gradient(120deg, rgba(7, 12, 20, 0.56), rgba(7, 12, 20, 0.3)),
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent calc(var(--agenda-tile-height) - 1px),
+      rgba(255, 255, 255, 0.14) calc(var(--agenda-tile-height) - 1px),
+      rgba(255, 255, 255, 0.14) var(--agenda-tile-height)
+    ),
+    linear-gradient(120deg, rgba(7, 12, 20, 0.48), rgba(7, 12, 20, 0.26)),
     radial-gradient(circle at 50% 38%, rgba(15, 23, 42, 0.12), rgba(15, 23, 42, 0.34)),
     var(--agenda-page-photo);
+  background-size: 100% 100%, 100% 100%, 100% 100%, 100% auto;
+  background-position: top center;
+  background-repeat: repeat-y, no-repeat, no-repeat, repeat-y;
+}
+
+.login-page-bg {
+  --login-ink-950: #020617;
+  --login-ink-900: #0f172a;
+  --login-ink-800: #1e293b;
+  --login-accent: #38bdf8;
+  position: relative;
+  overflow: hidden;
+  background-image:
+    radial-gradient(120% 90% at 50% -20%, rgba(56, 189, 248, 0.12), transparent 56%),
+    linear-gradient(180deg, rgba(2, 6, 23, 0.72), rgba(15, 23, 42, 0.64)),
+    url("./assets/fondo-login.png");
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
+}
+
+.login-page-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0) 32%, rgba(2, 6, 23, 0.34) 100%),
+    radial-gradient(circle at 50% 20%, rgba(186, 230, 253, 0.14), transparent 52%);
+}
+
+.login-page-bg::after {
+  content: "";
+  position: absolute;
+  width: min(58vw, 760px);
+  aspect-ratio: 1;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  pointer-events: none;
+  background: radial-gradient(circle, rgba(56, 189, 248, 0.1), rgba(56, 189, 248, 0.03) 48%, rgba(2, 6, 23, 0) 72%);
+  filter: blur(1px);
+}
+
+.login-page-bg > * {
+  position: relative;
+  z-index: 1;
+}
+
+.login-card {
+  position: relative;
+  isolation: isolate;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.97), rgba(248, 250, 252, 0.93));
+  border: 1px solid rgba(226, 232, 240, 0.56);
+  backdrop-filter: blur(10px);
+  box-shadow:
+    0 34px 64px -30px rgba(2, 6, 23, 0.74),
+    0 18px 36px -24px rgba(56, 189, 248, 0.33),
+    inset 0 1px 0 rgba(255, 255, 255, 0.96);
+}
+
+.login-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(145deg, rgba(186, 230, 253, 0.75), rgba(56, 189, 248, 0.24), rgba(255, 255, 255, 0.62));
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
 }
 
 .agenda-page-fullbleed {
@@ -136,7 +216,7 @@ body {
 }
 
 .fc .appt-event .fc-event-main {
-  padding: 0.22rem 0.4rem;
+  padding: 0.3rem 0.45rem;
   font-size: 0.76rem;
   font-weight: 600;
 }
@@ -149,38 +229,165 @@ body {
   font-weight: 700;
 }
 
+.fc .appt-event-meta-block {
+  margin-top: 0.24rem;
+  display: grid;
+  gap: 0.32rem;
+}
+
 .fc .appt-event-specialist {
-  margin-top: 0.08rem;
   font-size: 0.67rem;
   opacity: 0.8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fc .appt-event-status {
+  font-size: 0.67rem;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 0.04rem 0.5rem;
+  min-width: 4.5rem;
+  text-align: center;
+  justify-self: center;
+  transition: background-color 180ms ease, color 180ms ease;
 }
 
 .fc .appt-event-office {
-  margin-top: 0.08rem;
   font-size: 0.67rem;
   opacity: 0.8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.fc .fc-list-event:hover td {
-  background: #f8fafc;
+.fc .fc-list-event td {
+  transition: background-color 180ms ease;
+}
+
+.fc .fc-list-event.status-reserved td {
+  background: #dbeeff !important;
+  color: #0f172a !important;
+}
+
+.fc .fc-list-event.status-attended td {
+  background: #d8f6e5 !important;
+  color: #0f172a !important;
+}
+
+.fc .fc-list-event.status-cancelled td {
+  background: #ffe2e8 !important;
+  color: #0f172a !important;
+}
+
+.fc .fc-list-event.status-no_show td {
+  background: #ffeccf !important;
+  color: #0f172a !important;
+}
+
+.fc .fc-list-event.status-reserved:hover td {
+  background: #c7e4ff !important;
+}
+
+.fc .fc-list-event.status-attended:hover td {
+  background: #c3efd7 !important;
+}
+
+.fc .fc-list-event.status-cancelled:hover td {
+  background: #ffd2dc !important;
+}
+
+.fc .fc-list-event.status-no_show:hover td {
+  background: #ffe2b8 !important;
 }
 
 .fc .appt-list-event-content {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.85rem;
   line-height: 1.2;
 }
 
+.fc .appt-list-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
 .fc .appt-list-patient {
+  font-size: 0.95rem;
+  letter-spacing: 0.01em;
   font-weight: 700;
   color: #0f172a;
 }
 
 .fc .appt-list-specialist {
+  color: #475569;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.015em;
+  opacity: 0.95;
+  padding: 0.04rem 0.35rem;
+  border-radius: 0.35rem;
+  background: rgba(241, 245, 249, 0.9);
+}
+
+.fc .appt-list-status {
+  border-radius: 999px;
+  padding: 0.14rem 0.55rem;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  margin-left: 1.6rem;
+  margin-right: 0;
+  transition: background-color 180ms ease, color 180ms ease;
+}
+
+.fc .status-chip-reserved {
+  background: #f1f5f9;
   color: #334155;
-  font-size: 0.78rem;
+}
+
+.fc .status-chip-attended {
+  background: #f1f5f9;
+  color: #334155;
+}
+
+.fc .status-chip-cancelled {
+  background: #f1f5f9;
+  color: #334155;
+}
+
+.fc .status-chip-no_show {
+  background: #f1f5f9;
+  color: #334155;
+}
+
+.fc .fc-list-event:hover .status-chip-reserved,
+.fc .appt-event:hover .status-chip-reserved {
+  background: #e2e8f0;
+  color: #1e293b;
+}
+
+.fc .fc-list-event:hover .status-chip-attended,
+.fc .appt-event:hover .status-chip-attended {
+  background: #e2e8f0;
+  color: #1e293b;
+}
+
+.fc .fc-list-event:hover .status-chip-cancelled,
+.fc .appt-event:hover .status-chip-cancelled {
+  background: #e2e8f0;
+  color: #1e293b;
+}
+
+.fc .fc-list-event:hover .status-chip-no_show,
+.fc .appt-event:hover .status-chip-no_show {
+  background: #e2e8f0;
+  color: #1e293b;
 }
 
 .fc .appt-list-office {
@@ -199,39 +406,6 @@ body {
   background: #f8fafc;
 }
 
-.fc .fc-list-day.fc-day-today .fc-list-day-cushion {
-  background: linear-gradient(90deg, rgba(14, 116, 144, 0.28), rgba(14, 165, 233, 0.14));
-  border-left: 6px solid #0369a1;
-  box-shadow: inset 0 -1px 0 rgba(14, 116, 144, 0.2), inset 0 1px 0 rgba(14, 116, 144, 0.14);
-}
-
-.fc .fc-list-day.fc-day-today .fc-list-day-text::after {
-  content: " HOY";
-  margin-left: 0.45rem;
-  padding: 0.08rem 0.42rem;
-  border-radius: 999px;
-  font-size: 0.65rem;
-  font-weight: 800;
-  letter-spacing: 0.03em;
-  color: #ffffff;
-  background: #0369a1;
-  border: 1px solid #0c4a6e;
-  box-shadow: 0 1px 2px rgba(2, 6, 23, 0.22);
-}
-
-.fc .fc-list-day.fc-day-today .fc-list-day-text,
-.fc .fc-list-day.fc-day-today .fc-list-day-side-text {
-  color: #0c4a6e;
-  font-weight: 800;
-}
-
-.fc .fc-list-event.agenda-event-today td {
-  background: linear-gradient(90deg, rgba(224, 242, 254, 0.9), rgba(240, 249, 255, 0.8));
-}
-
-.fc .fc-list-event.agenda-event-today td:first-child {
-  border-left: 4px solid #0284c7;
-}
 
 .status-reserved {
   background: #0ea5e9 !important;
