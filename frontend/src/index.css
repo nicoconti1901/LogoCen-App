@@ -161,6 +161,78 @@ body {
   opacity: 0.8;
 }
 
+.fc .fc-list-event:hover td {
+  background: #f8fafc;
+}
+
+.fc .appt-list-event-content {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  line-height: 1.2;
+}
+
+.fc .appt-list-patient {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.fc .appt-list-specialist {
+  color: #334155;
+  font-size: 0.78rem;
+}
+
+.fc .appt-list-office {
+  margin-left: auto;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  padding: 0.14rem 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #0f172a;
+  background: #f1f5f9;
+  white-space: nowrap;
+}
+
+.fc .fc-list-day-cushion {
+  background: #f8fafc;
+}
+
+.fc .fc-list-day.fc-day-today .fc-list-day-cushion {
+  background: linear-gradient(90deg, rgba(14, 116, 144, 0.28), rgba(14, 165, 233, 0.14));
+  border-left: 6px solid #0369a1;
+  box-shadow: inset 0 -1px 0 rgba(14, 116, 144, 0.2), inset 0 1px 0 rgba(14, 116, 144, 0.14);
+}
+
+.fc .fc-list-day.fc-day-today .fc-list-day-text::after {
+  content: " HOY";
+  margin-left: 0.45rem;
+  padding: 0.08rem 0.42rem;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  color: #ffffff;
+  background: #0369a1;
+  border: 1px solid #0c4a6e;
+  box-shadow: 0 1px 2px rgba(2, 6, 23, 0.22);
+}
+
+.fc .fc-list-day.fc-day-today .fc-list-day-text,
+.fc .fc-list-day.fc-day-today .fc-list-day-side-text {
+  color: #0c4a6e;
+  font-weight: 800;
+}
+
+.fc .fc-list-event.agenda-event-today td {
+  background: linear-gradient(90deg, rgba(224, 242, 254, 0.9), rgba(240, 249, 255, 0.8));
+}
+
+.fc .fc-list-event.agenda-event-today td:first-child {
+  border-left: 4px solid #0284c7;
+}
+
 .status-reserved {
   background: #0ea5e9 !important;
   color: #06283d !important;

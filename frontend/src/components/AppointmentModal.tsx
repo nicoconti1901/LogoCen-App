@@ -36,8 +36,8 @@ function localTimeStr(d: Date): string {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-const WORKDAY_START = "07:00";
-const WORKDAY_END = "21:00";
+const WORKDAY_START = "08:00";
+const WORKDAY_END = "20:00";
 const SHORT_FREE_RANGE_MINUTES = 30;
 const CONSULTORIOS_BASE = [
   "Consultorio 1",
@@ -110,14 +110,6 @@ export function AppointmentModal({
   const isAdmin = user?.role === "ADMIN";
   const mySpecialistId = user?.specialistId ?? "";
 
-  const qc = useQueryClient();
-  const patientsQ = useQuery({ queryKey: ["patients"], queryFn: () => fetchPatients(), enabled: open });
-  const specialistsQ = useQuery({
-    queryKey: ["specialists"],
-    queryFn: () => fetchSpecialists(false),
-    enabled: open && isAdmin,
-  });
-
   const [patientId, setPatientId] = useState("");
   const [specialistId, setSpecialistId] = useState("");
   const [consultorio, setConsultorio] = useState("");
@@ -132,6 +124,19 @@ export function AppointmentModal({
   const [reasonForVisit, setReasonForVisit] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const effectiveSpecialistId = fixedSpecialistId ?? (isAdmin ? specialistId : mySpecialistId);
+
+  const qc = useQueryClient();
+  const patientsQ = useQuery({
+    queryKey: ["patients", "by-specialist", effectiveSpecialistId || "all"],
+    queryFn: () => fetchPatients(undefined, effectiveSpecialistId || undefined),
+    enabled: open,
+  });
+  const specialistsQ = useQuery({
+    queryKey: ["specialists"],
+    queryFn: () => fetchSpecialists(false),
+    enabled: open && isAdmin,
+  });
 
   const isEdit = Boolean(appointment);
   const consultorioDayQ = useQuery({
@@ -359,10 +364,15 @@ export function AppointmentModal({
       .sort((a, b) => a.office.localeCompare(b.office));
   }, [consultorioDayRows, appointment?.id, startTimeStr, endTimeStr]);
 
-  const effectiveSpecialistId = fixedSpecialistId ?? specialistId;
-  const selectedSpecialist = isAdmin
+  const selectedSpecialist = isAdmin && !fixedSpecialistId
     ? specialists.find((s) => s.id === effectiveSpecialistId) ?? null
     : null;
+
+  useEffect(() => {
+    if (!patientId || patients.length === 0) return;
+    const existsInFilteredList = patients.some((p) => p.id === patientId);
+    if (!existsInFilteredList) setPatientId("");
+  }, [patientId, patients]);
 
   const canSubmit = useMemo(() => {
     if (!patientId || !consultorio.trim() || !dateStr || !startTimeStr || !endTimeStr) return false;
