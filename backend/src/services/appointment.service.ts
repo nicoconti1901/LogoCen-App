@@ -107,6 +107,10 @@ export async function listAppointments(params: {
   specialistId?: string;
   patientId?: string;
 }) {
+  const todayOnly = toDateOnly(new Date());
+  const nowT = currentTimeHHmm();
+  await appointmentRepository.markExpiredReservedAsAttended(todayOnly, nowT);
+
   const where: Prisma.AppointmentWhereInput = {};
 
   if (params.specialistId) {
@@ -115,9 +119,6 @@ export async function listAppointments(params: {
 
   if (params.patientId) where.patientId = params.patientId;
   if (params.status) where.status = params.status;
-
-  const todayOnly = toDateOnly(new Date());
-  const nowT = currentTimeHHmm();
 
   if (params.today && params.upcoming) {
     where.appointmentDate = { equals: todayOnly };
@@ -151,6 +152,9 @@ export async function listAppointments(params: {
 }
 
 export async function getAppointmentById(id: string, role: Role, userSpecialistId: string | null) {
+  const todayOnly = toDateOnly(new Date());
+  const nowT = currentTimeHHmm();
+  await appointmentRepository.markExpiredReservedAsAttended(todayOnly, nowT);
   const a = await appointmentRepository.findById(id);
   if (!a) throw new AppError(404, "Cita no encontrada");
   assertCanAccessAppointment(role, userSpecialistId, a.specialistId);

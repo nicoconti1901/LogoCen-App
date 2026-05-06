@@ -1,4 +1,5 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createPatientClinicalHistory,
@@ -9,12 +10,13 @@ import {
   fetchPatientClinicalHistory,
   fetchPatients,
   fetchSpecialists,
+  updateAppointment,
   updatePatientClinicalHistory,
   updatePatient,
 } from "../../api/endpoints";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { useAuth } from "../../contexts/AuthContext";
-import type { AppointmentStatus, ClinicalHistoryEntry, Patient, Specialist } from "../../types";
+import type { Appointment, AppointmentStatus, ClinicalHistoryEntry, Patient, Specialist } from "../../types";
 
 const emptyForm = {
   firstName: "",
@@ -35,6 +37,31 @@ function patientNameUpper(lastName: string, firstName: string): string {
   return `${lastName}, ${firstName}`.toUpperCase();
 }
 
+function appointmentHasDebt(
+  paymentMethod: Appointment["paymentMethod"],
+  status: AppointmentStatus,
+  paymentCompleted: boolean
+): boolean {
+  if (paymentCompleted) return false;
+  return paymentMethod === null || status === "NO_SHOW";
+}
+
+const paymentMethodLabel: Record<Exclude<Appointment["paymentMethod"], null>, string> = {
+  TRANSFER_TO_LOGOCEN: "Transferencia a LogoCen",
+  TRANSFER_TO_SPECIALIST: "Transferencia al especialista",
+  CASH_TO_LOGOCEN: "Efectivo a LogoCen",
+};
+
+function parseMoney(raw: string | null | undefined): number {
+  if (!raw) return 0;
+  const n = Number(raw.replace(",", "."));
+  return Number.isFinite(n) ? n : 0;
+}
+
+function formatMoney(amount: number): string {
+  return `$${new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 }).format(amount)}`;
+}
+
 const appointmentStatusLabel: Record<AppointmentStatus, string> = {
   RESERVED: "RESERVADO",
   ATTENDED: "FINALIZADO",
@@ -43,16 +70,22 @@ const appointmentStatusLabel: Record<AppointmentStatus, string> = {
 };
 
 export function AdminPatientsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const isAdmin = user?.role === "ADMIN";
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [specialistFilter, setSpecialistFilter] = useState("");
+  const [debtFilter, setDebtFilter] = useState<"all" | "debt" | "no_debt">("all");
   const [showForm, setShowForm] = useState(false);
   const [historyPatient, setHistoryPatient] = useState<Patient | null>(null);
+  const [paymentHistoryPatient, setPaymentHistoryPatient] = useState<Patient | null>(null);
   const [clinicalHistoryPatient, setClinicalHistoryPatient] = useState<Patient | null>(null);
   const [clinicalDate, setClinicalDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [clinicalDiagnosis, setClinicalDiagnosis] = useState("");
+  const [paymentMethodByAppointmentId, setPaymentMethodByAppointmentId] = useState<
+    Record<string, Exclude<Appointment["paymentMethod"], null>>
+  >({});
   const [editingClinicalEntryId, setEditingClinicalEntryId] = useState<string | null>(null);
   const [editingClinicalDate, setEditingClinicalDate] = useState("");
   const [editingClinicalDiagnosis, setEditingClinicalDiagnosis] = useState("");
@@ -67,6 +100,42 @@ export function AdminPatientsPage() {
     queryFn: () => fetchSpecialists(),
     enabled: isAdmin,
   });
+  const { data: debtIndexAppointments = [], isLoading: isLoadingDebtIndex } = useQuery({
+    queryKey: ["appointments", "patients-debt-index", specialistFilter, isAdmin ? "ADMIN" : user?.specialistId],
+    queryFn: () =>
+      fetchAppointments({
+        ...(isAdmin
+          ? specialistFilter
+            ? { specialistId: specialistFilter }
+            : {}
+          : user?.specialistId
+            ? { specialistId: user.specialistId }
+            : {}),
+      }),
+  });
+  const debtPatientIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const a of debtIndexAppointments) {
+      if (appointmentHasDebt(a.paymentMethod, a.status, a.paymentCompleted)) ids.add(a.patientId);
+    }
+    return ids;
+  }, [debtIndexAppointments]);
+  const debtAmountByPatientId = useMemo(() => {
+    const amountMap = new Map<string, number>();
+    for (const a of debtIndexAppointments) {
+      if (!appointmentHasDebt(a.paymentMethod, a.status, a.paymentCompleted)) continue;
+      const current = amountMap.get(a.patientId) ?? 0;
+      amountMap.set(a.patientId, current + parseMoney(a.specialist.consultationFee));
+    }
+    return amountMap;
+  }, [debtIndexAppointments]);
+  const filteredPatients = useMemo(() => {
+    if (debtFilter === "all") return data;
+    return data.filter((p) => {
+      const hasDebt = debtPatientIds.has(p.id);
+      return debtFilter === "debt" ? hasDebt : !hasDebt;
+    });
+  }, [data, debtFilter, debtPatientIds]);
 
   const [editing, setEditing] = useState<Patient | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -85,6 +154,24 @@ export function AdminPatientsPage() {
     },
     enabled: Boolean(historyPatient),
   });
+  const { data: paymentHistory = [], isLoading: isLoadingPaymentHistory } = useQuery({
+    queryKey: ["appointments", "patient-payment-history", paymentHistoryPatient?.id],
+    queryFn: async () => {
+      const appointments = await fetchAppointments({ patientId: paymentHistoryPatient!.id });
+      return appointments.slice().sort((a, b) => {
+        const aKey = `${a.appointmentDate} ${a.startTime}`;
+        const bKey = `${b.appointmentDate} ${b.startTime}`;
+        return bKey.localeCompare(aKey);
+      });
+    },
+    enabled: Boolean(paymentHistoryPatient),
+  });
+  const paymentHistorySummary = useMemo(() => {
+    const total = paymentHistory.length;
+    const debtRows = paymentHistory.filter((a) => appointmentHasDebt(a.paymentMethod, a.status, a.paymentCompleted));
+    const debtAmount = debtRows.reduce((acc, a) => acc + parseMoney(a.specialist.consultationFee), 0);
+    return { total, debtCount: debtRows.length, hasDebt: debtRows.length > 0, debtAmount };
+  }, [paymentHistory]);
   const { data: clinicalHistory = [], isLoading: isLoadingClinicalHistory } = useQuery({
     queryKey: ["patients", "clinical-history", clinicalHistoryPatient?.id],
     queryFn: () => fetchPatientClinicalHistory(clinicalHistoryPatient!.id),
@@ -180,12 +267,43 @@ export function AdminPatientsPage() {
     mutationFn: (id: string) => deletePatient(id),
     onSuccess: async () => qc.invalidateQueries({ queryKey: ["patients"] }),
   });
+  const markDebtPaidMut = useMutation({
+    mutationFn: (a: Appointment) =>
+      updateAppointment(a.id, {
+        paymentCompleted: true,
+        paymentDate: new Date().toISOString().slice(0, 10),
+        paymentMethod: paymentMethodByAppointmentId[a.id] ?? a.paymentMethod ?? "CASH_TO_LOGOCEN",
+      }),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["appointments"] });
+      await qc.invalidateQueries({ queryKey: ["patients"] });
+    },
+  });
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
     if (editing) updateMut.mutate();
     else createMut.mutate();
   }
+
+  useEffect(() => {
+    const patientIdFromQuery = searchParams.get("paymentPatientId");
+    if (!patientIdFromQuery) {
+      if (paymentHistoryPatient) setPaymentHistoryPatient(null);
+      return;
+    }
+    if (paymentHistoryPatient?.id === patientIdFromQuery) return;
+    const target = data.find((p) => p.id === patientIdFromQuery);
+    if (target) {
+      setPaymentHistoryPatient(target);
+      return;
+    }
+    if (!isLoading) {
+      const next = new URLSearchParams(searchParams);
+      next.delete("paymentPatientId");
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, data, isLoading, paymentHistoryPatient, setSearchParams]);
 
   return (
     <div className="space-y-6">
@@ -215,6 +333,15 @@ export function AdminPatientsPage() {
             ))}
           </select>
         )}
+        <select
+          className="min-w-52 rounded-lg border border-slate-300 px-3 py-2"
+          value={debtFilter}
+          onChange={(e) => setDebtFilter(e.target.value as "all" | "debt" | "no_debt")}
+        >
+          <option value="all">Todos</option>
+          <option value="debt">Solo con pagos pendientes</option>
+          <option value="no_debt">Solo sin pagos pendientes</option>
+        </select>
         <button
           type="button"
           className="rounded-lg bg-brand-600 px-4 py-2 text-white hover:bg-brand-700"
@@ -227,28 +354,32 @@ export function AdminPatientsPage() {
           Agregar paciente
         </button>
       </div>
+      {isLoadingDebtIndex && (
+        <p className="text-xs text-slate-500">Actualizando estado de pagos de pacientes…</p>
+      )}
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="min-w-full text-left text-sm">
-          <thead className="bg-slate-50 text-slate-600">
+          <thead className="bg-sky-100 text-slate-700">
             <tr>
               <th className="px-4 py-3">Paciente</th>
               <th className="px-4 py-3">Correo</th>
               <th className="px-4 py-3">Teléfono</th>
               <th className="px-4 py-3">Especialista asignado</th>
+              <th className="px-4 py-3">Deuda</th>
               <th className="px-4 py-3">Acciones</th>
             </tr>
           </thead>
           <tbody>
             {isLoading && (
               <tr>
-                <td colSpan={5} className="px-4 py-6 text-center">
+                <td colSpan={6} className="px-4 py-6 text-center">
                   Cargando…
                 </td>
               </tr>
             )}
             {!isLoading &&
-              data.map((p) => (
+              filteredPatients.map((p) => (
                 <tr key={p.id} className="border-t border-slate-100">
                   <td className="px-4 py-3">
                     {patientNameUpper(p.lastName, p.firstName)}
@@ -257,6 +388,22 @@ export function AdminPatientsPage() {
                   <td className="px-4 py-3">{p.phone ?? "—"}</td>
                   <td className="px-4 py-3">
                     {p.specialist ? `${p.specialist.lastName}, ${p.specialist.firstName}` : "Sin asignar"}
+                  </td>
+                  <td className="px-4 py-3">
+                    {debtPatientIds.has(p.id) ? (
+                      <div className="flex flex-col gap-1">
+                        <span className="w-fit rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
+                          Con deuda
+                        </span>
+                        <span className="text-xs font-semibold text-amber-900">
+                          {formatMoney(debtAmountByPatientId.get(p.id) ?? 0)}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                        Sin deuda
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-2">
@@ -268,6 +415,20 @@ export function AdminPatientsPage() {
                       >
                         <span aria-hidden>🕘</span>
                         Turnos
+                      </button>
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 transition hover:border-amber-300 hover:bg-amber-100"
+                        onClick={() => {
+                          setPaymentHistoryPatient(p);
+                          const next = new URLSearchParams(searchParams);
+                          next.set("paymentPatientId", p.id);
+                          setSearchParams(next, { replace: true });
+                        }}
+                        title="Ver estado de pagos"
+                      >
+                        <span aria-hidden>💳</span>
+                        Pagos
                       </button>
                       <button
                         type="button"
@@ -304,6 +465,13 @@ export function AdminPatientsPage() {
                   </td>
                 </tr>
               ))}
+            {!isLoading && filteredPatients.length === 0 && (
+              <tr>
+                <td colSpan={6} className="px-4 py-6 text-center text-slate-500">
+                  No hay pacientes para el filtro seleccionado.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -441,7 +609,7 @@ export function AdminPatientsPage() {
             {!isLoadingHistory && appointmentHistory.length > 0 && (
               <div className="overflow-x-auto rounded-lg border border-slate-200">
                 <table className="min-w-full text-left text-sm">
-                  <thead className="bg-slate-50 text-slate-600">
+                  <thead className="bg-sky-100 text-slate-700">
                     <tr>
                       <th className="px-3 py-2">Fecha</th>
                       <th className="px-3 py-2">Hora</th>
@@ -460,6 +628,133 @@ export function AdminPatientsPage() {
                         <td className="px-3 py-2">{appointmentStatusLabel[a.status]}</td>
                       </tr>
                     ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      {paymentHistoryPatient && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+          <div className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-xl bg-white p-4 shadow-xl">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="font-medium text-slate-800">
+                  Pagos: {patientNameUpper(paymentHistoryPatient.lastName, paymentHistoryPatient.firstName)}
+                </h2>
+                <p className="mt-1 text-xs text-slate-600">
+                  Turnos totales: {paymentHistorySummary.total} · Con pagos pendientes: {paymentHistorySummary.debtCount} · Monto pendiente:{" "}
+                  {formatMoney(paymentHistorySummary.debtAmount)}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span
+                  className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                    paymentHistorySummary.hasDebt ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-700"
+                  }`}
+                >
+                  {paymentHistorySummary.hasDebt ? "Con pagos pendientes" : "Sin pagos pendientes"}
+                </span>
+                <button
+                  type="button"
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm"
+                  onClick={() => {
+                    const next = new URLSearchParams(searchParams);
+                    next.delete("paymentPatientId");
+                    setSearchParams(next, { replace: true });
+                  }}
+                >
+                  Cerrar
+                </button>
+              </div>
+            </div>
+            {isLoadingPaymentHistory && <p className="text-sm text-slate-600">Cargando historial de pagos…</p>}
+            {!isLoadingPaymentHistory && paymentHistory.length === 0 && (
+              <p className="text-sm text-slate-600">Este paciente todavía no tiene turnos.</p>
+            )}
+            {!isLoadingPaymentHistory && paymentHistory.length > 0 && (
+              <div className="overflow-x-auto rounded-lg border border-slate-200">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="bg-sky-100 text-slate-700">
+                    <tr>
+                      <th className="px-3 py-2">Fecha</th>
+                      <th className="px-3 py-2">Hora</th>
+                      <th className="px-3 py-2">Estado turno</th>
+                      <th className="px-3 py-2">Forma de pago</th>
+                      <th className="px-3 py-2">Pago realizado</th>
+                      <th className="px-3 py-2">Estado pago</th>
+                      <th className="px-3 py-2">Monto pendiente</th>
+                      <th className="px-3 py-2">Acción</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paymentHistory.map((a) => {
+                      const hasDebt = appointmentHasDebt(a.paymentMethod, a.status, a.paymentCompleted);
+                      return (
+                        <tr key={a.id} className="border-t border-slate-100">
+                          <td className="px-3 py-2">{a.appointmentDate.slice(0, 10)}</td>
+                          <td className="px-3 py-2">
+                            {a.startTime} - {a.endTime}
+                          </td>
+                          <td className="px-3 py-2">{appointmentStatusLabel[a.status]}</td>
+                          <td className="px-3 py-2">
+                            {a.paymentMethod === "TRANSFER_TO_LOGOCEN"
+                              ? "Transferencia a LogoCen"
+                              : a.paymentMethod === "TRANSFER_TO_SPECIALIST"
+                                ? "Transferencia al especialista"
+                                : a.paymentMethod === "CASH_TO_LOGOCEN"
+                                  ? "Efectivo a LogoCen"
+                                  : "Sin definir"}
+                          </td>
+                          <td className="px-3 py-2">{a.paymentCompleted ? "Sí" : "No"}</td>
+                          <td className="px-3 py-2">
+                            <span
+                              className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                                hasDebt ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-700"
+                              }`}
+                            >
+                              {hasDebt ? "Pago pendiente" : "Pago al día"}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 font-semibold text-slate-800">
+                            {hasDebt ? formatMoney(parseMoney(a.specialist.consultationFee)) : "—"}
+                          </td>
+                          <td className="px-3 py-2">
+                            {hasDebt ? (
+                              <div className="flex items-center gap-2">
+                                <select
+                                  className="rounded-lg border border-slate-300 px-2 py-1.5 text-xs"
+                                  value={paymentMethodByAppointmentId[a.id] ?? a.paymentMethod ?? "CASH_TO_LOGOCEN"}
+                                  onChange={(e) =>
+                                    setPaymentMethodByAppointmentId((prev) => ({
+                                      ...prev,
+                                      [a.id]: e.target.value as Exclude<Appointment["paymentMethod"], null>,
+                                    }))
+                                  }
+                                >
+                                  {Object.entries(paymentMethodLabel).map(([method, label]) => (
+                                    <option key={method} value={method}>
+                                      {label}
+                                    </option>
+                                  ))}
+                                </select>
+                                <button
+                                  type="button"
+                                  disabled={markDebtPaidMut.isPending}
+                                  className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                                  onClick={() => markDebtPaidMut.mutate(a)}
+                                >
+                                  Marcar pagado
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-slate-400">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -529,7 +824,7 @@ export function AdminPatientsPage() {
             {!isLoadingClinicalHistory && clinicalHistory.length > 0 && (
               <div className="overflow-x-auto rounded-lg border border-slate-200">
                 <table className="min-w-full text-left text-sm">
-                  <thead className="bg-slate-50 text-slate-600">
+                  <thead className="bg-sky-100 text-slate-700">
                     <tr>
                       <th className="px-3 py-2">Fecha</th>
                       <th className="px-3 py-2">Diagnóstico</th>

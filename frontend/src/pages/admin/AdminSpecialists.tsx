@@ -67,6 +67,19 @@ function formatArsAmount(value: string | null): string | null {
   return `$${formatted}`;
 }
 
+function specialtyBadge(specialty: string): { icon: string; label: string } {
+  const normalized = specialty.toLowerCase();
+  if (normalized.includes("kinesi")) return { icon: "🦴", label: "Kinesiología" };
+  if (normalized.includes("cardio")) return { icon: "❤️", label: "Cardiología" };
+  if (normalized.includes("pedia")) return { icon: "🧒", label: "Pediatría" };
+  if (normalized.includes("nutri")) return { icon: "🥗", label: "Nutrición" };
+  if (normalized.includes("psico")) return { icon: "🧠", label: "Psicología" };
+  if (normalized.includes("derma")) return { icon: "🧴", label: "Dermatología" };
+  if (normalized.includes("odonto")) return { icon: "🦷", label: "Odontología" };
+  if (normalized.includes("trauma")) return { icon: "🦵", label: "Traumatología" };
+  return { icon: "🩺", label: specialty };
+}
+
 function SpecialistAvatar({ specialist }: { specialist: Specialist }) {
   const [broken, setBroken] = useState(false);
   const [candidateIdx, setCandidateIdx] = useState(0);
@@ -113,26 +126,63 @@ type SpecialistCardProps = {
   onEdit: () => void;
 };
 
+const cardVariants = [
+  {
+    frame: "border-sky-200 hover:border-sky-300",
+    topAccent: "from-sky-600 via-blue-600 to-indigo-600",
+    bubble: "bg-sky-100/70",
+    ring: "ring-sky-200",
+  },
+  {
+    frame: "border-cyan-200 hover:border-cyan-300",
+    topAccent: "from-cyan-600 via-teal-600 to-sky-600",
+    bubble: "bg-cyan-100/70",
+    ring: "ring-cyan-200",
+  },
+  {
+    frame: "border-violet-200 hover:border-violet-300",
+    topAccent: "from-violet-600 via-indigo-600 to-blue-600",
+    bubble: "bg-violet-100/70",
+    ring: "ring-violet-200",
+  },
+  {
+    frame: "border-fuchsia-200 hover:border-fuchsia-300",
+    topAccent: "from-fuchsia-600 via-pink-600 to-rose-600",
+    bubble: "bg-fuchsia-100/70",
+    ring: "ring-fuchsia-200",
+  },
+] as const;
+
+function variantIndexFromSpecialist(id: string): number {
+  let hash = 0;
+  for (let i = 0; i < id.length; i += 1) {
+    hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+  }
+  return hash % cardVariants.length;
+}
+
 function SpecialistCard({ specialist: s, size, canEdit, canViewAgenda, canViewFinancialData, onEdit }: SpecialistCardProps) {
   const widthClass =
     size === "fluid"
       ? "w-full"
       : "w-full min-w-[260px] max-w-[300px] shrink-0 snap-center";
+  const variant = cardVariants[variantIndexFromSpecialist(s.id)]!;
 
   const availabilityText = s.availabilities.length
     ? s.availabilities.map((a) => `${weekdayLabel[a.weekday]} ${a.startTime}-${a.endTime}`).join(" · ")
     : "Sin disponibilidad cargada";
+  const specialtyTag = specialtyBadge(s.specialty);
   return (
     <article
-      className={`group relative flex flex-col overflow-hidden rounded-[1.35rem] border border-sky-200 bg-white shadow-[0_10px_28px_-18px_rgba(15,23,42,0.35)] transition duration-300 hover:-translate-y-0.5 hover:border-sky-300 hover:shadow-[0_18px_34px_-20px_rgba(3,105,161,0.35)] ${widthClass}`}
+      className={`group relative flex flex-col overflow-hidden rounded-[1.35rem] border bg-white shadow-[0_10px_28px_-18px_rgba(15,23,42,0.35)] transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_34px_-20px_rgba(3,105,161,0.35)] ${variant.frame} ${widthClass}`}
     >
       {/* Acento superior institucional */}
       <div
-        className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-600 opacity-90"
+        className={`pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-r opacity-90 ${variant.topAccent}`}
         aria-hidden
       />
       <div
-        className="pointer-events-none absolute -left-8 top-8 h-28 w-28 rounded-full bg-sky-100/70"
+        className={`pointer-events-none absolute -left-8 top-8 h-28 w-28 rounded-full ${variant.bubble}`}
         aria-hidden
       />
 
@@ -143,7 +193,7 @@ function SpecialistCard({ specialist: s, size, canEdit, canViewAgenda, canViewFi
       )}
 
       <div className="relative z-10 flex flex-col items-center px-5 pb-6 pt-10">
-        <div className="relative mb-5 h-[5.5rem] w-[5.5rem] shrink-0 overflow-hidden rounded-full border-2 border-white bg-slate-100 shadow-[0_10px_24px_-10px_rgba(3,105,161,0.55)] ring-2 ring-sky-200">
+        <div className={`relative mb-5 h-[5.5rem] w-[5.5rem] shrink-0 overflow-hidden rounded-full border-2 border-white bg-slate-100 shadow-[0_10px_24px_-10px_rgba(3,105,161,0.55)] ring-2 ${variant.ring}`}>
           <SpecialistAvatar specialist={s} />
         </div>
 
@@ -153,6 +203,10 @@ function SpecialistCard({ specialist: s, size, canEdit, canViewAgenda, canViewFi
         <p className="mt-2 w-full max-w-[min(100%,280px)] text-center text-sm leading-snug text-slate-600 sm:max-w-none">
           {s.specialty}
         </p>
+        <span className="mt-2 inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
+          <span aria-hidden>{specialtyTag.icon}</span>
+          {specialtyTag.label}
+        </span>
 
         <div className="mt-3 w-full space-y-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-left">
           <p className="text-[11px] text-slate-600">
@@ -359,7 +413,23 @@ function SpecialistFormModal({ open, title, editing, onClose, canDelete }: FormM
             ✕
           </button>
         </div>
-        <form onSubmit={onSubmit} className="mt-5 grid gap-3 sm:grid-cols-2">
+        <form onSubmit={onSubmit} autoComplete="off" className="mt-5 grid gap-3 sm:grid-cols-2">
+          <input
+            type="text"
+            name="fake-username"
+            autoComplete="username"
+            tabIndex={-1}
+            className="hidden"
+            aria-hidden="true"
+          />
+          <input
+            type="password"
+            name="fake-password"
+            autoComplete="current-password"
+            tabIndex={-1}
+            className="hidden"
+            aria-hidden="true"
+          />
           {formError && (
             <div
               className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 sm:col-span-2"
@@ -402,6 +472,8 @@ function SpecialistFormModal({ open, title, editing, onClose, canDelete }: FormM
             <input
               required
               type="email"
+              name="specialist-email"
+              autoComplete="new-password"
               className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 transition focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
               value={form.email}
               onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
@@ -414,6 +486,8 @@ function SpecialistFormModal({ open, title, editing, onClose, canDelete }: FormM
                 <input
                   type="password"
                   required
+                  name="specialist-new-password"
+                  autoComplete="new-password"
                   className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 transition focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                   value={form.password}
                   onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
@@ -427,6 +501,8 @@ function SpecialistFormModal({ open, title, editing, onClose, canDelete }: FormM
                 <input
                   type="password"
                   required
+                  name="specialist-confirm-password"
+                  autoComplete="new-password"
                   className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 transition focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                   value={form.confirmPassword}
                   onChange={(e) => setForm((f) => ({ ...f, confirmPassword: e.target.value }))}
@@ -441,6 +517,8 @@ function SpecialistFormModal({ open, title, editing, onClose, canDelete }: FormM
             <label className="text-sm font-medium text-slate-600">Nombre</label>
             <input
               required
+              name="specialist-first-name"
+              autoComplete="off"
               className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 transition focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
               value={form.firstName}
               onChange={(e) => setForm((f) => ({ ...f, firstName: e.target.value }))}
@@ -450,6 +528,8 @@ function SpecialistFormModal({ open, title, editing, onClose, canDelete }: FormM
             <label className="text-sm font-medium text-slate-600">Apellido</label>
             <input
               required
+              name="specialist-last-name"
+              autoComplete="off"
               className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 transition focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
               value={form.lastName}
               onChange={(e) => setForm((f) => ({ ...f, lastName: e.target.value }))}
@@ -687,8 +767,8 @@ export function AdminSpecialistsPage() {
   }
 
   return (
-    <div className="space-y-8">
-      <section className="overflow-hidden rounded-3xl border border-sky-100 bg-gradient-to-br from-sky-50 to-white px-4 py-8 shadow-[0_20px_40px_-30px_rgba(15,23,42,0.4)] sm:px-8 sm:py-10">
+    <div className="space-y-4">
+      <section className="overflow-hidden rounded-3xl border border-sky-100 bg-gradient-to-br from-sky-50 to-white px-4 py-6 shadow-[0_20px_40px_-30px_rgba(15,23,42,0.4)] sm:px-8 sm:py-7">
         <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
           <div className="max-w-2xl">
             <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">Especialistas</h1>
@@ -708,21 +788,21 @@ export function AdminSpecialistsPage() {
         </div>
 
         {isLoading && (
-          <div className="mt-10 flex items-center gap-3 rounded-2xl border border-sky-100 bg-white px-5 py-4 text-slate-600">
+          <div className="mt-6 flex items-center gap-3 rounded-2xl border border-sky-100 bg-white px-5 py-4 text-slate-600">
             <span className="inline-flex h-5 w-5 animate-spin rounded-full border-2 border-sky-500 border-t-transparent" />
             Cargando equipo…
           </div>
         )}
 
         {!isLoading && data.length === 0 && (
-          <div className="mt-10 rounded-3xl border border-dashed border-sky-200 bg-white/70 px-8 py-16 text-center">
+          <div className="mt-6 rounded-3xl border border-dashed border-sky-200 bg-white/70 px-8 py-14 text-center">
             <p className="text-sm font-medium text-slate-700 sm:text-base">No hay especialistas todavía.</p>
             <p className="mt-2 text-sm text-slate-500">Creá el primero con el botón de arriba.</p>
           </div>
         )}
 
         {!isLoading && data.length > 0 && (
-          <div className="relative mt-10">
+          <div className="relative mt-6">
             {useScrollCarousel && count > 1 && (
               <>
                 <button
