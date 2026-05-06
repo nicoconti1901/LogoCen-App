@@ -25,6 +25,23 @@ export const appointmentRepository = {
     });
   },
 
+  markExpiredReservedAsAttended(today: Date, nowHHmm: string): Promise<number> {
+    return prisma.appointment
+      .updateMany({
+        where: {
+          status: AppointmentStatus.RESERVED,
+          OR: [
+            { appointmentDate: { lt: today } },
+            {
+              AND: [{ appointmentDate: { equals: today } }, { endTime: { lte: nowHHmm } }],
+            },
+          ],
+        },
+        data: { status: AppointmentStatus.ATTENDED },
+      })
+      .then((result) => result.count);
+  },
+
   create(data: Prisma.AppointmentCreateInput): Promise<AppointmentWithRelations> {
     return prisma.appointment.create({
       data,

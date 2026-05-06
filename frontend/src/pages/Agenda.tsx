@@ -6,7 +6,7 @@ import FullCalendar from "@fullcalendar/react";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import type { DateSelectArg, EventClickArg, EventContentArg, EventInput } from "@fullcalendar/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useSearchParams, useParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { deleteAppointment, fetchAppointments, fetchSpecialist, fetchSpecialists } from "../api/endpoints";
 import { getAppointmentDateStr, toCalendarEnd, toCalendarStart } from "../lib/appointmentDisplay";
@@ -115,6 +115,11 @@ function patientNameUpper(lastName: string, firstName: string): string {
   return `${lastName}, ${firstName}`.toUpperCase();
 }
 
+function appointmentHasDebt(a: Appointment): boolean {
+  if (a.paymentCompleted) return false;
+  return a.paymentMethod === null || a.status === "NO_SHOW";
+}
+
 function toEvent(a: Appointment): EventInput {
   return {
     id: a.id,
@@ -134,7 +139,9 @@ function renderEventContent(arg: EventContentArg) {
   const specialist = `${raw.specialist.lastName}, ${raw.specialist.firstName}`;
   const consultorio = raw.consultorio.trim() || "Sin consultorio";
   const status = statusLabel[raw.status];
+  const hasDebt = appointmentHasDebt(raw);
   const isListView = arg.view.type.startsWith("list");
+  const isMonthView = arg.view.type === "dayGridMonth";
 
   if (isListView) {
     return (
@@ -143,19 +150,54 @@ function renderEventContent(arg: EventContentArg) {
           <span className="appt-list-patient">{patient}</span>
           <span className="appt-list-specialist">{specialist}</span>
         </span>
-        <span className={`appt-list-status status-chip-${raw.status.toLowerCase()}`}>{status}</span>
-        <span className="appt-list-office">{consultorio}</span>
+        <span className="appt-list-right">
+          <span className={`appt-list-status status-chip-${raw.status.toLowerCase()}`}>{status}</span>
+          <a
+            href={`/patients?paymentPatientId=${raw.patientId}`}
+            className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+              hasDebt ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-700"
+            }`}
+            title="Abrir historial de pagos del paciente"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {hasDebt ? "Con deuda" : "Sin deuda"}
+          </a>
+          <span className="appt-list-office">{consultorio}</span>
+        </span>
+      </div>
+    );
+  }
+
+  if (isMonthView) {
+    return (
+      <div className="flex items-center gap-1 text-[10px] leading-none">
+        <span className="font-semibold">{raw.startTime}</span>
+        <span className="truncate">{patient}</span>
       </div>
     );
   }
 
   return (
     <div className="appt-event-content">
-      <div className="appt-event-patient">Pac: {patient}</div>
+      <div className="appt-event-row appt-event-row-top">
+        <div className="appt-event-patient">Pac: {patient}</div>
+        <div className={`appt-event-status status-chip-${raw.status.toLowerCase()}`}>{status}</div>
+      </div>
       <div className="appt-event-meta-block">
         <div className="appt-event-specialist">Esp: {specialist}</div>
-        <div className={`appt-event-status status-chip-${raw.status.toLowerCase()}`}>{status}</div>
-        <div className="appt-event-office">{consultorio}</div>
+        <div className="appt-event-row">
+          <div className="appt-event-office">Consultorio: {consultorio}</div>
+          <a
+            href={`/patients?paymentPatientId=${raw.patientId}`}
+            className={`inline-block w-fit rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+              hasDebt ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-700"
+            }`}
+            title="Abrir historial de pagos del paciente"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {hasDebt ? "Pago pendiente" : "Pago al día"}
+          </a>
+        </div>
       </div>
     </div>
   );
@@ -179,6 +221,7 @@ function hhmmToMinutes(hhmm: string): number {
 
 export function AgendaPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const { specialistId: routeSpecialistId } = useParams<{ specialistId?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const calendarRef = useRef<InstanceType<typeof FullCalendar>>(null);
@@ -194,6 +237,7 @@ export function AgendaPage() {
   const [unavailableOpen, setUnavailableOpen] = useState(false);
   const [unavailableHintOpen, setUnavailableHintOpen] = useState(false);
   const [deleteTargetAppointmentId, setDeleteTargetAppointmentId] = useState<string | null>(null);
+  const [monthSimplified, setMonthSimplified] = useState(true);
   const qc = useQueryClient();
   const shouldOpenQuickSlots = searchParams.get("new") === "1";
   const effectiveSpecialistId = routeSpecialistId ?? (user?.role === "SPECIALIST" ? user.specialistId ?? undefined : undefined);
@@ -366,6 +410,12 @@ export function AgendaPage() {
     setEventActionOpen(true);
   }
 
+  function onMoreLinkClick(arg: { date: Date }) {
+    const api = calendarRef.current?.getApi();
+    if (!api) return;
+    api.changeView("timeGridDay", arg.date);
+  }
+
   const quickAvailableSlots = useMemo(() => {
     if (!effectiveSpecialistId || !specialistQ.data) return [] as Array<{ start: Date; end: Date; label: string }>;
     const specialistAvailabilities = specialistQ.data.availabilities;
@@ -528,6 +578,7 @@ export function AgendaPage() {
                                   : a.status === "NO_SHOW"
                                     ? "bg-amber-50 border-amber-200"
                                     : "bg-sky-50 border-sky-200";
+                            const hasDebt = appointmentHasDebt(a);
                             return (
                               <li
                                 key={a.id}
@@ -538,14 +589,24 @@ export function AgendaPage() {
                                 } ${muted ? "opacity-60" : ""}`}
                               >
                                 <div className="flex items-start justify-between gap-1">
-                                  <span className="font-semibold text-slate-800">
-                                    {a.startTime}–{a.endTime}
-                                  </span>
-                                  <span
-                                    className={`shrink-0 rounded px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide agenda-pill status-${a.status.toLowerCase()}`}
-                                  >
-                                    {statusLabel[a.status]}
-                                  </span>
+                                  <span className="font-semibold text-slate-800">{a.startTime}–{a.endTime}</span>
+                                  <div className="flex shrink-0 items-center gap-1">
+                                    <span
+                                      className={`rounded px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide agenda-pill status-${a.status.toLowerCase()}`}
+                                    >
+                                      {statusLabel[a.status]}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${
+                                        hasDebt ? "bg-amber-200 text-amber-900" : "bg-emerald-200 text-emerald-900"
+                                      }`}
+                                      onClick={() => navigate(`/patients?paymentPatientId=${a.patientId}`)}
+                                      title="Ver pagos y deuda del paciente"
+                                    >
+                                      {hasDebt ? "Con deuda" : "Sin deuda"}
+                                    </button>
+                                  </div>
                                 </div>
                                 <p className={`mt-0.5 truncate text-slate-700 ${muted ? "line-through" : ""}`}>{patient}</p>
                                 <p className="truncate text-slate-500">({a.consultorio.trim() || "—"})</p>
@@ -572,6 +633,18 @@ export function AgendaPage() {
               {statusLabel[s]}
             </span>
           ))}
+          <button
+            type="button"
+            onClick={() => setMonthSimplified((v) => !v)}
+            className={`rounded-full border px-3 py-1 font-semibold transition ${
+              monthSimplified
+                ? "border-sky-300 bg-sky-100 text-sky-800 hover:bg-sky-200"
+                : "border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200"
+            }`}
+            title="Reducir saturación visual en vista mensual"
+          >
+            Mes simplificado: {monthSimplified ? "ON" : "OFF"}
+          </button>
         </div>
         {effectiveSpecialistId && specialistQ.data && !specialistQ.data.availabilities.length ? (
           <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-950">
@@ -617,12 +690,15 @@ export function AgendaPage() {
             selectable={!effectiveSpecialistId || Boolean(specialistQ.data)}
             selectMirror
             dayMaxEvents
-            eventMaxStack={3}
+            dayMaxEventRows={monthSimplified ? 2 : true}
+            eventMaxStack={monthSimplified ? 2 : 3}
             slotEventOverlap={false}
             weekends={false}
             eventOrder="start,-duration,title"
-            eventMinHeight={50}
-            eventShortHeight={40}
+            eventMinHeight={70}
+            eventShortHeight={62}
+            moreLinkContent={(arg) => `+${arg.num} turnos`}
+            moreLinkClick={monthSimplified ? onMoreLinkClick : "popover"}
             dayCellClassNames={effectiveSpecialistId ? dayCellClassNames : undefined}
             events={calendarEvents}
             eventClassNames={eventClassNames}

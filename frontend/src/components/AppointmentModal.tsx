@@ -117,7 +117,7 @@ export function AppointmentModal({
   const [startTimeStr, setStartTimeStr] = useState("");
   const [endTimeStr, setEndTimeStr] = useState("");
   const [status, setStatus] = useState<AppointmentStatus>("RESERVED");
-  const [paymentMethod, setPaymentMethod] = useState<AppointmentPaymentMethod>("TRANSFER_TO_LOGOCEN");
+  const [paymentMethod, setPaymentMethod] = useState<AppointmentPaymentMethod | "">("");
   const [paymentCompleted, setPaymentCompleted] = useState(false);
   const [paymentDateStr, setPaymentDateStr] = useState("");
   const [medicalRecord, setMedicalRecord] = useState("");
@@ -160,7 +160,7 @@ export function AppointmentModal({
       setStartTimeStr(getStartTimeStr(appointment));
       setEndTimeStr(getEndTimeStr(appointment));
       setStatus(appointment.status);
-      setPaymentMethod(appointment.paymentMethod ?? "TRANSFER_TO_LOGOCEN");
+      setPaymentMethod(appointment.paymentMethod ?? "");
       setPaymentCompleted(appointment.paymentCompleted ?? false);
       setPaymentDateStr(appointment.paymentDate ?? "");
       setMedicalRecord(appointment.medicalRecord ?? "");
@@ -177,7 +177,7 @@ export function AppointmentModal({
       setStartTimeStr(localTimeStr(s));
       setEndTimeStr(localTimeStr(e));
       setStatus("RESERVED");
-      setPaymentMethod("TRANSFER_TO_LOGOCEN");
+      setPaymentMethod("");
       setPaymentCompleted(false);
       setPaymentDateStr(localDateStr(s));
       setMedicalRecord("");
@@ -195,7 +195,7 @@ export function AppointmentModal({
         startTime: startTimeStr,
         endTime: endTimeStr,
         status,
-        paymentMethod,
+        paymentMethod: paymentMethod || null,
         paymentCompleted,
         paymentDate: paymentCompleted ? paymentDateStr : null,
         medicalRecord: medicalRecord || null,
@@ -225,7 +225,7 @@ export function AppointmentModal({
         startTime: startTimeStr,
         endTime: endTimeStr,
         status,
-        paymentMethod,
+        paymentMethod: paymentMethod || null,
         paymentCompleted,
         paymentDate: paymentCompleted ? paymentDateStr : null,
         medicalRecord: medicalRecord || null,
@@ -575,8 +575,9 @@ export function AppointmentModal({
             <select
               className={fieldClass}
               value={paymentMethod}
-              onChange={(e) => setPaymentMethod(e.target.value as AppointmentPaymentMethod)}
+              onChange={(e) => setPaymentMethod(e.target.value as AppointmentPaymentMethod | "")}
             >
+              <option value="">Sin definir</option>
               {paymentMethods.map((method) => (
                 <option key={method} value={method}>
                   {paymentMethodLabel[method]}
