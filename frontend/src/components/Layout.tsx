@@ -14,6 +14,8 @@ export function Layout() {
   const location = useLocation();
   const canAccessAdminSections = user?.role === "ADMIN" || user?.role === "SPECIALIST";
   const isAgendaRoute = location.pathname === "/agenda" || location.pathname.startsWith("/specialists/");
+  const isAdminMedicalRoute =
+    location.pathname === "/patients" || location.pathname === "/specialists" || location.pathname === "/balance";
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -69,9 +71,21 @@ export function Layout() {
           </div>
         </div>
       </header>
-      <main className={isAgendaRoute ? "w-full flex-1" : "mx-auto w-full max-w-7xl flex-1 px-4 py-6"}>
-        <Outlet />
-      </main>
+      {isAgendaRoute ? (
+        <main className="w-full flex-1">
+          <Outlet />
+        </main>
+      ) : isAdminMedicalRoute ? (
+        <main className="admin-medical-page-bg admin-medical-page-fullbleed w-full flex-1 py-6">
+          <div className="mx-auto w-full max-w-7xl px-4">
+            <Outlet />
+          </div>
+        </main>
+      ) : (
+        <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6">
+          <Outlet />
+        </main>
+      )}
     </div>
   );
 }

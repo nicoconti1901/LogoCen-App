@@ -7,6 +7,38 @@ body {
   min-height: 100vh;
 }
 
+.admin-medical-page-bg {
+  position: relative;
+  overflow: hidden;
+  background-image:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.84)),
+    url("./assets/fondo-general.jpg");
+  background-size: 100% 100%, cover;
+  background-position: center top;
+  background-repeat: no-repeat;
+}
+
+.admin-medical-page-fullbleed {
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+}
+
+.admin-medical-page-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(14, 116, 144, 0.26) 0%, rgba(14, 116, 144, 0.1) 12%, rgba(14, 116, 144, 0) 26%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0));
+}
+
+.admin-medical-page-bg > * {
+  position: relative;
+  z-index: 1;
+}
+
 .agenda-page-bg {
   --agenda-page-photo: url("./assets/fondo-home.png");
   --agenda-tile-height: 900px;
