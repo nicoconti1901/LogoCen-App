@@ -115,6 +115,10 @@ function patientNameUpper(lastName: string, firstName: string): string {
   return `${lastName}, ${firstName}`.toUpperCase();
 }
 
+function patientName(lastName: string, firstName: string): string {
+  return `${lastName}, ${firstName}`;
+}
+
 function appointmentHasDebt(a: Appointment): boolean {
   if (a.paymentCompleted) return false;
   return a.paymentMethod === null || a.status === "NO_SHOW";
@@ -135,7 +139,7 @@ function renderEventContent(arg: EventContentArg) {
   if (arg.event.display === "background") return null;
   const raw = arg.event.extendedProps.raw as Appointment | undefined;
   if (!raw) return <span>{arg.event.title}</span>;
-  const patient = patientNameUpper(raw.patient.lastName, raw.patient.firstName);
+  const patient = patientName(raw.patient.lastName, raw.patient.firstName);
   const specialist = `${raw.specialist.lastName}, ${raw.specialist.firstName}`;
   const consultorio = raw.consultorio.trim() || "Sin consultorio";
   const status = statusLabel[raw.status];
@@ -178,26 +182,17 @@ function renderEventContent(arg: EventContentArg) {
   }
 
   return (
-    <div className="appt-event-content">
-      <div className="appt-event-row appt-event-row-top">
-        <div className="appt-event-patient">Pac: {patient}</div>
+    <div className="appt-week-event-content">
+      <div className="appt-week-event-top">
+        <div className="appt-week-event-time">{raw.startTime}</div>
         <div className={`appt-event-status status-chip-${raw.status.toLowerCase()}`}>{status}</div>
       </div>
-      <div className="appt-event-meta-block">
-        <div className="appt-event-specialist">Esp: {specialist}</div>
-        <div className="appt-event-row">
-          <div className="appt-event-office">Consultorio: {consultorio}</div>
-          <a
-            href={`/patients?paymentPatientId=${raw.patientId}`}
-            className={`inline-block w-fit rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-              hasDebt ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-700"
-            }`}
-            title="Abrir historial de pagos del paciente"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {hasDebt ? "Pago pendiente" : "Pago al día"}
-          </a>
-        </div>
+      <div className="appt-week-event-patient">{patient}</div>
+      <div className="appt-week-event-bottom">
+        <div className="appt-week-event-office">{consultorio}</div>
+        <span className={hasDebt ? "appt-week-payment debt" : "appt-week-payment paid"}>
+          {hasDebt ? "Deuda" : "Pago OK"}
+        </span>
       </div>
     </div>
   );
@@ -413,7 +408,7 @@ export function AgendaPage() {
   function onMoreLinkClick(arg: { date: Date }) {
     const api = calendarRef.current?.getApi();
     if (!api) return;
-    api.changeView("timeGridDay", arg.date);
+    api.changeView("listDay", arg.date);
   }
 
   const quickAvailableSlots = useMemo(() => {
@@ -491,7 +486,11 @@ export function AgendaPage() {
   return (
     <div className="agenda-page-bg agenda-page-fullbleed">
       <div className="mx-auto w-full max-w-7xl space-y-4 px-4 py-4 sm:px-6">
-      <div className="agenda-light rounded-2xl border border-slate-200/60 p-3 shadow-[0_20px_50px_-22px_rgba(15,23,42,0.45)]">
+      <div
+        className={`agenda-light rounded-2xl border border-slate-200/60 p-3 shadow-[0_20px_50px_-22px_rgba(15,23,42,0.45)] ${
+          effectiveSpecialistId ? "agenda-specialist-view" : ""
+        }`}
+      >
         <div className="mb-4 rounded-xl border border-slate-200/80 bg-white/80 p-5 shadow-sm backdrop-blur-[3px]">
           <div className="mb-4">
             <h2 className="text-base font-semibold tracking-tight text-slate-900">Agenda del día</h2>
@@ -646,6 +645,11 @@ export function AgendaPage() {
             Mes simplificado: {monthSimplified ? "ON" : "OFF"}
           </button>
         </div>
+        {effectiveSpecialistId && (
+          <p className="mb-3 text-xs text-slate-600">
+            Para mejorar lectura con alta cantidad de turnos, usá <strong>Semana</strong> y <strong>Día</strong> en formato lista.
+          </p>
+        )}
         {effectiveSpecialistId && specialistQ.data && !specialistQ.data.availabilities.length ? (
           <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-950">
             Este especialista no tiene franjas de atención cargadas: no se podrán asignar turnos hasta que un administrador
@@ -661,23 +665,24 @@ export function AgendaPage() {
           <FullCalendar
             ref={calendarRef}
             plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin, listPlugin]}
-            initialView={effectiveSpecialistId ? "timeGridWeek" : "listWeek"}
+            initialView="listWeek"
             initialDate={todayIso}
             headerToolbar={{
               left: "prev,next today",
               center: "title",
-              right: effectiveSpecialistId ? "dayGridMonth,timeGridWeek,timeGridDay" : "dayGridMonth,listWeek,timeGridDay",
+              right: effectiveSpecialistId ? "listWeek,listDay,dayGridMonth" : "dayGridMonth,listWeek,listDay",
             }}
-            views={
-              effectiveSpecialistId
-                ? undefined
-                : {
-                    listWeek: {
-                      type: "list",
-                      duration: { days: 7 },
-                    },
-                  }
-            }
+            views={{
+              listWeek: {
+                type: "list",
+                duration: { days: 7 },
+              },
+              listDay: {
+                type: "list",
+                duration: { days: 1 },
+                buttonText: "Día",
+              },
+            }}
             locale={esLocale}
             slotMinTime={`${WORKDAY_START}:00`}
             slotMaxTime={`${WORKDAY_END}:00`}
@@ -698,7 +703,7 @@ export function AgendaPage() {
             eventMinHeight={70}
             eventShortHeight={62}
             moreLinkContent={(arg) => `+${arg.num} turnos`}
-            moreLinkClick={monthSimplified ? onMoreLinkClick : "popover"}
+            moreLinkClick={onMoreLinkClick}
             dayCellClassNames={effectiveSpecialistId ? dayCellClassNames : undefined}
             events={calendarEvents}
             eventClassNames={eventClassNames}

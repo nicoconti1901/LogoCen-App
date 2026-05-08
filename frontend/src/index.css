@@ -202,13 +202,13 @@ body {
  */
 .agenda-specialist-slots .fc-bg-event.specialist-avail-bg {
   opacity: 1;
-  border: 2px solid #5b21b6;
+  border: 1px solid #7c3aed;
   border-radius: 8px;
   background: linear-gradient(
     180deg,
-    rgba(221, 214, 254, 0.92) 0%,
-    rgba(196, 181, 253, 0.78) 45%,
-    rgba(167, 139, 250, 0.62) 100%
+    rgba(237, 233, 254, 0.82) 0%,
+    rgba(221, 214, 254, 0.7) 45%,
+    rgba(196, 181, 253, 0.55) 100%
   );
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
 }
@@ -247,86 +247,155 @@ body {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
 }
 
+/* Vista de agenda por especialista: tarjeta limpia y legible */
+.agenda-specialist-view .fc .appt-event {
+  border: 1px solid #cbd5e1 !important;
+  border-left-width: 4px !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08) !important;
+}
+
+.agenda-specialist-view .fc .fc-timegrid-event.appt-event.status-reserved {
+  background: #ffffff !important;
+  border-left-color: #0284c7 !important;
+  color: #0f172a !important;
+}
+
+.agenda-specialist-view .fc .fc-timegrid-event.appt-event.status-attended {
+  background: #ffffff !important;
+  border-left-color: #16a34a !important;
+  color: #0f172a !important;
+}
+
+.agenda-specialist-view .fc .fc-timegrid-event.appt-event.status-cancelled {
+  background: #ffffff !important;
+  border-left-color: #ef4444 !important;
+  color: #0f172a !important;
+}
+
+.agenda-specialist-view .fc .fc-timegrid-event.appt-event.status-no_show {
+  background: #ffffff !important;
+  border-left-color: #f59e0b !important;
+  color: #0f172a !important;
+}
+
+.agenda-specialist-view .fc .fc-timegrid-event.appt-event.status-reserved .fc-event-main,
+.agenda-specialist-view .fc .fc-timegrid-event.appt-event.status-attended .fc-event-main,
+.agenda-specialist-view .fc .fc-timegrid-event.appt-event.status-cancelled .fc-event-main,
+.agenda-specialist-view .fc .fc-timegrid-event.appt-event.status-no_show .fc-event-main {
+  color: #0f172a !important;
+}
+
 .fc .appt-event .fc-event-main {
-  padding: 0.3rem 0.45rem;
-  font-size: 0.76rem;
+  padding: 0.42rem 0.52rem;
+  font-size: 0.78rem;
   font-weight: 600;
 }
 
-.fc .appt-event-content {
-  line-height: 1.15;
+.fc .appt-week-event-content {
+  display: grid;
+  gap: 0.24rem;
+  line-height: 1.2;
 }
 
-.fc .appt-event-row {
+.fc .appt-week-event-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.4rem;
-  min-width: 0;
+  gap: 0.35rem;
 }
 
-.fc .appt-event-row-top {
-  margin-bottom: 0.18rem;
+.fc .appt-week-event-time {
+  font-size: 0.67rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: #0f172a;
+  background: #f1f5f9;
+  border-radius: 999px;
+  padding: 0.08rem 0.42rem;
+  white-space: nowrap;
 }
 
-.fc .appt-event-patient {
+.fc .appt-week-event-patient {
+  font-size: 0.8rem;
   font-weight: 700;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: #0f172a !important;
 }
 
-.fc .appt-event-meta-block {
-  margin-top: 0.12rem;
-  display: grid;
-  gap: 0.2rem;
+.fc .appt-week-event-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
 }
 
-.fc .appt-event-specialist {
-  font-size: 0.67rem;
-  opacity: 0.95;
+.fc .appt-week-event-office {
+  font-size: 0.68rem;
+  color: #475569;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.fc .appt-week-payment {
+  border-radius: 999px;
+  padding: 0.08rem 0.46rem;
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.fc .appt-week-payment.paid {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.fc .appt-week-payment.debt {
+  background: #fef3c7;
+  color: #92400e;
 }
 
 .fc .appt-event-status {
-  font-size: 0.67rem;
+  font-size: 0.66rem;
   font-weight: 700;
   border-radius: 999px;
-  padding: 0.04rem 0.5rem;
-  min-width: 5.2rem;
+  padding: 0.1rem 0.5rem;
+  min-width: 5rem;
   text-align: center;
   justify-self: end;
   transition: background-color 180ms ease, color 180ms ease;
 }
 
-.fc .appt-event-office {
-  font-size: 0.64rem;
-  opacity: 0.95;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-  max-width: 65%;
+.agenda-specialist-view .fc .appt-event-status {
+  background: #f8fafc !important;
+  color: #1e293b !important;
+  border: 1px solid #cbd5e1;
 }
 
-.fc .appt-event.status-reserved .appt-event-patient,
-.fc .appt-event.status-reserved .appt-event-specialist,
-.fc .appt-event.status-reserved .appt-event-office,
-.fc .appt-event.status-attended .appt-event-patient,
-.fc .appt-event.status-attended .appt-event-specialist,
-.fc .appt-event.status-attended .appt-event-office {
-  color: #f8fafc;
+.agenda-specialist-view .fc .fc-timegrid-event {
+  min-height: 62px;
 }
 
-.fc .appt-event.status-cancelled .appt-event-patient,
-.fc .appt-event.status-cancelled .appt-event-specialist,
-.fc .appt-event.status-cancelled .appt-event-office,
-.fc .appt-event.status-no_show .appt-event-patient,
-.fc .appt-event.status-no_show .appt-event-specialist,
-.fc .appt-event.status-no_show .appt-event-office {
+.agenda-specialist-view .fc .fc-timegrid-event-harness {
+  margin-right: 1px;
+}
+
+.fc .appt-event.status-reserved .appt-week-event-patient,
+.fc .appt-event.status-reserved .appt-week-event-office,
+.fc .appt-event.status-attended .appt-week-event-patient,
+.fc .appt-event.status-attended .appt-week-event-office {
+  color: inherit;
+}
+
+.fc .appt-event.status-cancelled .appt-week-event-patient,
+.fc .appt-event.status-cancelled .appt-week-event-office,
+.fc .appt-event.status-no_show .appt-week-event-patient,
+.fc .appt-event.status-no_show .appt-week-event-office {
   color: #1e293b;
 }
 
