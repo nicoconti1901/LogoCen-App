@@ -110,3 +110,17 @@ export type Payment = {
   notes: string | null;
   appointment?: Appointment;
 };
+
+export type FinanceConfig = {
+  monthlyFixedExpense: string;
+};
+
+export type FinanceExpenseType = "FIXED_MONTHLY" | "MONTHLY_VARIABLE";
+
+export type FinanceExpense = {
+  id: string;
+  type: FinanceExpenseType;
+  description: string;
+  amount: string;
+  expenseDate: string;
+};

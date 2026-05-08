@@ -7,6 +7,9 @@ import type {
   Payment,
   Specialist,
   ClinicalHistoryEntry,
+  FinanceConfig,
+  FinanceExpense,
+  FinanceExpenseType,
 } from "../types";
 
 export async function login(email: string, password: string): Promise<LoginResponse> {
@@ -249,4 +252,46 @@ export async function updatePayment(
 ): Promise<Payment> {
   const { data } = await api.patch<Payment>(`/payments/${id}`, body);
   return data;
+}
+
+export async function fetchFinanceConfig(): Promise<FinanceConfig> {
+  const { data } = await api.get<FinanceConfig>("/finance-config");
+  return data;
+}
+
+export async function updateFinanceConfig(body: { monthlyFixedExpense: string | number }): Promise<FinanceConfig> {
+  const { data } = await api.patch<FinanceConfig>("/finance-config", body);
+  return data;
+}
+
+export async function fetchFinanceExpenses(params: { month: string; type?: FinanceExpenseType }): Promise<FinanceExpense[]> {
+  const { data } = await api.get<FinanceExpense[]>("/finance-expenses", { params });
+  return data;
+}
+
+export async function createFinanceExpense(body: {
+  type: FinanceExpenseType;
+  description: string;
+  amount: string | number;
+  expenseDate: string;
+}): Promise<FinanceExpense> {
+  const { data } = await api.post<FinanceExpense>("/finance-expenses", body);
+  return data;
+}
+
+export async function updateFinanceExpense(
+  id: string,
+  body: Partial<{
+    type: FinanceExpenseType;
+    description: string;
+    amount: string | number;
+    expenseDate: string;
+  }>
+): Promise<FinanceExpense> {
+  const { data } = await api.patch<FinanceExpense>(`/finance-expenses/${id}`, body);
+  return data;
+}
+
+export async function deleteFinanceExpense(id: string): Promise<void> {
+  await api.delete(`/finance-expenses/${id}`);
 }
