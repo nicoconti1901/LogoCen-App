@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import logoImg from "../assets/logo.png";
 import { useAuth } from "../contexts/AuthContext";
+import { normalizePersonNameField } from "../lib/personName";
 
 const linkClass = ({ isActive }: { isActive: boolean }) =>
   `rounded-full px-4 py-2.5 text-base font-semibold transition-all duration-300 ${
@@ -58,7 +59,7 @@ export function Layout() {
                 </svg>
               </span>
               {user?.role === "SPECIALIST" && user.specialist
-                ? `Dr(a). ${user.specialist.lastName}`
+                ? `Dr(a). ${normalizePersonNameField(user.specialist.lastName)}`
                 : user?.email}
             </span>
             <button

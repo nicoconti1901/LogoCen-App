@@ -14,9 +14,10 @@ enum Role {
 
 enum AppointmentStatus {
   RESERVED
+  RESERVADO
   ATTENDED
-  CANCELLED
-  NO_SHOW
+  AUSENTE_CON_AVISO
+  AUSENTE_SIN_AVISO
 }
 
 enum PaymentStatus {
@@ -142,6 +143,8 @@ model Appointment {
   /// Hora fin "HH:mm"
   endTime         String
   status          AppointmentStatus @default(RESERVED)
+  /// Monto abonado como anticipo cuando el estado es RESERVADO (seña / reserva).
+  reservationDepositAmount Decimal? @db.Decimal(12, 2)
   medicalRecord   String?           @db.Text
   reasonForVisit  String?
   paymentMethod   AppointmentPaymentMethod?

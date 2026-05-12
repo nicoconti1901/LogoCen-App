@@ -67,7 +67,8 @@ export const appointmentRepository = {
       where: {
         specialistId,
         appointmentDate,
-        status: { notIn: [AppointmentStatus.CANCELLED] },
+        /** Ausente con aviso no bloquea la agenda: el hueco puede reasignarse. */
+        status: { not: AppointmentStatus.AUSENTE_CON_AVISO },
         ...(excludeId ? { id: { not: excludeId } } : {}),
       },
     });
@@ -79,7 +80,7 @@ export const appointmentRepository = {
       where: {
         consultorio,
         appointmentDate,
-        status: { notIn: [AppointmentStatus.CANCELLED] },
+        status: { not: AppointmentStatus.AUSENTE_CON_AVISO },
         ...(excludeId ? { id: { not: excludeId } } : {}),
       },
     });

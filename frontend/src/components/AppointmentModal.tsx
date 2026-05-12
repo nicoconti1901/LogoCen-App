@@ -5,13 +5,17 @@ import {
   deleteAppointment,
   fetchAppointments,
   fetchPatients,
+  fetchSpecialist,
   fetchSpecialists,
   updateAppointment,
 } from "../api/endpoints";
 import { getAppointmentDateStr, getEndTimeStr, getStartTimeStr } from "../lib/appointmentDisplay";
+import { formatPersonDisplayLastFirst, formatPersonDisplayLastFirstUpper, normalizePersonNameField } from "../lib/personName";
 import { useAuth } from "../contexts/AuthContext";
 import { ConfirmDialog } from "./ConfirmDialog";
 import type { Appointment, AppointmentPaymentMethod, AppointmentStatus } from "../types";
+import { appointmentDebtAmountArs, appointmentHasDebt } from "../lib/appointmentDebt";
+import { appointmentBlocksScheduleSlot } from "../lib/appointmentScheduling";
 
 type Props = {
   open: boolean;
@@ -24,7 +28,13 @@ type Props = {
   onSaved: () => void;
 };
 
-const statuses: AppointmentStatus[] = ["RESERVED", "ATTENDED", "CANCELLED", "NO_SHOW"];
+const statuses: AppointmentStatus[] = [
+  "RESERVED",
+  "RESERVADO",
+  "ATTENDED",
+  "AUSENTE_CON_AVISO",
+  "AUSENTE_SIN_AVISO",
+];
 
 function localDateStr(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -63,10 +73,11 @@ function rangesOverlap(aStart: number, aEnd: number, bStart: number, bEnd: numbe
 }
 
 const statusLabel: Record<AppointmentStatus, string> = {
-  RESERVED: "RESERVADO",
-  ATTENDED: "FINALIZADO",
-  CANCELLED: "CANCELÓ",
-  NO_SHOW: "NO ASISTIÓ",
+  RESERVED: "Agendado",
+  RESERVADO: "Reservado",
+  ATTENDED: "Finalizado",
+  AUSENTE_CON_AVISO: "Ausente con aviso",
+  AUSENTE_SIN_AVISO: "Ausente sin aviso",
 };
 const paymentMethods: AppointmentPaymentMethod[] = [
   "TRANSFER_TO_LOGOCEN",
@@ -82,10 +93,6 @@ const labelClass = "block text-sm font-medium text-slate-700";
 const fieldClass =
   "mt-1 w-full rounded-lg border border-slate-300/90 bg-white/90 px-3 py-2 text-slate-800 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200/70";
 
-function patientNameUpper(lastName: string, firstName: string): string {
-  return `${lastName}, ${firstName}`.toUpperCase();
-}
-
 function formatArsAmount(value: string | null): string | null {
   if (!value) return null;
   const normalized = Number(value.replace(",", "."));
@@ -95,6 +102,15 @@ function formatArsAmount(value: string | null): string | null {
     maximumFractionDigits: 2,
   }).format(normalized);
   return `$${formatted}`;
+}
+
+/** Monto estrictamente positivo desde texto (coma o punto decimal). */
+function parsePositiveMoneyInput(s: string): number | null {
+  const t = s.trim();
+  if (!t) return null;
+  const n = Number(t.replace(",", "."));
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n;
 }
 
 export function AppointmentModal({
@@ -117,6 +133,7 @@ export function AppointmentModal({
   const [startTimeStr, setStartTimeStr] = useState("");
   const [endTimeStr, setEndTimeStr] = useState("");
   const [status, setStatus] = useState<AppointmentStatus>("RESERVED");
+  const [reservationDepositStr, setReservationDepositStr] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<AppointmentPaymentMethod | "">("");
   const [paymentCompleted, setPaymentCompleted] = useState(false);
   const [paymentDateStr, setPaymentDateStr] = useState("");
@@ -138,7 +155,15 @@ export function AppointmentModal({
     enabled: open && isAdmin,
   });
 
+  const specialistForFeesQ = useQuery({
+    queryKey: ["specialist", "appointment-modal-fees", effectiveSpecialistId],
+    queryFn: () => fetchSpecialist(effectiveSpecialistId!),
+    enabled: open && Boolean(effectiveSpecialistId),
+  });
+
   const isEdit = Boolean(appointment);
+  /** Especialistas: alta y baja de turnos; no modificación de datos de citas existentes. */
+  const specialistEditingForbidden = !isAdmin && isEdit;
   const consultorioDayQ = useQuery({
     queryKey: ["appointments", "consultorio-day", dateStr],
     queryFn: () =>
@@ -148,6 +173,41 @@ export function AppointmentModal({
       }),
     enabled: open && Boolean(dateStr),
   });
+
+  const patientPastApptsQ = useQuery({
+    queryKey: ["appointments", "patient-debt-banner", patientId],
+    queryFn: () => fetchAppointments({ patientId }),
+    enabled: open && Boolean(patientId),
+  });
+
+  const specialistApptsForDebtLabelsQ = useQuery({
+    queryKey: ["appointments", "modal-patient-debt-labels", effectiveSpecialistId],
+    queryFn: () => fetchAppointments({ specialistId: effectiveSpecialistId! }),
+    enabled: open && Boolean(effectiveSpecialistId),
+  });
+
+  const patientIdsWithDebtFromAgenda = useMemo(() => {
+    const s = new Set<string>();
+    for (const a of specialistApptsForDebtLabelsQ.data ?? []) {
+      if (a.id === appointment?.id) continue;
+      if (appointmentHasDebt(a)) s.add(a.patientId);
+    }
+    return s;
+  }, [specialistApptsForDebtLabelsQ.data, appointment?.id]);
+
+  const patientDebtBanner = useMemo(() => {
+    const rows = patientPastApptsQ.data ?? [];
+    let total = 0;
+    let any = false;
+    for (const a of rows) {
+      if (a.id === appointment?.id) continue;
+      if (appointmentHasDebt(a)) {
+        any = true;
+        total += appointmentDebtAmountArs(a);
+      }
+    }
+    return { any, total };
+  }, [patientPastApptsQ.data, appointment?.id]);
 
   useEffect(() => {
     if (!open) return;
@@ -165,6 +225,10 @@ export function AppointmentModal({
       setPaymentDateStr(appointment.paymentDate ?? "");
       setMedicalRecord(appointment.medicalRecord ?? "");
       setReasonForVisit(appointment.reasonForVisit ?? "");
+      const dep = appointment.reservationDepositAmount;
+      setReservationDepositStr(
+        dep != null && String(dep).trim() !== "" ? String(dep).replace(",", ".") : ""
+      );
     } else {
       const s = initialStart ?? new Date();
       const e = initialEnd ?? new Date(s.getTime() + 30 * 60 * 1000);
@@ -182,6 +246,7 @@ export function AppointmentModal({
       setPaymentDateStr(localDateStr(s));
       setMedicalRecord("");
       setReasonForVisit("");
+      setReservationDepositStr("");
     }
   }, [open, appointment, initialStart, initialEnd, isAdmin, mySpecialistId, fixedSpecialistId]);
 
@@ -195,6 +260,8 @@ export function AppointmentModal({
         startTime: startTimeStr,
         endTime: endTimeStr,
         status,
+        reservationDepositAmount:
+          status === "RESERVADO" ? parsePositiveMoneyInput(reservationDepositStr) : null,
         paymentMethod: paymentMethod || null,
         paymentCompleted,
         paymentDate: paymentCompleted ? paymentDateStr : null,
@@ -225,6 +292,8 @@ export function AppointmentModal({
         startTime: startTimeStr,
         endTime: endTimeStr,
         status,
+        reservationDepositAmount:
+          status === "RESERVADO" ? parsePositiveMoneyInput(reservationDepositStr) : null,
         paymentMethod: paymentMethod || null,
         paymentCompleted,
         paymentDate: paymentCompleted ? paymentDateStr : null,
@@ -276,7 +345,7 @@ export function AppointmentModal({
       .filter(
         (a) =>
           a.id !== appointment?.id &&
-          a.status !== "CANCELLED" &&
+          appointmentBlocksScheduleSlot(a) &&
           a.consultorio.trim().toLowerCase() === office
       )
       .map((a) => ({
@@ -337,7 +406,7 @@ export function AppointmentModal({
           .filter(
             (a) =>
               a.id !== appointment?.id &&
-              a.status !== "CANCELLED" &&
+              appointmentBlocksScheduleSlot(a) &&
               a.consultorio.trim().toLowerCase() === office.toLowerCase()
           )
           .map((a) => ({ start: hhmmToMinutes(a.startTime), end: hhmmToMinutes(a.endTime) }))
@@ -364,10 +433,6 @@ export function AppointmentModal({
       .sort((a, b) => a.office.localeCompare(b.office));
   }, [consultorioDayRows, appointment?.id, startTimeStr, endTimeStr]);
 
-  const selectedSpecialist = isAdmin && !fixedSpecialistId
-    ? specialists.find((s) => s.id === effectiveSpecialistId) ?? null
-    : null;
-
   useEffect(() => {
     if (!patientId || patients.length === 0) return;
     const existsInFilteredList = patients.some((p) => p.id === patientId);
@@ -375,10 +440,21 @@ export function AppointmentModal({
   }, [patientId, patients]);
 
   const canSubmit = useMemo(() => {
-    if (!patientId || !consultorio.trim() || !dateStr || !startTimeStr || !endTimeStr) return false;
+    if (specialistEditingForbidden) return false;
+    if (!patientId || !dateStr || !startTimeStr || !endTimeStr) return false;
+    if (status !== "AUSENTE_CON_AVISO" && !consultorio.trim()) return false;
     if (paymentCompleted && !paymentDateStr) return false;
     if (isAdmin && !effectiveSpecialistId) return false;
     if (!isAdmin && !mySpecialistId) return false;
+    if (status === "RESERVADO") {
+      const dep = parsePositiveMoneyInput(reservationDepositStr);
+      if (dep == null) return false;
+      const feeRaw = specialistForFeesQ.data?.consultationFee;
+      if (feeRaw != null && String(feeRaw).trim() !== "") {
+        const fee = Number(String(feeRaw).replace(",", "."));
+        if (Number.isFinite(fee) && fee > 0 && dep > fee) return false;
+      }
+    }
     return true;
   }, [
     patientId,
@@ -391,10 +467,15 @@ export function AppointmentModal({
     isAdmin,
     effectiveSpecialistId,
     mySpecialistId,
+    specialistEditingForbidden,
+    status,
+    reservationDepositStr,
+    specialistForFeesQ.data?.consultationFee,
   ]);
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
+    if (specialistEditingForbidden) return;
     setError(null);
     if (!canSubmit) return;
     if (isEdit) updateMut.mutate();
@@ -404,26 +485,37 @@ export function AppointmentModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-stretch justify-end bg-slate-950/12 p-2 backdrop-blur-[1px] sm:items-center sm:p-4">
+    <div className="fixed inset-0 z-50 flex items-stretch justify-end bg-slate-900/40 p-2 backdrop-blur-[1px] sm:items-center sm:p-4">
       <div
-        className="appointment-modal-card h-full w-full max-w-xl overflow-y-auto rounded-2xl p-6 shadow-xl sm:h-auto sm:max-h-[92vh]"
+        className="h-full w-full max-w-xl overflow-y-auto rounded-xl border border-slate-200/80 bg-white p-6 shadow-xl ring-1 ring-slate-900/5 sm:h-auto sm:max-h-[92vh]"
         role="dialog"
         aria-modal="true"
       >
-        <div className="flex items-start justify-between gap-4">
-          <h2 className="text-lg font-semibold text-slate-900">
-            {isEdit ? "Editar cita" : "Nueva cita"}
+        <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-4">
+          <h2 className="text-lg font-semibold tracking-tight text-slate-900">
+            {specialistEditingForbidden ? "Detalle del turno" : isEdit ? "Editar cita" : "Nueva cita"}
           </h2>
           <button
             type="button"
-            className="rounded-lg px-2 py-1 text-slate-500 hover:bg-slate-100"
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-slate-50 text-sm font-semibold text-slate-600 shadow-sm transition hover:border-slate-400 hover:bg-slate-100 active:translate-y-px"
             onClick={onClose}
+            aria-label="Cerrar"
           >
             ✕
           </button>
         </div>
 
         <form className="mt-4 space-y-4" onSubmit={onSubmit}>
+          {specialistEditingForbidden && (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+              No podés modificar los datos de un turno ya cargado. Si necesitás cambios, contactá a un administrador.
+              Podés eliminar este turno con el botón inferior.
+            </p>
+          )}
+          <fieldset
+            disabled={specialistEditingForbidden}
+            className="m-0 min-w-0 space-y-4 border-0 p-0 disabled:opacity-75"
+          >
           <div>
             <label className={labelClass}>Paciente</label>
             <select
@@ -436,11 +528,34 @@ export function AppointmentModal({
               <option value="">Seleccione…</option>
               {patients.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {patientNameUpper(p.lastName, p.firstName)} — {p.email}
+                  {formatPersonDisplayLastFirstUpper(p.lastName, p.firstName)} — {p.email}
+                  {patientIdsWithDebtFromAgenda.has(p.id) ? " — con deuda" : ""}
                 </option>
               ))}
             </select>
           </div>
+
+          {patientId && patientDebtBanner.any && (
+            <div
+              className="rounded-lg border border-amber-400 bg-amber-50 px-3 py-2 text-sm text-amber-950"
+              role="status"
+            >
+              <p className="font-semibold">Este paciente tiene deuda por turnos previos</p>
+              <p className="mt-0.5 text-xs leading-snug">
+                {patientDebtBanner.total > 0 ? (
+                  <>
+                    Total estimado pendiente:{" "}
+                    <strong>{formatArsAmount(String(patientDebtBanner.total))}</strong> (según honorarios cargados).
+                  </>
+                ) : (
+                  <>
+                    Hay turnos marcados con saldo pendiente; cargá el honorario del profesional en esos turnos para ver
+                    montos exactos.
+                  </>
+                )}
+              </p>
+            </div>
+          )}
 
           {isAdmin && !fixedSpecialistId && (
             <div>
@@ -454,7 +569,7 @@ export function AppointmentModal({
                 <option value="">Seleccione…</option>
                 {specialists.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.lastName}, {s.firstName} — {s.specialty}
+                    {formatPersonDisplayLastFirst(s.lastName, s.firstName)} — {s.specialty}
                   </option>
                 ))}
               </select>
@@ -468,8 +583,30 @@ export function AppointmentModal({
           )}
           {!isAdmin && (
             <p className="text-sm text-slate-600">
-              Especialista: <strong>{user?.specialist?.lastName}</strong>
+              Especialista: <strong>{normalizePersonNameField(user?.specialist?.lastName ?? "")}</strong>
             </p>
+          )}
+
+          {effectiveSpecialistId && (
+            <div className="rounded-lg border border-sky-100 bg-sky-50/70 px-3 py-2 text-xs text-slate-700">
+              <p className="font-semibold text-sky-900">Valor de la consulta y cobro</p>
+              {specialistForFeesQ.isLoading ? (
+                <p className="mt-1 text-slate-600">Cargando honorario y alias…</p>
+              ) : (
+                <>
+                  <p className="mt-1">
+                    Monto de referencia:{" "}
+                    <strong>
+                      {formatArsAmount(specialistForFeesQ.data?.consultationFee ?? null) ?? "Sin honorario cargado"}
+                    </strong>
+                  </p>
+                  <p className="mt-1">
+                    Alias para transferencias:{" "}
+                    <strong>{specialistForFeesQ.data?.transferAlias?.trim() || "Sin alias cargado"}</strong>
+                  </p>
+                </>
+              )}
+            </div>
           )}
 
           <div>
@@ -483,6 +620,15 @@ export function AppointmentModal({
             />
           </div>
 
+          {status === "AUSENTE_CON_AVISO" ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 text-sm text-amber-950">
+              <p className="font-medium">Inasistencia con aviso</p>
+              <p className="mt-1 text-xs text-amber-900">
+                No se asigna consultorio. Se imputa al paciente el <strong>50%</strong> del honorario de referencia
+                (salvo «Pago realizado» en Sí).
+              </p>
+            </div>
+          ) : (
           <div>
             <label className={labelClass}>Consultorio</label>
             <select
@@ -532,6 +678,7 @@ export function AppointmentModal({
               </div>
             )}
           </div>
+          )}
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
@@ -561,7 +708,12 @@ export function AppointmentModal({
             <select
               className={fieldClass}
               value={status}
-              onChange={(e) => setStatus(e.target.value as AppointmentStatus)}
+              onChange={(e) => {
+                const v = e.target.value as AppointmentStatus;
+                setStatus(v);
+                if (v !== "RESERVADO") setReservationDepositStr("");
+                if (v === "AUSENTE_CON_AVISO") setConsultorio("");
+              }}
             >
               {statuses.map((s) => (
                 <option key={s} value={s}>
@@ -570,6 +722,47 @@ export function AppointmentModal({
               ))}
             </select>
           </div>
+          {status === "AUSENTE_SIN_AVISO" && (
+            <p className="mt-1 text-xs text-rose-800">
+              Inasistencia sin aviso: se imputa el <strong>100%</strong> del honorario de referencia mientras «Pago
+              realizado» sea No.
+            </p>
+          )}
+          {status === "RESERVADO" && (
+            <div>
+              <label className={labelClass}>Monto del anticipo / seña (ARS)</label>
+              <input
+                type="text"
+                inputMode="decimal"
+                required
+                placeholder="Ej. 5000 o 5000,50"
+                className={fieldClass}
+                value={reservationDepositStr}
+                onChange={(e) => setReservationDepositStr(e.target.value)}
+              />
+              <p className="mt-1 text-xs text-slate-600">
+                {(() => {
+                  const dep = parsePositiveMoneyInput(reservationDepositStr);
+                  const feeRaw = specialistForFeesQ.data?.consultationFee;
+                  const fee =
+                    feeRaw != null && String(feeRaw).trim() !== ""
+                      ? Number(String(feeRaw).replace(",", "."))
+                      : null;
+                  if (reservationDepositStr.trim() === "" || dep == null) {
+                    return "Ingresá el monto abonado como reserva (mayor a cero).";
+                  }
+                  if (fee == null || !Number.isFinite(fee) || fee <= 0) {
+                    return "Anticipo registrado. Si el profesional tiene honorario cargado, se mostrará cuánto falta pagar.";
+                  }
+                  if (dep > fee) {
+                    return "El anticipo no puede ser mayor al valor de la consulta.";
+                  }
+                  const rest = Math.max(0, fee - dep);
+                  return `Honorario de referencia ${formatArsAmount(String(feeRaw))}: falta pagar ${formatArsAmount(String(rest))} al momento de la consulta (si no hay otros cargos).`;
+                })()}
+              </p>
+            </div>
+          )}
           <div>
             <label className={labelClass}>Forma de pago</label>
             <select
@@ -600,6 +793,13 @@ export function AppointmentModal({
               <option value="NO">No</option>
               <option value="YES">Sí</option>
             </select>
+            {status === "RESERVADO" && (
+              <p className="mt-1 text-xs text-slate-600">
+                La seña indicada se contabiliza como ya abonada sobre el honorario. <strong>No</strong> en «Pago
+                realizado» indica que sigue pendiente el saldo a pagar en la consulta, no que la seña no se haya
+                cobrado.
+              </p>
+            )}
           </div>
           {paymentCompleted && (
             <div>
@@ -613,21 +813,6 @@ export function AppointmentModal({
               />
             </div>
           )}
-          {selectedSpecialist && (
-            <div className="rounded-lg border border-sky-100 bg-sky-50/70 px-3 py-2 text-xs text-slate-700">
-              <p>
-                Valor consulta:{" "}
-                <strong>
-                  {formatArsAmount(selectedSpecialist.consultationFee) ?? "No configurado"}
-                </strong>
-              </p>
-              <p>
-                Alias transferencia:{" "}
-                <strong>{selectedSpecialist.transferAlias || "No configurado"}</strong>
-              </p>
-            </div>
-          )}
-
           <div>
             <label className={labelClass}>Motivo de consulta</label>
             <textarea
@@ -651,21 +836,24 @@ export function AppointmentModal({
           )}
 
           {error && <p className="text-sm text-red-600">{error}</p>}
+          </fieldset>
 
-          <div className="flex flex-wrap gap-2 pt-2">
-            <button
-              type="submit"
-              disabled={!canSubmit || createMut.isPending || updateMut.isPending}
-              className="rounded-lg bg-brand-600 px-4 py-2 font-medium text-white shadow-sm hover:bg-brand-700 disabled:opacity-50"
-            >
-              {isEdit ? "Guardar" : "Crear"}
-            </button>
+          <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-4">
+            {!specialistEditingForbidden && (
+              <button
+                type="submit"
+                disabled={!canSubmit || createMut.isPending || updateMut.isPending}
+                className="inline-flex min-h-11 items-center justify-center rounded-lg bg-brand-700 px-4 py-2 text-sm font-bold tracking-tight text-white shadow-md ring-1 ring-brand-900/20 transition hover:bg-brand-800 active:translate-y-px active:bg-brand-900 active:shadow-sm disabled:opacity-50"
+              >
+                {isEdit ? "Guardar" : "Crear"}
+              </button>
+            )}
             {isEdit && (
               <button
                 type="button"
                 onClick={() => setShowDeleteConfirm(true)}
                 disabled={deleteMut.isPending}
-                className="rounded-lg border border-red-200 bg-red-50/80 px-4 py-2 text-red-700 hover:bg-red-100"
+                className="inline-flex min-h-11 items-center justify-center rounded-lg border-2 border-rose-400 bg-rose-50 px-4 py-2 text-sm font-bold tracking-tight text-rose-900 shadow-sm ring-1 ring-rose-900/10 transition hover:border-rose-500 hover:bg-rose-100 active:translate-y-px"
               >
                 Eliminar
               </button>
@@ -673,7 +861,7 @@ export function AppointmentModal({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg border border-slate-200 bg-white/80 px-4 py-2 text-slate-700 hover:bg-white"
+              className="inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-300 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-100 active:translate-y-px"
             >
               Cancelar
             </button>

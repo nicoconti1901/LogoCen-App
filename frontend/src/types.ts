@@ -1,6 +1,11 @@
 export type Role = "ADMIN" | "SPECIALIST";
 
-export type AppointmentStatus = "RESERVED" | "ATTENDED" | "CANCELLED" | "NO_SHOW";
+export type AppointmentStatus =
+  | "RESERVED"
+  | "RESERVADO"
+  | "ATTENDED"
+  | "AUSENTE_CON_AVISO"
+  | "AUSENTE_SIN_AVISO";
 
 export type PaymentStatus = "PENDING" | "PAID" | "FAILED" | "REFUNDED";
 export type AppointmentPaymentMethod =
@@ -84,6 +89,8 @@ export type Appointment = {
   startTime: string;
   endTime: string;
   status: AppointmentStatus;
+  /** Monto de anticipo cuando `status` es RESERVADO (string decimal desde la API). */
+  reservationDepositAmount?: string | null;
   paymentMethod: AppointmentPaymentMethod | null;
   paymentCompleted: boolean;
   paymentDate: string | null;

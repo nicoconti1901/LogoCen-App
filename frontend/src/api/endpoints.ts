@@ -185,6 +185,7 @@ export async function createAppointment(body: {
   startTime: string;
   endTime: string;
   status?: string;
+  reservationDepositAmount?: string | number | null;
   paymentMethod?: string | null;
   paymentCompleted?: boolean;
   paymentDate?: string | null;
@@ -205,6 +206,7 @@ export async function updateAppointment(
     startTime: string;
     endTime: string;
     status: string;
+    reservationDepositAmount?: string | number | null;
     paymentMethod: string | null;
     paymentCompleted: boolean;
     paymentDate: string | null;

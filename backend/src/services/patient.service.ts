@@ -3,6 +3,7 @@ import { specialistRepository } from "../repositories/specialist.repository.js";
 import { clinicalHistoryRepository } from "../repositories/clinicalHistory.repository.js";
 import { AppError } from "../middleware/errorHandler.js";
 import { Role } from "@prisma/client";
+import { normalizePersonNameField } from "../utils/personName.js";
 
 export async function listPatients(filters?: { search?: string; specialistId?: string }) {
   return patientRepository.findMany(filters);
@@ -42,8 +43,8 @@ export async function createPatient(data: {
     if (!specialist || !specialist.active) throw new AppError(400, "Especialista inválido o inactivo");
   }
   return patientRepository.create({
-    firstName: data.firstName.trim(),
-    lastName: data.lastName.trim(),
+    firstName: normalizePersonNameField(data.firstName),
+    lastName: normalizePersonNameField(data.lastName),
     email: data.email.toLowerCase().trim(),
     phone: data.phone?.trim() || null,
     documentId: data.documentId?.trim() || null,
@@ -72,8 +73,8 @@ export async function updatePatient(
     if (!specialist || !specialist.active) throw new AppError(400, "Especialista inválido o inactivo");
   }
   return patientRepository.update(id, {
-    ...(data.firstName !== undefined ? { firstName: data.firstName.trim() } : {}),
-    ...(data.lastName !== undefined ? { lastName: data.lastName.trim() } : {}),
+    ...(data.firstName !== undefined ? { firstName: normalizePersonNameField(data.firstName) } : {}),
+    ...(data.lastName !== undefined ? { lastName: normalizePersonNameField(data.lastName) } : {}),
     ...(data.email !== undefined ? { email: data.email.toLowerCase().trim() } : {}),
     ...(data.phone !== undefined ? { phone: data.phone?.trim() || null } : {}),
     ...(data.documentId !== undefined ? { documentId: data.documentId?.trim() || null } : {}),
