@@ -13,6 +13,37 @@ import {
 } from "../utils/appointmentTime.js";
 import { endOfLocalDay, startOfLocalDay } from "../utils/date.js";
 
+function parseMoneyToDecimal(value: string | number | Prisma.Decimal | null | undefined): Prisma.Decimal | null {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value === "object" && value !== null && "toFixed" in value) {
+    return new Prisma.Decimal(value as Prisma.Decimal);
+  }
+  const s = typeof value === "number" ? String(value) : String(value).trim().replace(",", ".");
+  if (!s) return null;
+  return new Prisma.Decimal(s);
+}
+
+/** Anticipo obligatorio y acotado al honorario cuando el estado es RESERVADO; si no, null. */
+function reservationDepositForStatus(
+  status: AppointmentStatus,
+  amountInput: Prisma.Decimal | null | undefined,
+  existingAmount: Prisma.Decimal | null | undefined,
+  consultationFee: Prisma.Decimal | null | undefined
+): Prisma.Decimal | null {
+  if (status !== AppointmentStatus.RESERVADO) return null;
+  const amount = amountInput ?? existingAmount ?? null;
+  if (amount === null || amount === undefined) {
+    throw new AppError(400, "Debe indicar el monto del anticipo para el estado Reservado");
+  }
+  if (amount.lte(0)) {
+    throw new AppError(400, "El anticipo debe ser mayor a cero");
+  }
+  if (consultationFee != null && amount.gt(consultationFee)) {
+    throw new AppError(400, "El anticipo no puede superar el honorario de la consulta");
+  }
+  return amount;
+}
+
 function assertCanAccessAppointment(
   role: Role,
   userSpecialistId: string | null,
@@ -84,6 +115,7 @@ async function assertNoConsultorioOverlap(
   endTime: string,
   excludeId?: string
 ): Promise<void> {
+  if (!consultorio.trim()) return;
   const sameDay = await appointmentRepository.findByConsultorioAndDate(
     consultorio,
     appointmentDate,
@@ -175,6 +207,7 @@ export async function createAppointment(
     paymentDate?: Date | null;
     medicalRecord?: string | null;
     reasonForVisit?: string | null;
+    reservationDepositAmount?: string | number | null;
   },
   role: Role,
   userSpecialistId: string | null
@@ -188,8 +221,10 @@ export async function createAppointment(
   const startTime = assertValidTime(data.startTime);
   const endTime = assertValidTime(data.endTime);
   assertEndAfterStart(startTime, endTime);
-  const consultorio = data.consultorio.trim();
-  if (!consultorio) throw new AppError(400, "Debe indicar el consultorio");
+  const status = data.status ?? AppointmentStatus.RESERVED;
+  const isAusenteConAviso = status === AppointmentStatus.AUSENTE_CON_AVISO;
+  const consultorio = isAusenteConAviso ? "" : data.consultorio.trim();
+  if (!isAusenteConAviso && !consultorio) throw new AppError(400, "Debe indicar el consultorio");
 
   const appointmentDate = toDateOnly(data.appointmentDate);
 
@@ -203,7 +238,17 @@ export async function createAppointment(
   if (!patient) throw new AppError(400, "Paciente no encontrado");
 
   await assertNoOverlap(data.specialistId, appointmentDate, startTime, endTime);
-  await assertNoConsultorioOverlap(consultorio, appointmentDate, startTime, endTime);
+  if (consultorio) {
+    await assertNoConsultorioOverlap(consultorio, appointmentDate, startTime, endTime);
+  }
+
+  const parsedDeposit = parseMoneyToDecimal(data.reservationDepositAmount ?? null);
+  const reservationDepositAmount = reservationDepositForStatus(
+    status,
+    parsedDeposit,
+    null,
+    specialist.consultationFee
+  );
 
   return appointmentRepository.create({
     patient: { connect: { id: data.patientId } },
@@ -212,7 +257,8 @@ export async function createAppointment(
     appointmentDate,
     startTime,
     endTime,
-    status: data.status ?? AppointmentStatus.RESERVED,
+    status,
+    reservationDepositAmount,
     paymentMethod: data.paymentMethod ?? null,
     paymentCompleted: data.paymentCompleted ?? false,
     paymentDate: data.paymentCompleted ? (data.paymentDate ?? null) : null,
@@ -237,6 +283,7 @@ export async function updateAppointment(
     specialistSettledAt: Date | null;
     medicalRecord: string | null;
     reasonForVisit: string | null;
+    reservationDepositAmount: string | number | null;
   }>,
   role: Role,
   userSpecialistId: string | null
@@ -245,33 +292,38 @@ export async function updateAppointment(
   if (!existing) throw new AppError(404, "Cita no encontrada");
   assertCanAccessAppointment(role, userSpecialistId, existing.specialistId);
 
+  if (role === Role.SPECIALIST) {
+    throw new AppError(403, "Los especialistas no pueden modificar turnos existentes");
+  }
+
   const nextSpecialistId = data.specialistId ?? existing.specialistId;
-  const nextConsultorio = data.consultorio !== undefined ? data.consultorio.trim() : existing.consultorio;
+  const nextStatus = data.status !== undefined ? data.status : existing.status;
+  const nextConsultorio =
+    nextStatus === AppointmentStatus.AUSENTE_CON_AVISO
+      ? ""
+      : data.consultorio !== undefined
+        ? data.consultorio.trim()
+        : existing.consultorio.trim();
   const nextDate = data.appointmentDate !== undefined ? toDateOnly(data.appointmentDate) : existing.appointmentDate;
   const nextStart = data.startTime !== undefined ? assertValidTime(data.startTime) : existing.startTime;
   const nextEnd = data.endTime !== undefined ? assertValidTime(data.endTime) : existing.endTime;
-  if (!nextConsultorio) throw new AppError(400, "Debe indicar el consultorio");
-
-  if (role === Role.SPECIALIST) {
-    if (data.specialistId && data.specialistId !== userSpecialistId) {
-      throw new AppError(403, "No puede reasignar la cita a otro especialista");
-    }
-    if (data.patientId && data.patientId !== existing.patientId) {
-      throw new AppError(403, "No puede cambiar el paciente");
-    }
-    if (data.specialistSettledAt !== undefined) {
-      throw new AppError(403, "No puede marcar rendiciones");
-    }
+  if (nextStatus !== AppointmentStatus.AUSENTE_CON_AVISO && !nextConsultorio) {
+    throw new AppError(400, "Debe indicar el consultorio");
   }
 
   assertEndAfterStart(nextStart, nextEnd);
+
+  const statusAffectsConsultorio =
+    data.status !== undefined &&
+    (data.status === AppointmentStatus.AUSENTE_CON_AVISO || existing.status === AppointmentStatus.AUSENTE_CON_AVISO);
 
   if (
     data.specialistId ||
     data.consultorio !== undefined ||
     data.appointmentDate !== undefined ||
     data.startTime !== undefined ||
-    data.endTime !== undefined
+    data.endTime !== undefined ||
+    statusAffectsConsultorio
   ) {
     const specialist = await specialistRepository.findById(nextSpecialistId);
     if (!specialist || !specialist.active) {
@@ -279,7 +331,9 @@ export async function updateAppointment(
     }
     assertInsideAvailability(specialist, nextDate, nextStart, nextEnd);
     await assertNoOverlap(nextSpecialistId, nextDate, nextStart, nextEnd, id);
-    await assertNoConsultorioOverlap(nextConsultorio, nextDate, nextStart, nextEnd, id);
+    if (nextConsultorio.trim()) {
+      await assertNoConsultorioOverlap(nextConsultorio, nextDate, nextStart, nextEnd, id);
+    }
   }
 
   if (data.patientId) {
@@ -287,14 +341,29 @@ export async function updateAppointment(
     if (!patient) throw new AppError(400, "Paciente no encontrado");
   }
 
+  const specialistForFee = await specialistRepository.findById(nextSpecialistId);
+  const fee = specialistForFee?.consultationFee ?? null;
+  const depositFromBody =
+    data.reservationDepositAmount !== undefined ? parseMoneyToDecimal(data.reservationDepositAmount) : undefined;
+  const rawExistingDeposit = (existing as { reservationDepositAmount?: unknown }).reservationDepositAmount;
+  const existingDeposit = parseMoneyToDecimal(
+    rawExistingDeposit as string | number | Prisma.Decimal | null | undefined
+  );
+
+  const shouldPatchReservationDeposit = data.status !== undefined || data.reservationDepositAmount !== undefined;
+  const nextReservationDeposit = shouldPatchReservationDeposit
+    ? reservationDepositForStatus(nextStatus, depositFromBody, existingDeposit, fee)
+    : undefined;
+
   return appointmentRepository.update(id, {
     ...(data.patientId !== undefined ? { patient: { connect: { id: data.patientId } } } : {}),
     ...(data.specialistId !== undefined ? { specialist: { connect: { id: data.specialistId } } } : {}),
-    ...(data.consultorio !== undefined ? { consultorio: nextConsultorio } : {}),
+    ...(data.consultorio !== undefined || data.status !== undefined ? { consultorio: nextConsultorio } : {}),
     ...(data.appointmentDate !== undefined ? { appointmentDate: nextDate } : {}),
     ...(data.startTime !== undefined ? { startTime: nextStart } : {}),
     ...(data.endTime !== undefined ? { endTime: nextEnd } : {}),
     ...(data.status !== undefined ? { status: data.status } : {}),
+    ...(nextReservationDeposit !== undefined ? { reservationDepositAmount: nextReservationDeposit } : {}),
     ...(data.paymentMethod !== undefined ? { paymentMethod: data.paymentMethod } : {}),
     ...(data.paymentCompleted !== undefined ? { paymentCompleted: data.paymentCompleted } : {}),
     ...((data.paymentDate !== undefined || data.paymentCompleted === false)

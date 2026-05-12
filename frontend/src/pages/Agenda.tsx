@@ -1,3 +1,4 @@
+import { Link, useLocation, useParams, useSearchParams, type To } from "react-router-dom";
 import esLocale from "@fullcalendar/core/locales/es";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
@@ -6,13 +7,16 @@ import FullCalendar from "@fullcalendar/react";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import type { DateSelectArg, EventClickArg, EventContentArg, EventInput } from "@fullcalendar/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useSearchParams, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { deleteAppointment, fetchAppointments, fetchSpecialist, fetchSpecialists } from "../api/endpoints";
 import { getAppointmentDateStr, toCalendarEnd, toCalendarStart } from "../lib/appointmentDisplay";
+import { formatPersonDisplayLastFirst, formatPersonDisplayLastFirstUpper } from "../lib/personName";
 import { AppointmentModal } from "../components/AppointmentModal";
+import { PatientPaymentHistoryModal } from "../components/PatientPaymentHistoryModal";
 import { useAuth } from "../contexts/AuthContext";
-import type { Appointment, Specialist } from "../types";
+import type { Appointment, AppointmentPaymentMethod, Specialist } from "../types";
+import { appointmentHasDebt, appointmentDebtAmountArs, reservadoHonorarioRemainder } from "../lib/appointmentDebt";
+import { appointmentBlocksScheduleSlot } from "../lib/appointmentScheduling";
 
 /** Intervalos de atención (minutos desde medianoche) para un día de calendario, recortados al rango de la grilla. */
 function availabilityIntervalsForCalendarDay(
@@ -102,32 +106,97 @@ function isSelectionWithinSpecialistAvailability(start: Date, end: Date, special
 }
 
 const statusLabel: Record<Appointment["status"], string> = {
-  RESERVED: "RESERVADO",
+  RESERVED: "AGENDADO",
+  RESERVADO: "RESERVADO",
   ATTENDED: "FINALIZADO",
-  CANCELLED: "CANCELÓ",
-  NO_SHOW: "NO ASISTIÓ",
+  AUSENTE_CON_AVISO: "AUSENTE C/ AVISO",
+  AUSENTE_SIN_AVISO: "AUSENTE S/ AVISO",
 };
 
 const WORKDAY_START = "08:00";
 const WORKDAY_END = "20:00";
 
-function patientNameUpper(lastName: string, firstName: string): string {
-  return `${lastName}, ${firstName}`.toUpperCase();
+const paymentMethodLabel: Record<AppointmentPaymentMethod, string> = {
+  TRANSFER_TO_LOGOCEN: "Transferencia a LogoCen",
+  TRANSFER_TO_SPECIALIST: "Transferencia al especialista",
+  CASH_TO_LOGOCEN: "Efectivo a LogoCen",
+};
+
+/** Monto de referencia del turno (misma base que deuda en Pacientes / ingresos en Balance). */
+function formatConsultationFeeArs(raw: string | null | undefined): string {
+  if (raw == null || raw === "") return "Sin honorario cargado";
+  const normalized = Number(String(raw).replace(",", "."));
+  if (!Number.isFinite(normalized)) return "Sin honorario cargado";
+  const formatted = new Intl.NumberFormat("es-AR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(normalized);
+  return `$${formatted}`;
 }
 
-function patientName(lastName: string, firstName: string): string {
-  return `${lastName}, ${firstName}`;
+function parseMoneyAmount(raw: string | null | undefined): number | null {
+  if (raw == null || raw === "") return null;
+  const normalized = Number(String(raw).replace(",", "."));
+  return Number.isFinite(normalized) ? normalized : null;
 }
 
-function appointmentHasDebt(a: Appointment): boolean {
-  if (a.paymentCompleted) return false;
-  return a.paymentMethod === null || a.status === "NO_SHOW";
+function formatMoneyArsAmount(n: number): string {
+  const formatted = new Intl.NumberFormat("es-AR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(n);
+  return `$${formatted}`;
+}
+
+function reservationBalanceCaption(a: Appointment): string | null {
+  if (a.status !== "RESERVADO") return null;
+  const dep = parseMoneyAmount(a.reservationDepositAmount ?? undefined);
+  const fee = parseMoneyAmount(a.specialist.consultationFee);
+  if (dep == null) return "Reservado · anticipo sin cargar";
+  if (fee != null && fee > 0) {
+    const rest = Math.max(0, fee - dep);
+    return `Anticipo ${formatMoneyArsAmount(dep)} · Falta pagar ${formatMoneyArsAmount(rest)}`;
+  }
+  return `Anticipo ${formatMoneyArsAmount(dep)}`;
+}
+
+function appointmentPaymentCaption(a: Appointment): string {
+  const remainder = reservadoHonorarioRemainder(a);
+  let paid: string;
+  if (a.paymentCompleted) {
+    paid = "Pagado";
+  } else if (a.status === "RESERVADO") {
+    if (remainder != null) {
+      paid = remainder > 0 ? "Seña imputada · saldo pendiente" : "Seña imputada (honorario cubierto)";
+    } else {
+      paid = "Sin pagar";
+    }
+  } else {
+    paid = "Sin pagar";
+  }
+  const method = a.paymentMethod ? paymentMethodLabel[a.paymentMethod] : "forma sin definir";
+  const amount = formatConsultationFeeArs(a.specialist.consultationFee);
+  const base = `${paid} · ${method} · ${amount}`;
+  let withAbsent = base;
+  if (
+    (a.status === "AUSENTE_CON_AVISO" || a.status === "AUSENTE_SIN_AVISO") &&
+    !a.paymentCompleted &&
+    appointmentHasDebt(a)
+  ) {
+    const d = appointmentDebtAmountArs(a);
+    withAbsent =
+      d > 0
+        ? `${base} · Inasistencia: deuda ${formatMoneyArsAmount(d)}`
+        : `${base} · Inasistencia: deuda sujeta a honorario cargado`;
+  }
+  const res = reservationBalanceCaption(a);
+  return res ? `${withAbsent} · ${res}` : withAbsent;
 }
 
 function toEvent(a: Appointment): EventInput {
   return {
     id: a.id,
-    title: patientNameUpper(a.patient.lastName, a.patient.firstName),
+    title: formatPersonDisplayLastFirstUpper(a.patient.lastName, a.patient.firstName),
     start: toCalendarStart(a),
     end: toCalendarEnd(a),
     classNames: ["appt-event", `status-${a.status.toLowerCase()}`],
@@ -135,12 +204,12 @@ function toEvent(a: Appointment): EventInput {
   };
 }
 
-function renderEventContent(arg: EventContentArg) {
+function renderEventContent(arg: EventContentArg, buildPatientPaymentTo: (patientId: string) => To) {
   if (arg.event.display === "background") return null;
   const raw = arg.event.extendedProps.raw as Appointment | undefined;
   if (!raw) return <span>{arg.event.title}</span>;
-  const patient = patientName(raw.patient.lastName, raw.patient.firstName);
-  const specialist = `${raw.specialist.lastName}, ${raw.specialist.firstName}`;
+  const patient = formatPersonDisplayLastFirst(raw.patient.lastName, raw.patient.firstName);
+  const specialist = formatPersonDisplayLastFirst(raw.specialist.lastName, raw.specialist.firstName);
   const consultorio = raw.consultorio.trim() || "Sin consultorio";
   const status = statusLabel[raw.status];
   const hasDebt = appointmentHasDebt(raw);
@@ -150,33 +219,38 @@ function renderEventContent(arg: EventContentArg) {
   if (isListView) {
     return (
       <div className="appt-list-event-content">
-        <span className="appt-list-left">
-          <span className="appt-list-patient">{patient}</span>
-          <span className="appt-list-specialist">{specialist}</span>
-        </span>
-        <span className="appt-list-right">
-          <span className={`appt-list-status status-chip-${raw.status.toLowerCase()}`}>{status}</span>
-          <a
-            href={`/patients?paymentPatientId=${raw.patientId}`}
-            className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-              hasDebt ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-700"
-            }`}
-            title="Abrir historial de pagos del paciente"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {hasDebt ? "Con deuda" : "Sin deuda"}
-          </a>
-          <span className="appt-list-office">{consultorio}</span>
-        </span>
+        <div className="appt-list-row-main">
+          <span className="appt-list-left">
+            <span className="appt-list-patient">{patient}</span>
+            <span className="appt-list-specialist">{specialist}</span>
+          </span>
+          <span className="appt-list-right">
+            <span className={`appt-list-status status-chip-${raw.status.toLowerCase()}`}>{status}</span>
+            <Link
+              to={buildPatientPaymentTo(raw.patientId)}
+              className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                hasDebt ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-700"
+              }`}
+              title="Abrir historial de pagos del paciente"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {hasDebt ? "Con deuda" : "Sin deuda"}
+            </Link>
+            <span className="appt-list-office">{consultorio}</span>
+          </span>
+        </div>
+        <div className="appt-list-payment-row">{appointmentPaymentCaption(raw)}</div>
       </div>
     );
   }
 
   if (isMonthView) {
     return (
-      <div className="flex items-center gap-1 text-[10px] leading-none">
-        <span className="font-semibold">{raw.startTime}</span>
-        <span className="truncate">{patient}</span>
+      <div className="flex flex-col gap-0.5 text-[10px] leading-none" title={appointmentPaymentCaption(raw)}>
+        <div className="flex items-center gap-1">
+          <span className="font-semibold">{raw.startTime}</span>
+          <span className="truncate">{patient}</span>
+        </div>
       </div>
     );
   }
@@ -188,6 +262,7 @@ function renderEventContent(arg: EventContentArg) {
         <div className={`appt-event-status status-chip-${raw.status.toLowerCase()}`}>{status}</div>
       </div>
       <div className="appt-week-event-patient">{patient}</div>
+      <div className="appt-week-event-payment">{appointmentPaymentCaption(raw)}</div>
       <div className="appt-week-event-bottom">
         <div className="appt-week-event-office">{consultorio}</div>
         <span className={hasDebt ? "appt-week-payment debt" : "appt-week-payment paid"}>
@@ -216,9 +291,18 @@ function hhmmToMinutes(hhmm: string): number {
 
 export function AgendaPage() {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const { specialistId: routeSpecialistId } = useParams<{ specialistId?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { pathname } = useLocation();
+  const buildPatientPaymentTo = useCallback(
+    (patientId: string): To => {
+      const next = new URLSearchParams(searchParams);
+      next.set("paymentPatientId", patientId);
+      return { pathname, search: next.toString() };
+    },
+    [pathname, searchParams]
+  );
+  const paymentPatientId = searchParams.get("paymentPatientId");
   const calendarRef = useRef<InstanceType<typeof FullCalendar>>(null);
   const [range, setRange] = useState<{ from: string; to: string } | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -418,7 +502,8 @@ export function AgendaPage() {
 
     const byDate = new Map<string, Array<{ start: number; end: number }>>();
     for (const a of visibleAppointments) {
-      if (a.specialistId !== effectiveSpecialistId || a.status === "CANCELLED") continue;
+      if (a.specialistId !== effectiveSpecialistId) continue;
+      if (!appointmentBlocksScheduleSlot(a)) continue;
       const key = getAppointmentDateStr(a);
       const row = byDate.get(key) ?? [];
       row.push({ start: hhmmToMinutes(a.startTime), end: hhmmToMinutes(a.endTime) });
@@ -491,6 +576,35 @@ export function AgendaPage() {
           effectiveSpecialistId ? "agenda-specialist-view" : ""
         }`}
       >
+        {effectiveSpecialistId && (
+          <div className="mb-3 rounded-xl border border-sky-200/90 bg-gradient-to-r from-sky-50/95 to-white px-4 py-3 shadow-sm">
+            {specialistQ.isLoading && (
+              <p className="text-sm font-medium text-slate-600">Cargando datos del especialista…</p>
+            )}
+            {specialistQ.data && (
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-sky-800/90">Agenda del especialista</p>
+                  <h1 className="mt-0.5 truncate text-lg font-bold tracking-tight text-slate-900 sm:text-xl">
+                    {formatPersonDisplayLastFirst(specialistQ.data.lastName, specialistQ.data.firstName)}
+                  </h1>
+                  <p className="mt-0.5 truncate text-sm text-slate-600">{specialistQ.data.specialty}</p>
+                </div>
+                {user?.role === "ADMIN" && routeSpecialistId && (
+                  <Link
+                    to="/agenda"
+                    className="shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+                  >
+                    Agenda general
+                  </Link>
+                )}
+              </div>
+            )}
+            {!specialistQ.isLoading && !specialistQ.data && (
+              <p className="text-sm text-amber-800">No se pudo cargar el especialista.</p>
+            )}
+          </div>
+        )}
         <div className="mb-4 rounded-xl border border-slate-200/80 bg-white/80 p-5 shadow-sm backdrop-blur-[3px]">
           <div className="mb-4">
             <h2 className="text-base font-semibold tracking-tight text-slate-900">Agenda del día</h2>
@@ -518,7 +632,7 @@ export function AgendaPage() {
                 }
               >
                 {specialistDayBoard.map(({ specialist: s, appointments: dayAppts }) => {
-                  const name = `${s.lastName}, ${s.firstName}`;
+                  const name = formatPersonDisplayLastFirst(s.lastName, s.firstName);
                   const canLinkAgenda = user?.role === "ADMIN" || (user?.role === "SPECIALIST" && user.specialistId === s.id);
                   return (
                     <div
@@ -567,16 +681,19 @@ export function AgendaPage() {
                           <li className="rounded-md bg-slate-50 px-3 py-2.5 text-center text-slate-500">Sin turnos hoy</li>
                         ) : (
                           dayAppts.map((a) => {
-                            const patient = patientNameUpper(a.patient.lastName, a.patient.firstName);
-                            const muted = a.status === "CANCELLED";
+                            const patient = formatPersonDisplayLastFirstUpper(a.patient.lastName, a.patient.firstName);
+                            const muted =
+                              a.status === "AUSENTE_CON_AVISO" || a.status === "AUSENTE_SIN_AVISO";
                             const dayCellTone =
                               a.status === "ATTENDED"
                                 ? "bg-emerald-50 border-emerald-200"
-                                : a.status === "CANCELLED"
+                                : a.status === "AUSENTE_SIN_AVISO"
                                   ? "bg-rose-50 border-rose-200"
-                                  : a.status === "NO_SHOW"
+                                  : a.status === "AUSENTE_CON_AVISO"
                                     ? "bg-amber-50 border-amber-200"
-                                    : "bg-sky-50 border-sky-200";
+                                    : a.status === "RESERVADO"
+                                      ? "bg-violet-50 border-violet-200"
+                                      : "bg-sky-50 border-sky-200";
                             const hasDebt = appointmentHasDebt(a);
                             return (
                               <li
@@ -600,7 +717,13 @@ export function AgendaPage() {
                                       className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${
                                         hasDebt ? "bg-amber-200 text-amber-900" : "bg-emerald-200 text-emerald-900"
                                       }`}
-                                      onClick={() => navigate(`/patients?paymentPatientId=${a.patientId}`)}
+                                      onClick={() => {
+                                        setSearchParams((prev) => {
+                                          const next = new URLSearchParams(prev);
+                                          next.set("paymentPatientId", a.patientId);
+                                          return next;
+                                        });
+                                      }}
                                       title="Ver pagos y deuda del paciente"
                                     >
                                       {hasDebt ? "Con deuda" : "Sin deuda"}
@@ -609,6 +732,7 @@ export function AgendaPage() {
                                 </div>
                                 <p className={`mt-0.5 truncate text-slate-700 ${muted ? "line-through" : ""}`}>{patient}</p>
                                 <p className="truncate text-slate-500">({a.consultorio.trim() || "—"})</p>
+                                <p className="mt-1 text-[10px] leading-snug text-slate-600">{appointmentPaymentCaption(a)}</p>
                               </li>
                             );
                           })
@@ -700,14 +824,14 @@ export function AgendaPage() {
             slotEventOverlap={false}
             weekends={false}
             eventOrder="start,-duration,title"
-            eventMinHeight={70}
-            eventShortHeight={62}
+            eventMinHeight={84}
+            eventShortHeight={72}
             moreLinkContent={(arg) => `+${arg.num} turnos`}
             moreLinkClick={onMoreLinkClick}
             dayCellClassNames={effectiveSpecialistId ? dayCellClassNames : undefined}
             events={calendarEvents}
             eventClassNames={eventClassNames}
-            eventContent={renderEventContent}
+            eventContent={(arg) => renderEventContent(arg, buildPatientPaymentTo)}
             select={onSelect}
             eventClick={onEventClick}
             datesSet={onDatesSet}
@@ -729,33 +853,57 @@ export function AgendaPage() {
           onSaved={() => void refetch()}
         />
 
-        {eventActionOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-            <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-              <h3 className="text-lg font-semibold text-slate-900">Acción sobre este turno</h3>
-              <p className="mt-1 text-sm text-slate-600">
-                Podés editar la cita actual o crear una nueva en el mismo horario.
-              </p>
+        <PatientPaymentHistoryModal
+          patientId={paymentPatientId}
+          onClose={() => {
+            setSearchParams((prev) => {
+              const next = new URLSearchParams(prev);
+              next.delete("paymentPatientId");
+              return next;
+            });
+          }}
+        />
 
-              <div className="mt-5 flex flex-wrap gap-2">
+        {eventActionOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-3 sm:p-4">
+            <div
+              className="w-full max-w-lg overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-xl ring-1 ring-slate-900/5"
+              role="dialog"
+              aria-labelledby="event-action-title"
+              aria-describedby="event-action-desc"
+            >
+              <div className="border-b border-slate-100 bg-gradient-to-b from-slate-50 to-white px-5 pb-4 pt-5 sm:px-6">
+                <h3 id="event-action-title" className="text-base font-semibold tracking-tight text-slate-900 sm:text-lg">
+                  Acción sobre este turno
+                </h3>
+                <p id="event-action-desc" className="mt-2 text-sm leading-relaxed text-slate-600">
+                  {user?.role === "ADMIN"
+                    ? "Editá el turno, creá uno nuevo en el mismo horario o eliminá el turno si corresponde."
+                    : "Podés agendar una nueva cita en este horario o eliminar el turno. Para modificar una cita ya cargada, contactá a administración."}
+                </p>
+              </div>
+              <div className="space-y-4 px-5 py-5 sm:px-6">
+                <div className="flex flex-col gap-2.5 sm:flex-row sm:flex-wrap">
+                {user?.role === "ADMIN" && (
+                  <button
+                    type="button"
+                    className="inline-flex min-h-12 flex-1 items-center justify-center rounded-lg bg-brand-700 px-4 py-2.5 text-sm font-bold tracking-tight text-white shadow-md ring-1 ring-brand-900/20 transition hover:bg-brand-800 active:translate-y-px active:bg-brand-900 active:shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 sm:flex-none sm:min-w-[11rem]"
+                    onClick={() => {
+                      if (!clickedAppointment) return;
+                      setEventActionOpen(false);
+                      setClickedAppointment(null);
+                      setClickedSlot(null);
+                      setSelected(clickedAppointment);
+                      setSlot(null);
+                      setModalOpen(true);
+                    }}
+                  >
+                      Editar turno
+                  </button>
+                )}
                 <button
                   type="button"
-                  className="rounded-lg bg-brand-600 px-4 py-2 font-medium text-white hover:bg-brand-700"
-                  onClick={() => {
-                    if (!clickedAppointment) return;
-                    setEventActionOpen(false);
-                    setClickedAppointment(null);
-                    setClickedSlot(null);
-                    setSelected(clickedAppointment);
-                    setSlot(null);
-                    setModalOpen(true);
-                  }}
-                >
-                  Editar cita
-                </button>
-                <button
-                  type="button"
-                  className="rounded-lg border border-slate-300 px-4 py-2 font-medium text-slate-700 hover:bg-slate-50"
+                  className="inline-flex min-h-12 flex-1 items-center justify-center rounded-lg border-2 border-slate-300 bg-white px-4 py-2.5 text-sm font-bold tracking-tight text-slate-900 shadow-sm transition hover:border-slate-400 hover:bg-slate-50 active:translate-y-px active:border-slate-500 active:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 sm:flex-none sm:min-w-[12.5rem]"
                   onClick={() => {
                     if (!clickedSlot) return;
                     if (effectiveSpecialistId && specialistQ.data) {
@@ -780,7 +928,7 @@ export function AgendaPage() {
                 {canDeleteClickedAppointment && (
                   <button
                     type="button"
-                    className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 font-medium text-red-700 hover:bg-red-100"
+                    className="inline-flex min-h-12 flex-1 items-center justify-center rounded-lg border-2 border-rose-400 bg-rose-50 px-4 py-2.5 text-sm font-bold tracking-tight text-rose-900 shadow-sm ring-1 ring-rose-900/10 transition hover:border-rose-500 hover:bg-rose-100 active:translate-y-px active:bg-rose-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-600 sm:flex-none sm:min-w-[11rem]"
                     onClick={() => {
                       if (!clickedAppointment) return;
                       setDeleteTargetAppointmentId(clickedAppointment.id);
@@ -790,32 +938,43 @@ export function AgendaPage() {
                     Eliminar turno
                   </button>
                 )}
-                <button
-                  type="button"
-                  className="rounded-lg px-4 py-2 text-slate-600 hover:bg-slate-100"
-                  onClick={() => {
-                    setEventActionOpen(false);
-                    setClickedAppointment(null);
-                    setClickedSlot(null);
-                  }}
-                >
-                  Cancelar
-                </button>
+                </div>
+                <div className="flex justify-center border-t border-slate-100 pt-4 sm:justify-end">
+                  <button
+                    type="button"
+                    className="inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-300 bg-slate-50 px-5 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-100 hover:text-slate-900 active:translate-y-px active:bg-slate-200"
+                    onClick={() => {
+                      setEventActionOpen(false);
+                      setClickedAppointment(null);
+                      setClickedSlot(null);
+                    }}
+                  >
+                    Cancelar
+                  </button>
+                </div>
               </div>
             </div>
           </div>
         )}
         {deleteTargetAppointmentId && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-            <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-              <h3 className="text-lg font-semibold text-slate-900">Eliminar turno</h3>
-              <p className="mt-2 text-sm text-slate-600">
-                Esta acción eliminará el turno de forma permanente.
-              </p>
-              <div className="mt-5 flex justify-end gap-2">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-3 sm:p-4">
+            <div
+              className="w-full max-w-md overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-xl ring-1 ring-slate-900/5"
+              role="dialog"
+              aria-labelledby="delete-appt-title"
+            >
+              <div className="border-b border-slate-100 bg-gradient-to-b from-slate-50 to-white px-5 pb-4 pt-5 sm:px-6">
+                <h3 id="delete-appt-title" className="text-base font-semibold tracking-tight text-slate-900 sm:text-lg">
+                  Eliminar turno
+                </h3>
+              </div>
+              <div className="px-5 py-4 sm:px-6">
+                <p className="text-sm leading-relaxed text-slate-600">Esta acción eliminará el turno de forma permanente.</p>
+              </div>
+              <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 bg-slate-50/60 px-5 py-4 sm:gap-3 sm:px-6">
                 <button
                   type="button"
-                  className="rounded-lg px-4 py-2 text-slate-600 hover:bg-slate-100"
+                  className="inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-300 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-100 active:translate-y-px disabled:opacity-50"
                   disabled={deleteFromActionMut.isPending}
                   onClick={() => setDeleteTargetAppointmentId(null)}
                 >
@@ -823,31 +982,41 @@ export function AgendaPage() {
                 </button>
                 <button
                   type="button"
-                  className="rounded-lg bg-red-600 px-4 py-2 font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                  className="inline-flex min-h-11 items-center justify-center rounded-lg bg-red-700 px-4 py-2 text-sm font-bold tracking-tight text-white shadow-md ring-1 ring-red-900/25 transition hover:bg-red-800 active:translate-y-px active:bg-red-900 active:shadow-sm disabled:opacity-50"
                   disabled={deleteFromActionMut.isPending}
                   onClick={() => {
                     if (!deleteTargetAppointmentId) return;
                     deleteFromActionMut.mutate(deleteTargetAppointmentId);
                   }}
                 >
-                  {deleteFromActionMut.isPending ? "Eliminando..." : "Eliminar"}
+                  {deleteFromActionMut.isPending ? "Eliminando…" : "Eliminar"}
                 </button>
               </div>
             </div>
           </div>
         )}
         {unavailableOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-            <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-              <h3 className="text-lg font-semibold text-slate-900">Turno no disponible</h3>
-              <p className="mt-2 text-sm text-slate-600">
-                El especialista no atiende en ese día y horario. Elegí un horario dentro de un bloque violeta de “franja
-                de atención” en la grilla.
-              </p>
-              <div className="mt-5 flex justify-end gap-2">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-3 sm:p-4">
+            <div
+              className="w-full max-w-md overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-xl ring-1 ring-slate-900/5"
+              role="dialog"
+              aria-labelledby="unavail-title"
+            >
+              <div className="border-b border-slate-100 bg-gradient-to-b from-slate-50 to-white px-5 pb-4 pt-5 sm:px-6">
+                <h3 id="unavail-title" className="text-base font-semibold tracking-tight text-slate-900 sm:text-lg">
+                  Turno no disponible
+                </h3>
+              </div>
+              <div className="px-5 py-4 sm:px-6">
+                <p className="text-sm leading-relaxed text-slate-600">
+                  El especialista no atiende en ese día y horario. Elegí un horario dentro de un bloque violeta de “franja
+                  de atención” en la grilla.
+                </p>
+              </div>
+              <div className="flex justify-end border-t border-slate-100 bg-slate-50/60 px-5 py-4 sm:px-6">
                 <button
                   type="button"
-                  className="rounded-lg bg-brand-600 px-4 py-2 font-medium text-white hover:bg-brand-700"
+                  className="inline-flex min-h-11 items-center justify-center rounded-lg bg-brand-700 px-5 py-2 text-sm font-bold tracking-tight text-white shadow-md ring-1 ring-brand-900/20 transition hover:bg-brand-800 active:translate-y-px active:bg-brand-900 active:shadow-sm"
                   onClick={() => setUnavailableOpen(false)}
                 >
                   Entendido
@@ -857,54 +1026,65 @@ export function AgendaPage() {
           </div>
         )}
         {showQuickSlots && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-            <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-slate-900">Turnos directos disponibles</h3>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-3 sm:p-4">
+            <div className="w-full max-w-lg overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-xl ring-1 ring-slate-900/5">
+              <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-gradient-to-b from-slate-50 to-white px-5 py-4 sm:px-6">
+                <h3 className="text-base font-semibold tracking-tight text-slate-900 sm:text-lg">Turnos directos disponibles</h3>
                 <button
                   type="button"
-                  className="rounded-lg px-2 py-1 text-slate-500 hover:bg-slate-100"
+                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-slate-50 text-sm font-semibold text-slate-600 shadow-sm transition hover:border-slate-400 hover:bg-slate-100 active:translate-y-px"
                   onClick={() => setShowQuickSlots(false)}
+                  aria-label="Cerrar"
                 >
                   ✕
                 </button>
               </div>
-              <div className="mt-3 flex items-center gap-2 text-sm">
-                <button
-                  type="button"
-                  onClick={() => setQuickSlotsLimit(5)}
-                  className={`rounded-lg px-3 py-1 ${quickSlotsLimit === 5 ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-700"}`}
-                >
-                  Primeros 5
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setQuickSlotsLimit(10)}
-                  className={`rounded-lg px-3 py-1 ${quickSlotsLimit === 10 ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-700"}`}
-                >
-                  Primeros 10
-                </button>
-              </div>
-              <div className="mt-4 space-y-2">
-                {quickAvailableSlots.length === 0 ? (
-                  <p className="text-sm text-slate-500">No hay disponibilidad próxima con la configuración actual.</p>
-                ) : (
-                  quickAvailableSlots.map((slotItem, idx) => (
-                    <button
-                      key={`${slotItem.start.toISOString()}-${idx}`}
-                      type="button"
-                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
-                      onClick={() => {
-                        setShowQuickSlots(false);
-                        setSelected(null);
-                        setSlot({ start: slotItem.start, end: slotItem.end });
-                        setModalOpen(true);
-                      }}
-                    >
-                      {slotItem.label}
-                    </button>
-                  ))
-                )}
+              <div className="px-5 py-4 sm:px-6">
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <button
+                    type="button"
+                    onClick={() => setQuickSlotsLimit(5)}
+                    className={`inline-flex min-h-10 items-center justify-center rounded-lg border-2 px-3 py-2 text-sm font-bold transition active:translate-y-px ${
+                      quickSlotsLimit === 5
+                        ? "border-slate-800 bg-slate-800 text-white shadow-md"
+                        : "border-slate-300 bg-white text-slate-800 shadow-sm hover:border-slate-400 hover:bg-slate-50"
+                    }`}
+                  >
+                    Primeros 5
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setQuickSlotsLimit(10)}
+                    className={`inline-flex min-h-10 items-center justify-center rounded-lg border-2 px-3 py-2 text-sm font-bold transition active:translate-y-px ${
+                      quickSlotsLimit === 10
+                        ? "border-slate-800 bg-slate-800 text-white shadow-md"
+                        : "border-slate-300 bg-white text-slate-800 shadow-sm hover:border-slate-400 hover:bg-slate-50"
+                    }`}
+                  >
+                    Primeros 10
+                  </button>
+                </div>
+                <div className="mt-4 space-y-2">
+                  {quickAvailableSlots.length === 0 ? (
+                    <p className="text-sm text-slate-500">No hay disponibilidad próxima con la configuración actual.</p>
+                  ) : (
+                    quickAvailableSlots.map((slotItem, idx) => (
+                      <button
+                        key={`${slotItem.start.toISOString()}-${idx}`}
+                        type="button"
+                        className="w-full rounded-lg border-2 border-slate-200 bg-white px-3 py-2.5 text-left text-sm font-semibold text-slate-800 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 active:translate-y-px"
+                        onClick={() => {
+                          setShowQuickSlots(false);
+                          setSelected(null);
+                          setSlot({ start: slotItem.start, end: slotItem.end });
+                          setModalOpen(true);
+                        }}
+                      >
+                        {slotItem.label}
+                      </button>
+                    ))
+                  )}
+                </div>
               </div>
             </div>
           </div>

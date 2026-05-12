@@ -3,6 +3,7 @@ import { userRepository } from "../repositories/user.repository.js";
 import { AppError } from "../middleware/errorHandler.js";
 import { normalizeProfilePhotoUrlForStorage } from "../utils/imageUrl.js";
 import { hashPassword } from "../utils/password.js";
+import { normalizePersonNameField } from "../utils/personName.js";
 import { Weekday } from "@prisma/client";
 import { assertValidTime, timeToMinutes } from "../utils/appointmentTime.js";
 
@@ -55,8 +56,8 @@ export async function createSpecialist(data: {
   return specialistRepository.createWithUser({
     email,
     passwordHash,
-    firstName: data.firstName.trim(),
-    lastName: data.lastName.trim(),
+    firstName: normalizePersonNameField(data.firstName),
+    lastName: normalizePersonNameField(data.lastName),
     specialty: data.specialty.trim(),
     profilePhotoUrl: normProfilePhotoUrl(data.profilePhotoUrl),
     licenseNumber: data.licenseNumber?.trim() || null,
@@ -101,8 +102,8 @@ export async function updateSpecialist(
     return await specialistRepository.updateWithUser(id, {
       ...(data.email ? { email: data.email.toLowerCase().trim() } : {}),
       ...(passwordHash ? { passwordHash } : {}),
-      ...(data.firstName !== undefined ? { firstName: data.firstName.trim() } : {}),
-      ...(data.lastName !== undefined ? { lastName: data.lastName.trim() } : {}),
+      ...(data.firstName !== undefined ? { firstName: normalizePersonNameField(data.firstName) } : {}),
+      ...(data.lastName !== undefined ? { lastName: normalizePersonNameField(data.lastName) } : {}),
       ...(data.specialty !== undefined ? { specialty: data.specialty.trim() } : {}),
       ...(data.profilePhotoUrl !== undefined
         ? { profilePhotoUrl: normProfilePhotoUrl(data.profilePhotoUrl) }

@@ -12,6 +12,7 @@ import {
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { useAuth } from "../../contexts/AuthContext";
 import { imageSrcCandidates, normalizeProfilePhotoUrlForStorage } from "../../lib/imageUrl";
+import { normalizePersonNameField, formatPersonDisplayLastFirst } from "../../lib/personName";
 import type { Specialist } from "../../types";
 
 const emptyForm = {
@@ -108,7 +109,7 @@ function SpecialistAvatar({ specialist }: { specialist: Specialist }) {
       />
     );
   }
-  const initials = `${specialist.firstName[0] ?? ""}${specialist.lastName[0] ?? ""}`.toUpperCase();
+  const initials = `${normalizePersonNameField(specialist.firstName).charAt(0) ?? ""}${normalizePersonNameField(specialist.lastName).charAt(0) ?? ""}`.toUpperCase();
   return (
     <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-sky-100 to-blue-50 text-base font-bold tracking-tight text-sky-800">
       {initials || "?"}
@@ -198,7 +199,7 @@ function SpecialistCard({ specialist: s, size, canEdit, canViewAgenda, canViewFi
         </div>
 
         <h2 className="text-center text-xl font-bold tracking-tight text-slate-900">
-          {s.lastName}, {s.firstName}
+          {formatPersonDisplayLastFirst(s.lastName, s.firstName)}
         </h2>
         <p className="mt-2 w-full max-w-[min(100%,280px)] text-center text-sm leading-snug text-slate-600 sm:max-w-none">
           {s.specialty}
@@ -395,20 +396,19 @@ function SpecialistFormModal({ open, title, editing, onClose, canDelete }: FormM
   const passwordMismatch = passwordNeedsConfirmation && form.password !== form.confirmPassword;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-3 sm:p-4">
       <div
-        className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-white/20 bg-white/95 p-6 shadow-[0_24px_80px_-12px_rgba(15,23,42,0.25)] backdrop-blur-xl"
+        className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-slate-200/80 bg-white p-6 shadow-xl ring-1 ring-slate-900/5"
         role="dialog"
         aria-modal="true"
       >
         <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-4">
-          <h2 className="bg-gradient-to-r from-slate-900 to-slate-600 bg-clip-text text-xl font-bold tracking-tight text-transparent">
-            {title}
-          </h2>
+          <h2 className="text-lg font-semibold tracking-tight text-slate-900">{title}</h2>
           <button
             type="button"
-            className="rounded-xl p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-slate-50 text-sm font-semibold text-slate-600 shadow-sm transition hover:border-slate-400 hover:bg-slate-100 active:translate-y-px"
             onClick={onClose}
+            aria-label="Cerrar"
           >
             ✕
           </button>
@@ -678,14 +678,14 @@ function SpecialistFormModal({ open, title, editing, onClose, canDelete }: FormM
             <button
               type="submit"
               disabled={pending || passwordMismatch}
-              className="rounded-xl bg-gradient-to-r from-brand-600 to-sky-600 px-5 py-2.5 font-semibold text-white shadow-md shadow-brand-500/25 transition hover:brightness-105 disabled:opacity-50"
+              className="inline-flex min-h-11 items-center justify-center rounded-lg bg-brand-700 px-5 py-2.5 text-sm font-bold tracking-tight text-white shadow-md ring-1 ring-brand-900/20 transition hover:bg-brand-800 active:translate-y-px active:bg-brand-900 active:shadow-sm disabled:opacity-50"
             >
               {editing ? "Guardar" : "Crear especialista"}
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 font-medium text-slate-700 hover:bg-slate-50"
+              className="inline-flex min-h-11 items-center justify-center rounded-lg border-2 border-slate-300 bg-white px-5 py-2.5 text-sm font-bold tracking-tight text-slate-900 shadow-sm transition hover:border-slate-400 hover:bg-slate-50 active:translate-y-px"
             >
               Cancelar
             </button>
@@ -694,7 +694,7 @@ function SpecialistFormModal({ open, title, editing, onClose, canDelete }: FormM
                 type="button"
                 disabled={pending}
                 onClick={() => setShowDeleteConfirm(true)}
-                className="rounded-xl border border-red-200 bg-red-50/80 px-5 py-2.5 font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
+                className="inline-flex min-h-11 items-center justify-center rounded-lg border-2 border-rose-400 bg-rose-50 px-5 py-2.5 text-sm font-bold tracking-tight text-rose-900 shadow-sm ring-1 ring-rose-900/10 transition hover:border-rose-500 hover:bg-rose-100 active:translate-y-px disabled:opacity-50"
               >
                 Eliminar
               </button>

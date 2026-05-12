@@ -14,7 +14,8 @@ const timeSchema = z
 const createSchema = z.object({
   patientId: z.string().uuid(),
   specialistId: z.string().uuid(),
-  consultorio: z.string().min(1),
+  /** Vacío solo si el servicio acepta el estado (p. ej. ausente con aviso). */
+  consultorio: z.string(),
   date: z.string().min(1),
   startTime: timeSchema,
   endTime: timeSchema,
@@ -24,12 +25,14 @@ const createSchema = z.object({
   paymentDate: z.string().optional().nullable(),
   medicalRecord: z.string().optional().nullable(),
   reasonForVisit: z.string().optional().nullable(),
+  reservationDepositAmount: z.union([z.string(), z.number()]).optional().nullable(),
 });
 
 const updateSchema = z.object({
   patientId: z.string().uuid().optional(),
   specialistId: z.string().uuid().optional(),
-  consultorio: z.string().min(1).optional(),
+  /** Permite "" (p. ej. ausente con aviso). La regla de negocio valida el servicio. */
+  consultorio: z.string().optional(),
   date: z.string().optional(),
   startTime: timeSchema.optional(),
   endTime: timeSchema.optional(),
@@ -40,6 +43,7 @@ const updateSchema = z.object({
   specialistSettledAt: z.coerce.date().optional().nullable(),
   medicalRecord: z.string().optional().nullable(),
   reasonForVisit: z.string().optional().nullable(),
+  reservationDepositAmount: z.union([z.string(), z.number()]).optional().nullable(),
 });
 
 function ctx(req: Request) {
@@ -103,6 +107,7 @@ export const create = asyncHandler(async (req: Request, res: Response) => {
       paymentDate: body.paymentDate ? parseDateOnlyISO(body.paymentDate) : null,
       medicalRecord: body.medicalRecord,
       reasonForVisit: body.reasonForVisit,
+      reservationDepositAmount: body.reservationDepositAmount,
     },
     ctx(req).role,
     ctx(req).userSpecialistId
@@ -130,6 +135,9 @@ export const update = asyncHandler(async (req: Request, res: Response) => {
       ...(body.specialistSettledAt !== undefined ? { specialistSettledAt: body.specialistSettledAt } : {}),
       ...(body.medicalRecord !== undefined ? { medicalRecord: body.medicalRecord } : {}),
       ...(body.reasonForVisit !== undefined ? { reasonForVisit: body.reasonForVisit } : {}),
+      ...(body.reservationDepositAmount !== undefined
+        ? { reservationDepositAmount: body.reservationDepositAmount }
+        : {}),
     },
     ctx(req).role,
     ctx(req).userSpecialistId

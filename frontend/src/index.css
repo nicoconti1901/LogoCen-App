@@ -260,28 +260,35 @@ body {
   color: #0f172a !important;
 }
 
+.agenda-specialist-view .fc .fc-timegrid-event.appt-event.status-reservado {
+  background: #ffffff !important;
+  border-left-color: #7c3aed !important;
+  color: #0f172a !important;
+}
+
 .agenda-specialist-view .fc .fc-timegrid-event.appt-event.status-attended {
   background: #ffffff !important;
   border-left-color: #16a34a !important;
   color: #0f172a !important;
 }
 
-.agenda-specialist-view .fc .fc-timegrid-event.appt-event.status-cancelled {
+.agenda-specialist-view .fc .fc-timegrid-event.appt-event.status-ausente_sin_aviso {
   background: #ffffff !important;
   border-left-color: #ef4444 !important;
   color: #0f172a !important;
 }
 
-.agenda-specialist-view .fc .fc-timegrid-event.appt-event.status-no_show {
+.agenda-specialist-view .fc .fc-timegrid-event.appt-event.status-ausente_con_aviso {
   background: #ffffff !important;
   border-left-color: #f59e0b !important;
   color: #0f172a !important;
 }
 
 .agenda-specialist-view .fc .fc-timegrid-event.appt-event.status-reserved .fc-event-main,
+.agenda-specialist-view .fc .fc-timegrid-event.appt-event.status-reservado .fc-event-main,
 .agenda-specialist-view .fc .fc-timegrid-event.appt-event.status-attended .fc-event-main,
-.agenda-specialist-view .fc .fc-timegrid-event.appt-event.status-cancelled .fc-event-main,
-.agenda-specialist-view .fc .fc-timegrid-event.appt-event.status-no_show .fc-event-main {
+.agenda-specialist-view .fc .fc-timegrid-event.appt-event.status-ausente_sin_aviso .fc-event-main,
+.agenda-specialist-view .fc .fc-timegrid-event.appt-event.status-ausente_con_aviso .fc-event-main {
   color: #0f172a !important;
 }
 
@@ -323,6 +330,18 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: #0f172a !important;
+}
+
+.fc .appt-week-event-payment {
+  font-size: 0.65rem;
+  font-weight: 600;
+  line-height: 1.25;
+  color: #475569;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .fc .appt-week-event-bottom {
@@ -387,20 +406,23 @@ body {
 
 .fc .appt-event.status-reserved .appt-week-event-patient,
 .fc .appt-event.status-reserved .appt-week-event-office,
+.fc .appt-event.status-reservado .appt-week-event-patient,
+.fc .appt-event.status-reservado .appt-week-event-office,
 .fc .appt-event.status-attended .appt-week-event-patient,
 .fc .appt-event.status-attended .appt-week-event-office {
   color: inherit;
 }
 
-.fc .appt-event.status-cancelled .appt-week-event-patient,
-.fc .appt-event.status-cancelled .appt-week-event-office,
-.fc .appt-event.status-no_show .appt-week-event-patient,
-.fc .appt-event.status-no_show .appt-week-event-office {
+.fc .appt-event.status-ausente_sin_aviso .appt-week-event-patient,
+.fc .appt-event.status-ausente_sin_aviso .appt-week-event-office,
+.fc .appt-event.status-ausente_con_aviso .appt-week-event-patient,
+.fc .appt-event.status-ausente_con_aviso .appt-week-event-office {
   color: #1e293b;
 }
 
 .fc .appt-event.status-attended .appt-event-status,
-.fc .appt-event.status-reserved .appt-event-status {
+.fc .appt-event.status-reserved .appt-event-status,
+.fc .appt-event.status-reservado .appt-event-status {
   background: rgba(255, 255, 255, 0.92);
   color: #0f172a;
 }
@@ -414,17 +436,22 @@ body {
   color: #082f49 !important;
 }
 
+.fc .fc-list-event.status-reservado td {
+  background: #ede9fe !important;
+  color: #3b0764 !important;
+}
+
 .fc .fc-list-event.status-attended td {
   background: #d8f6e5 !important;
   color: #0f172a !important;
 }
 
-.fc .fc-list-event.status-cancelled td {
+.fc .fc-list-event.status-ausente_sin_aviso td {
   background: #ffe2e8 !important;
   color: #0f172a !important;
 }
 
-.fc .fc-list-event.status-no_show td {
+.fc .fc-list-event.status-ausente_con_aviso td {
   background: #ffeccf !important;
   color: #0f172a !important;
 }
@@ -433,24 +460,45 @@ body {
   background: #c7e4ff !important;
 }
 
+.fc .fc-list-event.status-reservado:hover td {
+  background: #ddd6fe !important;
+}
+
 .fc .fc-list-event.status-attended:hover td {
   background: #c3efd7 !important;
 }
 
-.fc .fc-list-event.status-cancelled:hover td {
+.fc .fc-list-event.status-ausente_sin_aviso:hover td {
   background: #ffd2dc !important;
 }
 
-.fc .fc-list-event.status-no_show:hover td {
+.fc .fc-list-event.status-ausente_con_aviso:hover td {
   background: #ffe2b8 !important;
 }
 
 .fc .appt-list-event-content {
   display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.35rem;
+  line-height: 1.2;
+}
+
+.fc .appt-list-row-main {
+  display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.85rem;
-  line-height: 1.2;
+  width: 100%;
+}
+
+.fc .appt-list-payment-row {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #334155;
+  letter-spacing: 0.01em;
+  padding-top: 0.1rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.35);
 }
 
 .fc .appt-list-left {
@@ -502,19 +550,30 @@ body {
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35) inset, 0 4px 10px -6px rgba(3, 105, 161, 0.75);
 }
 
+.fc .status-chip-reservado {
+  background: linear-gradient(180deg, #a78bfa, #7c3aed);
+  color: #faf5ff;
+  border-color: #5b21b6;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35) inset, 0 4px 10px -6px rgba(91, 33, 182, 0.65);
+}
+
 .fc .status-chip-attended {
   background: #f1f5f9;
   color: #334155;
 }
 
-.fc .status-chip-cancelled {
-  background: #f1f5f9;
-  color: #334155;
+.fc .status-chip-ausente_sin_aviso {
+  background: linear-gradient(180deg, #f87171, #dc2626);
+  color: #fff7ed;
+  border-color: #b91c1c;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35) inset, 0 4px 10px -6px rgba(185, 28, 28, 0.65);
 }
 
-.fc .status-chip-no_show {
-  background: #f1f5f9;
-  color: #334155;
+.fc .status-chip-ausente_con_aviso {
+  background: linear-gradient(180deg, #fbbf24, #d97706);
+  color: #422006;
+  border-color: #b45309;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35) inset, 0 4px 10px -6px rgba(180, 83, 9, 0.55);
 }
 
 .fc .fc-list-event:hover .status-chip-reserved,
@@ -523,22 +582,28 @@ body {
   color: #f8fafc;
 }
 
+.fc .fc-list-event:hover .status-chip-reservado,
+.fc .appt-event:hover .status-chip-reservado {
+  background: linear-gradient(180deg, #7c3aed, #6d28d9);
+  color: #faf5ff;
+}
+
 .fc .fc-list-event:hover .status-chip-attended,
 .fc .appt-event:hover .status-chip-attended {
   background: #e2e8f0;
   color: #1e293b;
 }
 
-.fc .fc-list-event:hover .status-chip-cancelled,
-.fc .appt-event:hover .status-chip-cancelled {
-  background: #e2e8f0;
-  color: #1e293b;
+.fc .fc-list-event:hover .status-chip-ausente_sin_aviso,
+.fc .appt-event:hover .status-chip-ausente_sin_aviso {
+  background: linear-gradient(180deg, #ef4444, #b91c1c);
+  color: #fff7ed;
 }
 
-.fc .fc-list-event:hover .status-chip-no_show,
-.fc .appt-event:hover .status-chip-no_show {
-  background: #e2e8f0;
-  color: #1e293b;
+.fc .fc-list-event:hover .status-chip-ausente_con_aviso,
+.fc .appt-event:hover .status-chip-ausente_con_aviso {
+  background: linear-gradient(180deg, #f59e0b, #b45309);
+  color: #422006;
 }
 
 .fc .appt-list-office {
@@ -582,15 +647,19 @@ body {
   color: #0284c7 !important;
 }
 
+.fc .fc-list-event.status-reservado .fc-list-event-dot {
+  color: #7c3aed !important;
+}
+
 .fc .fc-list-event.status-attended .fc-list-event-dot {
   color: #16a34a !important;
 }
 
-.fc .fc-list-event.status-cancelled .fc-list-event-dot {
+.fc .fc-list-event.status-ausente_sin_aviso .fc-list-event-dot {
   color: #ef4444 !important;
 }
 
-.fc .fc-list-event.status-no_show .fc-list-event-dot {
+.fc .fc-list-event.status-ausente_con_aviso .fc-list-event-dot {
   color: #f59e0b !important;
 }
 
@@ -600,17 +669,22 @@ body {
   color: #06283d !important;
 }
 
+.status-reservado {
+  background: #8b5cf6 !important;
+  color: #faf5ff !important;
+}
+
 .status-attended {
   background: #16a34a !important;
   color: #f0fdf4 !important;
 }
 
-.status-cancelled {
+.status-ausente_sin_aviso {
   background: #fecaca !important;
   color: #991b1b !important;
 }
 
-.status-no_show {
+.status-ausente_con_aviso {
   background: #fed7aa !important;
   color: #9a3412 !important;
 }
@@ -686,15 +760,6 @@ body {
   box-shadow:
     0 16px 34px -26px rgba(15, 23, 42, 0.5),
     inset 0 1px 0 rgba(255, 255, 255, 0.9);
-}
-
-.appointment-modal-card {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(248, 250, 252, 0.86));
-  border: 1px solid rgba(226, 232, 240, 0.8);
-  backdrop-filter: blur(10px);
-  box-shadow:
-    0 20px 46px -24px rgba(15, 23, 42, 0.5),
-    inset 0 1px 0 rgba(255, 255, 255, 0.96);
 }
 
 .agenda-light .fc .fc-toolbar-title {
