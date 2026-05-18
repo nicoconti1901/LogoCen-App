@@ -6,6 +6,7 @@ import { paymentRouter } from "./payment.routes.js";
 import { specialistRouter } from "./specialist.routes.js";
 import { financeConfigRouter } from "./financeConfig.routes.js";
 import { financeExpenseRouter } from "./financeExpense.routes.js";
+import { consultorioRentMonthRouter } from "./consultorioRentMonth.routes.js";
 
 export const apiRouter = Router();
 
@@ -16,3 +17,4 @@ apiRouter.use("/appointments", appointmentRouter);
 apiRouter.use("/payments", paymentRouter);
 apiRouter.use("/finance-config", financeConfigRouter);
 apiRouter.use("/finance-expenses", financeExpenseRouter);
+apiRouter.use("/finance/consultorio-rent-months", consultorioRentMonthRouter);

@@ -16,6 +16,17 @@ export function timeToMinutes(t: string): number {
   return h * 60 + m;
 }
 
+export function minutesToHHmm(total: number): string {
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+export function weekdayFromDate(d: Date): "SUNDAY" | "MONDAY" | "TUESDAY" | "WEDNESDAY" | "THURSDAY" | "FRIDAY" | "SATURDAY" {
+  const map = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"] as const;
+  return map[d.getDay()];
+}
+
 export function timesOverlap(aStart: string, aEnd: string, bStart: string, bEnd: string): boolean {
   const as = timeToMinutes(aStart);
   const ae = timeToMinutes(aEnd);
@@ -29,10 +40,15 @@ export function toDateOnly(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
 
-/** ISO date YYYY-MM-DD */
+/** ISO date YYYY-MM-DD en zona local (fechas generadas con `toDateOnly` en memoria). */
 export function formatDateOnlyISO(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** ISO date YYYY-MM-DD para columnas `@db.Date` leídas de PostgreSQL (día calendario UTC). */
+export function formatStoredDateOnlyISO(d: Date): string {
+  return d.toISOString().slice(0, 10);
 }
 
 export function parseDateOnlyISO(s: string): Date {
@@ -47,4 +63,20 @@ export function currentTimeHHmm(): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   const now = new Date();
   return `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+}
+
+/** El turno ya terminó (día pasado o hoy con hora de fin alcanzada). */
+export function isAppointmentSlotEnded(appointmentDate: Date, endTime: string): boolean {
+  const day = toDateOnly(appointmentDate);
+  const today = toDateOnly(new Date());
+  if (day < today) return true;
+  if (day > today) return false;
+  return timeToMinutes(endTime) <= timeToMinutes(currentTimeHHmm());
+}
+
+/** El día del turno ya comenzó (hoy o fecha pasada; visible desde las 00:00). */
+export function isAppointmentDayStarted(appointmentDate: Date): boolean {
+  const day = toDateOnly(appointmentDate);
+  const today = toDateOnly(new Date());
+  return day <= today;
 }

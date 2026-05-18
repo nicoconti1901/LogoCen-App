@@ -2,13 +2,23 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createAppointment,
+  createFixedAppointmentSeries,
   deleteAppointment,
   fetchAppointments,
+  fetchPatientFixedSeries,
   fetchPatients,
   fetchSpecialist,
   fetchSpecialists,
   updateAppointment,
+  updateFixedAppointmentOccurrence,
 } from "../api/endpoints";
+import {
+  WEEKDAY_LABEL_ES,
+  weekdayLabelFromDate,
+  getFixedOccurrenceDate,
+  getFixedSeriesId,
+  isFixedSeriesAppointment,
+} from "../lib/fixedAppointment";
 import { getAppointmentDateStr, getEndTimeStr, getStartTimeStr } from "../lib/appointmentDisplay";
 import { formatPersonDisplayLastFirst, formatPersonDisplayLastFirstUpper, normalizePersonNameField } from "../lib/personName";
 import { useAuth } from "../contexts/AuthContext";
@@ -139,6 +149,8 @@ export function AppointmentModal({
   const [paymentDateStr, setPaymentDateStr] = useState("");
   const [medicalRecord, setMedicalRecord] = useState("");
   const [reasonForVisit, setReasonForVisit] = useState("");
+  const [isFixedSeries, setIsFixedSeries] = useState(false);
+  const [fixedEffectiveUntil, setFixedEffectiveUntil] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const effectiveSpecialistId = fixedSpecialistId ?? (isAdmin ? specialistId : mySpecialistId);
@@ -162,6 +174,9 @@ export function AppointmentModal({
   });
 
   const isEdit = Boolean(appointment);
+  const isEditFixed = isEdit && Boolean(appointment && isFixedSeriesAppointment(appointment));
+  /** Campos de pago/estado: turno normal o edición de una fecha de serie fija. */
+  const showOccurrenceDetails = !isFixedSeries || isEditFixed;
   /** Especialistas: alta y baja de turnos; no modificación de datos de citas existentes. */
   const specialistEditingForbidden = !isAdmin && isEdit;
   const consultorioDayQ = useQuery({
@@ -247,8 +262,42 @@ export function AppointmentModal({
       setMedicalRecord("");
       setReasonForVisit("");
       setReservationDepositStr("");
+      setIsFixedSeries(false);
+      setFixedEffectiveUntil("");
     }
   }, [open, appointment, initialStart, initialEnd, isAdmin, mySpecialistId, fixedSpecialistId]);
+
+  const patientFixedSeriesQ = useQuery({
+    queryKey: ["fixed-series", patientId, effectiveSpecialistId],
+    queryFn: () => fetchPatientFixedSeries(patientId, effectiveSpecialistId || undefined),
+    enabled: open && Boolean(patientId) && !isEdit,
+  });
+
+  const createFixedMut = useMutation({
+    mutationFn: () =>
+      createFixedAppointmentSeries({
+        patientId,
+        specialistId: isAdmin ? (fixedSpecialistId ?? specialistId) : mySpecialistId,
+        consultorio,
+        date: dateStr,
+        startTime: startTimeStr,
+        effectiveUntil: fixedEffectiveUntil.trim() === "" ? null : fixedEffectiveUntil,
+        reasonForVisit: reasonForVisit || null,
+      }),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["appointments"] });
+      await qc.invalidateQueries({ queryKey: ["fixed-series"] });
+      onSaved();
+      onClose();
+    },
+    onError: (e: unknown) => {
+      const msg =
+        e && typeof e === "object" && "response" in e
+          ? (e as { response?: { data?: { message?: string } } }).response?.data?.message
+          : null;
+      setError(msg ?? "No se pudo crear el turno fijo");
+    },
+  });
 
   const createMut = useMutation({
     mutationFn: () =>
@@ -283,8 +332,23 @@ export function AppointmentModal({
   });
 
   const updateMut = useMutation({
-    mutationFn: () =>
-      updateAppointment(appointment!.id, {
+    mutationFn: () => {
+      if (isEditFixed && appointment) {
+        const seriesId = getFixedSeriesId(appointment);
+        if (!seriesId) throw new Error("Serie fija inválida");
+        return updateFixedAppointmentOccurrence(seriesId, {
+          date: getFixedOccurrenceDate(appointment),
+          status,
+          reservationDepositAmount:
+            status === "RESERVADO" ? parsePositiveMoneyInput(reservationDepositStr) : null,
+          paymentMethod: paymentMethod || null,
+          paymentCompleted,
+          paymentDate: paymentCompleted ? paymentDateStr : null,
+          medicalRecord: medicalRecord || null,
+          reasonForVisit: reasonForVisit || null,
+        });
+      }
+      return updateAppointment(appointment!.id, {
         patientId: isAdmin ? patientId : undefined,
         specialistId: isAdmin ? (fixedSpecialistId ?? specialistId) : undefined,
         consultorio,
@@ -299,7 +363,8 @@ export function AppointmentModal({
         paymentDate: paymentCompleted ? paymentDateStr : null,
         medicalRecord: medicalRecord || null,
         reasonForVisit: reasonForVisit || null,
-      }),
+      });
+    },
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["appointments"] });
       onSaved();
@@ -441,12 +506,14 @@ export function AppointmentModal({
 
   const canSubmit = useMemo(() => {
     if (specialistEditingForbidden) return false;
-    if (!patientId || !dateStr || !startTimeStr || !endTimeStr) return false;
-    if (status !== "AUSENTE_CON_AVISO" && !consultorio.trim()) return false;
-    if (paymentCompleted && !paymentDateStr) return false;
+    if (!patientId || !dateStr || !startTimeStr) return false;
+    if (showOccurrenceDetails && !endTimeStr) return false;
+    if (isFixedSeries && !isEditFixed && status !== "AUSENTE_CON_AVISO" && !consultorio.trim()) return false;
+    if (showOccurrenceDetails && status !== "AUSENTE_CON_AVISO" && !consultorio.trim()) return false;
+    if (showOccurrenceDetails && paymentCompleted && !paymentDateStr) return false;
     if (isAdmin && !effectiveSpecialistId) return false;
     if (!isAdmin && !mySpecialistId) return false;
-    if (status === "RESERVADO") {
+    if (showOccurrenceDetails && status === "RESERVADO") {
       const dep = parsePositiveMoneyInput(reservationDepositStr);
       if (dep == null) return false;
       const feeRaw = specialistForFeesQ.data?.consultationFee;
@@ -471,6 +538,9 @@ export function AppointmentModal({
     status,
     reservationDepositStr,
     specialistForFeesQ.data?.consultationFee,
+    isFixedSeries,
+    isEditFixed,
+    showOccurrenceDetails,
   ]);
 
   function onSubmit(e: FormEvent) {
@@ -479,6 +549,7 @@ export function AppointmentModal({
     setError(null);
     if (!canSubmit) return;
     if (isEdit) updateMut.mutate();
+    else if (isFixedSeries) createFixedMut.mutate();
     else createMut.mutate();
   }
 
@@ -493,7 +564,13 @@ export function AppointmentModal({
       >
         <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-4">
           <h2 className="text-lg font-semibold tracking-tight text-slate-900">
-            {specialistEditingForbidden ? "Detalle del turno" : isEdit ? "Editar cita" : "Nueva cita"}
+            {specialistEditingForbidden
+              ? "Detalle del turno"
+              : isEditFixed
+                ? "Turno fijo — pago y estado"
+                : isEdit
+                  ? "Editar cita"
+                  : "Nueva cita"}
           </h2>
           <button
             type="button"
@@ -534,6 +611,54 @@ export function AppointmentModal({
               ))}
             </select>
           </div>
+
+          {isEditFixed && (
+            <p className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm text-violet-950">
+              Estás registrando pago y estado para <strong>este día</strong> del turno fijo semanal. Los cambios no
+              afectan otras semanas salvo que indiques lo contrario en cada fecha.
+            </p>
+          )}
+
+          {!isEdit && (
+            <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-violet-200 bg-violet-50/80 px-3 py-3 text-sm text-violet-950">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={isFixedSeries}
+                onChange={(e) => setIsFixedSeries(e.target.checked)}
+                disabled={specialistEditingForbidden}
+              />
+              <span>
+                <span className="font-semibold">Turno fijo semanal</span>
+                <span className="mt-0.5 block text-xs text-violet-900/90">
+                  Mismo paciente, especialista, día de la semana y hora de inicio. Se repite automáticamente en la agenda
+                  (no se guarda un turno por semana en la base). Podés cancelar la serie o una fecha puntual después.
+                </span>
+              </span>
+            </label>
+          )}
+
+          {isFixedSeries && dateStr && (
+            <p className="rounded-lg border border-violet-100 bg-violet-50/60 px-3 py-2 text-xs text-violet-900">
+              Se repetirá cada <strong>{weekdayLabelFromDate(dateStr)}</strong> a las{" "}
+              <strong>{startTimeStr || "—"}</strong>. La duración en el calendario es orientativa (1 h); la terapia puede
+              extenderse más.
+            </p>
+          )}
+
+          {patientId && (patientFixedSeriesQ.data?.length ?? 0) > 0 && !isEdit && (
+            <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-950">
+              <p className="font-semibold">Turnos fijos activos de este paciente</p>
+              <ul className="mt-1 list-inside list-disc space-y-0.5">
+                {(patientFixedSeriesQ.data ?? []).map((s) => (
+                  <li key={s.id}>
+                    {WEEKDAY_LABEL_ES[s.weekday] ?? s.weekday} {s.startTime} · {s.consultorio}
+                    {s.effectiveUntil ? ` · hasta ${s.effectiveUntil.slice(0, 10)}` : " · sin fecha de fin"}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {patientId && patientDebtBanner.any && (
             <div
@@ -620,7 +745,22 @@ export function AppointmentModal({
             />
           </div>
 
-          {status === "AUSENTE_CON_AVISO" ? (
+          {isFixedSeries && (
+            <div>
+              <label className={labelClass}>Vigente hasta (opcional)</label>
+              <input
+                type="date"
+                className={fieldClass}
+                value={fixedEffectiveUntil}
+                onChange={(e) => setFixedEffectiveUntil(e.target.value)}
+              />
+              <p className="mt-1 text-xs text-slate-600">
+                Dejá vacío si el turno fijo no tiene fecha de fin. Podés cancelar la serie completa en cualquier momento.
+              </p>
+            </div>
+          )}
+
+          {showOccurrenceDetails && status === "AUSENTE_CON_AVISO" ? (
             <div className="rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 text-sm text-amber-950">
               <p className="font-medium">Inasistencia con aviso</p>
               <p className="mt-1 text-xs text-amber-900">
@@ -691,6 +831,7 @@ export function AppointmentModal({
                 onChange={(e) => setStartTimeStr(e.target.value)}
               />
             </div>
+            {showOccurrenceDetails && (
             <div>
               <label className={labelClass}>Hora fin</label>
               <input
@@ -701,8 +842,11 @@ export function AppointmentModal({
                 onChange={(e) => setEndTimeStr(e.target.value)}
               />
             </div>
+            )}
           </div>
 
+          {showOccurrenceDetails && (
+            <>
           <div>
             <label className={labelClass}>Estado</label>
             <select
@@ -801,7 +945,10 @@ export function AppointmentModal({
               </p>
             )}
           </div>
-          {paymentCompleted && (
+            </>
+          )}
+
+          {paymentCompleted && showOccurrenceDetails && (
             <div>
               <label className={labelClass}>Fecha de pago</label>
               <input
@@ -842,13 +989,13 @@ export function AppointmentModal({
             {!specialistEditingForbidden && (
               <button
                 type="submit"
-                disabled={!canSubmit || createMut.isPending || updateMut.isPending}
+                disabled={!canSubmit || createMut.isPending || createFixedMut.isPending || updateMut.isPending}
                 className="inline-flex min-h-11 items-center justify-center rounded-lg bg-brand-700 px-4 py-2 text-sm font-bold tracking-tight text-white shadow-md ring-1 ring-brand-900/20 transition hover:bg-brand-800 active:translate-y-px active:bg-brand-900 active:shadow-sm disabled:opacity-50"
               >
-                {isEdit ? "Guardar" : "Crear"}
+                {isEdit ? "Guardar" : isFixedSeries ? "Crear turno fijo" : "Crear"}
               </button>
             )}
-            {isEdit && (
+            {isEdit && !isEditFixed && (
               <button
                 type="button"
                 onClick={() => setShowDeleteConfirm(true)}

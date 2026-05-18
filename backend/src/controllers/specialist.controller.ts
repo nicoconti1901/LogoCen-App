@@ -32,6 +32,7 @@ const createSchema = z.object({
   licenseNumber: z.union([z.string().max(500), z.literal(""), z.null()]).optional(),
   phone: z.union([z.string().max(50), z.literal(""), z.null()]).optional(),
   consultationFee: optionalMoney,
+  monthlyConsultorioRent: optionalMoney,
   transferAlias: optionalAlias,
   availabilities: z.array(availabilitySchema).optional(),
 });
@@ -46,6 +47,7 @@ const updateSchema = z.object({
   licenseNumber: z.union([z.string().max(500), z.literal(""), z.null()]).optional(),
   phone: z.union([z.string().max(50), z.literal(""), z.null()]).optional(),
   consultationFee: optionalMoney,
+  monthlyConsultorioRent: optionalMoney,
   transferAlias: optionalAlias,
   availabilities: z.array(availabilitySchema).optional(),
   active: z.boolean().optional(),
@@ -88,6 +90,9 @@ export const update = asyncHandler(async (req: Request, res: Response) => {
   const body = updateSchema.parse(req.body);
   if (req.user?.role === Role.SPECIALIST && "active" in body) {
     delete (body as { active?: boolean }).active;
+  }
+  if (req.user?.role === Role.SPECIALIST && "monthlyConsultorioRent" in body) {
+    delete (body as { monthlyConsultorioRent?: unknown }).monthlyConsultorioRent;
   }
   const row = await specialistService.updateSpecialist(id, body);
   res.json(row);

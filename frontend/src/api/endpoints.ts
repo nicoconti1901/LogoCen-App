@@ -10,6 +10,8 @@ import type {
   FinanceConfig,
   FinanceExpense,
   FinanceExpenseType,
+  ConsultorioRentMonthsResponse,
+  FixedAppointmentSeries,
 } from "../types";
 
 export async function login(email: string, password: string): Promise<LoginResponse> {
@@ -44,6 +46,7 @@ export async function createSpecialist(body: {
   licenseNumber?: string | null;
   phone?: string | null;
   consultationFee?: string | number | null;
+  monthlyConsultorioRent?: string | number | null;
   transferAlias?: string | null;
   availabilities?: Array<{
     weekday: "MONDAY" | "TUESDAY" | "WEDNESDAY" | "THURSDAY" | "FRIDAY" | "SATURDAY" | "SUNDAY";
@@ -67,6 +70,7 @@ export async function updateSpecialist(
     licenseNumber: string | null;
     phone: string | null;
     consultationFee: string | number | null;
+    monthlyConsultorioRent?: string | number | null;
     transferAlias: string | null;
     availabilities: Array<{
       weekday: "MONDAY" | "TUESDAY" | "WEDNESDAY" | "THURSDAY" | "FRIDAY" | "SATURDAY" | "SUNDAY";
@@ -223,6 +227,58 @@ export async function deleteAppointment(id: string): Promise<void> {
   await api.delete(`/appointments/${id}`);
 }
 
+export async function createFixedAppointmentSeries(body: {
+  patientId: string;
+  specialistId: string;
+  consultorio: string;
+  date: string;
+  startTime: string;
+  displayDurationMinutes?: number;
+  effectiveUntil?: string | null;
+  reasonForVisit?: string | null;
+}): Promise<FixedAppointmentSeries> {
+  const { data } = await api.post<FixedAppointmentSeries>("/appointments/fixed-series", body);
+  return data;
+}
+
+export async function cancelFixedAppointmentSeries(seriesId: string): Promise<FixedAppointmentSeries> {
+  const { data } = await api.patch<FixedAppointmentSeries>(`/appointments/fixed-series/${seriesId}/cancel`);
+  return data;
+}
+
+export async function skipFixedAppointmentOccurrence(seriesId: string, date: string): Promise<{ ok: boolean }> {
+  const { data } = await api.post<{ ok: boolean }>(`/appointments/fixed-series/${seriesId}/skip`, { date });
+  return data;
+}
+
+export async function updateFixedAppointmentOccurrence(
+  seriesId: string,
+  body: {
+    date: string;
+    status?: string;
+    reservationDepositAmount?: string | number | null;
+    paymentMethod?: string | null;
+    paymentCompleted?: boolean;
+    paymentDate?: string | null;
+    specialistSettledAt?: string | null;
+    medicalRecord?: string | null;
+    reasonForVisit?: string | null;
+  }
+): Promise<Appointment> {
+  const { data } = await api.patch<Appointment>(`/appointments/fixed-series/${seriesId}/occurrences`, body);
+  return data;
+}
+
+export async function fetchPatientFixedSeries(
+  patientId: string,
+  specialistId?: string
+): Promise<FixedAppointmentSeries[]> {
+  const { data } = await api.get<FixedAppointmentSeries[]>("/appointments/fixed-series/by-patient", {
+    params: { patientId, ...(specialistId ? { specialistId } : {}) },
+  });
+  return data;
+}
+
 export async function fetchPayments(params?: { appointmentId?: string; status?: string }): Promise<Payment[]> {
   const { data } = await api.get<Payment[]>("/payments", { params });
   return data;
@@ -268,6 +324,19 @@ export async function updateFinanceConfig(body: { monthlyFixedExpense: string | 
 
 export async function fetchFinanceExpenses(params: { month: string; type?: FinanceExpenseType }): Promise<FinanceExpense[]> {
   const { data } = await api.get<FinanceExpense[]>("/finance-expenses", { params });
+  return data;
+}
+
+export async function fetchConsultorioRentMonths(params: {
+  month: string;
+  specialistId?: string;
+}): Promise<ConsultorioRentMonthsResponse> {
+  const { data } = await api.get<ConsultorioRentMonthsResponse>("/finance/consultorio-rent-months", {
+    params: {
+      month: params.month,
+      ...(params.specialistId ? { specialistId: params.specialistId } : {}),
+    },
+  });
   return data;
 }
 

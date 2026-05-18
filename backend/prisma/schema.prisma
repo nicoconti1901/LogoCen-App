@@ -3,8 +3,11 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  /// App / runtime (Neon: URL con `-pooler` está bien).
+  url       = env("DATABASE_URL")
+  /// Migraciones y `db push`: usá conexión **directa** (sin pooler). Si no, Prisma puede fallar con P1002 (advisory lock).
+  directUrl = env("DIRECT_URL")
 }
 
 enum Role {
@@ -70,14 +73,33 @@ model Specialist {
   licenseNumber    String?
   phone            String?
   consultationFee  Decimal?      @db.Decimal(12, 2)
+  /// Alquiler mensual del consultorio (LogoCen cobra a fin de mes; ingreso administrativo).
+  monthlyConsultorioRent Decimal? @db.Decimal(12, 2)
   transferAlias    String?
   active           Boolean       @default(true)
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   appointments  Appointment[]
+  fixedAppointmentSeries FixedAppointmentSeries[]
   patients      Patient[]
   clinicalHistoryEntries ClinicalHistoryEntry[]
   availabilities SpecialistAvailability[]
+  consultorioRentMonths SpecialistConsultorioRentMonth[]
+}
+
+/// Alquiler de consultorio por mes calendario (se genera automático: copia el mes anterior o el monto base del especialista).
+model SpecialistConsultorioRentMonth {
+  id             String     @id @default(uuid())
+  specialistId   String
+  specialist     Specialist @relation(fields: [specialistId], references: [id], onDelete: Cascade)
+  /// Mes "YYYY-MM"
+  yearMonth      String
+  amount         Decimal    @db.Decimal(12, 2)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  @@unique([specialistId, yearMonth])
+  @@index([yearMonth])
 }
 
 model SpecialistAvailability {
@@ -107,6 +129,7 @@ model Patient {
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   appointments Appointment[]
+  fixedAppointmentSeries FixedAppointmentSeries[]
   clinicalHistoryEntries ClinicalHistoryEntry[]
 
   @@index([specialistId])
@@ -161,6 +184,64 @@ model Appointment {
   @@index([specialistId, appointmentDate])
   @@index([consultorio, appointmentDate])
   @@index([appointmentDate])
+}
+
+/// Turno fijo semanal: una fila por paciente/especialista/día/hora; las ocurrencias se calculan al listar la agenda.
+model FixedAppointmentSeries {
+  id                    String     @id @default(uuid())
+  patientId             String
+  patient               Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  specialistId          String
+  specialist            Specialist @relation(fields: [specialistId], references: [id], onDelete: Cascade)
+  consultorio           String
+  weekday               Weekday
+  startTime             String
+  /// Solo para dibujar en el calendario (la duración real de la terapia puede variar).
+  displayDurationMinutes Int       @default(60)
+  effectiveFrom         DateTime   @db.Date
+  effectiveUntil        DateTime?  @db.Date
+  active                Boolean    @default(true)
+  reasonForVisit        String?
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+  skips                 FixedAppointmentSkip[]
+  occurrences           FixedAppointmentOccurrence[]
+
+  @@index([specialistId, weekday, active])
+  @@index([patientId, active])
+}
+
+/// Datos de un día concreto de una serie fija (pago, estado, etc.). Solo se persiste cuando hay información que guardar.
+model FixedAppointmentOccurrence {
+  id                       String                    @id @default(uuid())
+  seriesId                 String
+  series                   FixedAppointmentSeries    @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  occurrenceDate           DateTime                  @db.Date
+  status                   AppointmentStatus         @default(RESERVED)
+  reservationDepositAmount Decimal?                  @db.Decimal(12, 2)
+  paymentMethod            AppointmentPaymentMethod?
+  paymentCompleted         Boolean                   @default(false)
+  paymentDate              DateTime?                 @db.Date
+  specialistSettledAt      DateTime?
+  medicalRecord            String?                   @db.Text
+  reasonForVisit           String?
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+
+  @@unique([seriesId, occurrenceDate])
+  @@index([seriesId, occurrenceDate])
+}
+
+/// Cancela una sola fecha de una serie fija sin borrar la serie ni crear filas de Appointment.
+model FixedAppointmentSkip {
+  id        String                 @id @default(uuid())
+  seriesId  String
+  series    FixedAppointmentSeries @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  skipDate  DateTime               @db.Date
+  createdAt DateTime               @default(now())
+
+  @@unique([seriesId, skipDate])
+  @@index([seriesId])
 }
 
 model Payment {

@@ -5,7 +5,20 @@ import * as appointmentService from "../services/appointment.service.js";
 import { AppError } from "../middleware/errorHandler.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { parseDateOnlyISO } from "../utils/appointmentTime.js";
+import type { AppointmentWithRelations } from "../repositories/appointment.repository.js";
 import { enrichAppointment } from "../utils/datetime.js";
+import { FIXED_APPOINTMENT_ID_PREFIX, parseFixedAppointmentId } from "../utils/fixedAppointmentOccurrences.js";
+
+function enrichListRow(a: AppointmentWithRelations) {
+  const base = enrichAppointment(a);
+  if (!a.id.startsWith(FIXED_APPOINTMENT_ID_PREFIX)) return base;
+  const parsed = parseFixedAppointmentId(a.id);
+  return {
+    ...base,
+    isFixedSeries: true,
+    fixedSeriesId: parsed?.seriesId ?? null,
+  };
+}
 
 const timeSchema = z
   .string()
@@ -79,7 +92,7 @@ export const list = asyncHandler(async (req: Request, res: Response) => {
     specialistId: req.user!.role === Role.ADMIN ? specialistId : undefined,
     patientId,
   });
-  res.json(rows.map((a) => enrichAppointment(a)));
+  res.json(rows.map((a) => enrichListRow(a)));
 });
 
 export const getById = asyncHandler(async (req: Request, res: Response) => {

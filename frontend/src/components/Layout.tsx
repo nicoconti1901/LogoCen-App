@@ -16,7 +16,9 @@ export function Layout() {
   const canAccessAdminSections = user?.role === "ADMIN" || user?.role === "SPECIALIST";
   const isAgendaRoute = location.pathname === "/agenda" || location.pathname.startsWith("/specialists/");
   const isAdminMedicalRoute =
-    location.pathname === "/patients" || location.pathname === "/specialists" || location.pathname === "/balance";
+    location.pathname === "/patients" ||
+    location.pathname === "/specialists" ||
+    location.pathname.startsWith("/balance");
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -42,7 +44,7 @@ export function Layout() {
                   <NavLink to="/patients" className={linkClass}>
                     Pacientes
                   </NavLink>
-                  {user?.role === "ADMIN" && (
+                  {(user?.role === "ADMIN" || user?.role === "SPECIALIST") && (
                     <NavLink to="/balance" className={linkClass}>
                       Balance
                     </NavLink>

@@ -12,37 +12,9 @@ import {
   toDateOnly,
 } from "../utils/appointmentTime.js";
 import { endOfLocalDay, startOfLocalDay } from "../utils/date.js";
+import { parseMoneyToDecimal, reservationDepositForStatus } from "./appointmentPayment.utils.js";
 
-function parseMoneyToDecimal(value: string | number | Prisma.Decimal | null | undefined): Prisma.Decimal | null {
-  if (value === undefined || value === null || value === "") return null;
-  if (typeof value === "object" && value !== null && "toFixed" in value) {
-    return new Prisma.Decimal(value as Prisma.Decimal);
-  }
-  const s = typeof value === "number" ? String(value) : String(value).trim().replace(",", ".");
-  if (!s) return null;
-  return new Prisma.Decimal(s);
-}
-
-/** Anticipo obligatorio y acotado al honorario cuando el estado es RESERVADO; si no, null. */
-function reservationDepositForStatus(
-  status: AppointmentStatus,
-  amountInput: Prisma.Decimal | null | undefined,
-  existingAmount: Prisma.Decimal | null | undefined,
-  consultationFee: Prisma.Decimal | null | undefined
-): Prisma.Decimal | null {
-  if (status !== AppointmentStatus.RESERVADO) return null;
-  const amount = amountInput ?? existingAmount ?? null;
-  if (amount === null || amount === undefined) {
-    throw new AppError(400, "Debe indicar el monto del anticipo para el estado Reservado");
-  }
-  if (amount.lte(0)) {
-    throw new AppError(400, "El anticipo debe ser mayor a cero");
-  }
-  if (consultationFee != null && amount.gt(consultationFee)) {
-    throw new AppError(400, "El anticipo no puede superar el honorario de la consulta");
-  }
-  return amount;
-}
+export { reservationDepositForStatus } from "./appointmentPayment.utils.js";
 
 function assertCanAccessAppointment(
   role: Role,
@@ -60,12 +32,9 @@ function assertEndAfterStart(startTime: string, endTime: string): void {
   }
 }
 
-function weekdayFromDate(d: Date): "SUNDAY" | "MONDAY" | "TUESDAY" | "WEDNESDAY" | "THURSDAY" | "FRIDAY" | "SATURDAY" {
-  const map = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"] as const;
-  return map[d.getDay()];
-}
+import { weekdayFromDate } from "../utils/appointmentTime.js";
 
-function assertInsideAvailability(
+export function assertInsideAvailability(
   specialist: Awaited<ReturnType<typeof specialistRepository.findById>>,
   appointmentDate: Date,
   startTime: string,
@@ -89,7 +58,7 @@ function assertInsideAvailability(
   }
 }
 
-async function assertNoOverlap(
+export async function assertNoOverlap(
   specialistId: string,
   appointmentDate: Date,
   startTime: string,
@@ -106,9 +75,17 @@ async function assertNoOverlap(
       throw new AppError(409, "El especialista ya tiene una cita en ese horario");
     }
   }
+
+  const { assertNoFixedSeriesBlocksSpecialist } = await import("../utils/fixedAppointmentScheduling.js");
+  await assertNoFixedSeriesBlocksSpecialist({
+    specialistId,
+    appointmentDate,
+    startTime,
+    endTime,
+  });
 }
 
-async function assertNoConsultorioOverlap(
+export async function assertNoConsultorioOverlap(
   consultorio: string,
   appointmentDate: Date,
   startTime: string,
@@ -126,6 +103,14 @@ async function assertNoConsultorioOverlap(
       throw new AppError(409, "El consultorio ya está ocupado en ese horario");
     }
   }
+
+  const { assertNoFixedSeriesBlocksConsultorio } = await import("../utils/fixedAppointmentScheduling.js");
+  await assertNoFixedSeriesBlocksConsultorio({
+    consultorio,
+    appointmentDate,
+    startTime,
+    endTime,
+  });
 }
 
 export async function listAppointments(params: {
@@ -145,7 +130,12 @@ export async function listAppointments(params: {
 
   const where: Prisma.AppointmentWhereInput = {};
 
-  if (params.specialistId) {
+  if (params.role === Role.SPECIALIST) {
+    if (!params.userSpecialistId) {
+      return [];
+    }
+    where.specialistId = params.userSpecialistId;
+  } else if (params.specialistId) {
     where.specialistId = params.specialistId;
   }
 
@@ -180,10 +170,49 @@ export async function listAppointments(params: {
     ];
   }
 
-  return appointmentRepository.findMany(where);
+  const rows = await appointmentRepository.findMany(where);
+
+  const shouldExpandFixed = Boolean(params.from || params.to || params.patientId);
+  if (shouldExpandFixed) {
+    const specialistIdForFixed =
+      params.role === Role.SPECIALIST
+        ? params.userSpecialistId ?? undefined
+        : params.specialistId;
+    const forPaymentSummary = Boolean(params.patientId && !params.from && !params.to);
+    const { expandFixedAppointmentsForRange } = await import("./fixedAppointmentSeries.service.js");
+    const virtual = await expandFixedAppointmentsForRange({
+      rangeFrom: params.from,
+      rangeTo: params.to,
+      specialistId: specialistIdForFixed,
+      patientId: params.patientId,
+      realAppointments: rows,
+      forPaymentSummary,
+    });
+    let merged = [...rows, ...virtual];
+    if (params.patientId) {
+      merged = merged.filter((a) => a.patientId === params.patientId);
+    }
+    if (params.status) {
+      merged = merged.filter((a) => a.status === params.status);
+    }
+    merged.sort((a, b) => {
+      const d = a.appointmentDate.getTime() - b.appointmentDate.getTime();
+      if (d !== 0) return d;
+      return a.startTime.localeCompare(b.startTime);
+    });
+    return merged;
+  }
+
+  return rows;
 }
 
 export async function getAppointmentById(id: string, role: Role, userSpecialistId: string | null) {
+  const { parseFixedAppointmentId } = await import("../utils/fixedAppointmentOccurrences.js");
+  if (parseFixedAppointmentId(id)) {
+    const { getFixedVirtualAppointmentById } = await import("./fixedAppointmentSeries.service.js");
+    return getFixedVirtualAppointmentById(id, role, userSpecialistId);
+  }
+
   const todayOnly = toDateOnly(new Date());
   const nowT = currentTimeHHmm();
   await appointmentRepository.markExpiredReservedAsAttended(todayOnly, nowT);

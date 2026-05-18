@@ -254,6 +254,13 @@ body {
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08) !important;
 }
 
+.agenda-specialist-view .fc .fc-timegrid-event.appt-event.fixed-series {
+  background: #faf5ff !important;
+  border-left-color: #7c3aed !important;
+  border-style: dashed !important;
+  color: #0f172a !important;
+}
+
 .agenda-specialist-view .fc .fc-timegrid-event.appt-event.status-reserved {
   background: #ffffff !important;
   border-left-color: #0284c7 !important;
@@ -541,6 +548,13 @@ body {
   letter-spacing: 0.02em;
   border: 1px solid transparent;
   transition: background-color 180ms ease, color 180ms ease;
+}
+
+.fc .status-chip-fixed {
+  background: linear-gradient(180deg, #c4b5fd, #7c3aed);
+  color: #faf5ff;
+  border-color: #5b21b6;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35) inset;
 }
 
 .fc .status-chip-reserved {
