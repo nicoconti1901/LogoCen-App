@@ -66,6 +66,29 @@ function ctx(req: Request) {
   };
 }
 
+export const consultorioSlots = asyncHandler(async (req: Request, res: Response) => {
+  const fromStr = req.query.from ? String(req.query.from).slice(0, 10) : "";
+  const toStr = req.query.to ? String(req.query.to).slice(0, 10) : fromStr;
+  if (!fromStr) throw new AppError(400, "Parámetro from requerido (YYYY-MM-DD)");
+
+  const rows = await appointmentService.listConsultorioSlotsForRange(
+    parseDateOnlyISO(fromStr),
+    parseDateOnlyISO(toStr)
+  );
+
+  res.json(
+    rows.map((a) => ({
+      id: a.id,
+      consultorio: a.consultorio,
+      appointmentDate: a.appointmentDate.toISOString().slice(0, 10),
+      startTime: a.startTime,
+      endTime: a.endTime,
+      status: a.status,
+      isFixedSeries: a.isFixedSeries,
+    }))
+  );
+});
+
 export const list = asyncHandler(async (req: Request, res: Response) => {
   const q = req.query;
   const specialistId = typeof q.specialistId === "string" ? q.specialistId : undefined;

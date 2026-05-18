@@ -76,11 +76,12 @@ export const appointmentRepository = {
 
   /** Citas del mismo día y consultorio (para detectar choques de sala) */
   findByConsultorioAndDate(consultorio: string, appointmentDate: Date, excludeId?: string) {
+    const office = consultorio.trim();
     return prisma.appointment.findMany({
       where: {
-        consultorio,
         appointmentDate,
         status: { not: AppointmentStatus.AUSENTE_CON_AVISO },
+        consultorio: { equals: office, mode: "insensitive" },
         ...(excludeId ? { id: { not: excludeId } } : {}),
       },
     });

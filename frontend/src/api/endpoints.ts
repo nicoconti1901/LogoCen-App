@@ -11,6 +11,7 @@ import type {
   FinanceExpense,
   FinanceExpenseType,
   ConsultorioRentMonthsResponse,
+  ConsultorioSlot,
   FixedAppointmentSeries,
 } from "../types";
 
@@ -176,8 +177,19 @@ export async function fetchAppointments(params?: AppointmentListParams): Promise
   return data;
 }
 
+export async function fetchConsultorioSlots(from: string, to?: string): Promise<ConsultorioSlot[]> {
+  const { data } = await api.get<ConsultorioSlot[]>("/appointments/consultorio-slots", {
+    params: { from, to: to ?? from },
+  });
+  return data;
+}
+
+function appointmentResourcePath(id: string): string {
+  return `/appointments/${encodeURIComponent(id)}`;
+}
+
 export async function fetchAppointment(id: string): Promise<Appointment> {
-  const { data } = await api.get<Appointment>(`/appointments/${id}`);
+  const { data } = await api.get<Appointment>(appointmentResourcePath(id));
   return data;
 }
 
@@ -219,12 +231,12 @@ export async function updateAppointment(
     reasonForVisit: string | null;
   }>
 ): Promise<Appointment> {
-  const { data } = await api.patch<Appointment>(`/appointments/${id}`, body);
+  const { data } = await api.patch<Appointment>(appointmentResourcePath(id), body);
   return data;
 }
 
 export async function deleteAppointment(id: string): Promise<void> {
-  await api.delete(`/appointments/${id}`);
+  await api.delete(appointmentResourcePath(id));
 }
 
 export async function createFixedAppointmentSeries(body: {

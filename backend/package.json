@@ -11,7 +11,10 @@
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "db:seed-appointments": "tsx prisma/scripts/seed-week-appointments.ts",
+    "db:seed-appointments:cleanup": "tsx prisma/scripts/cleanup-load-appointments.ts",
+    "db:seed-appointments:status": "tsx prisma/scripts/check-load-count.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.5.0",
