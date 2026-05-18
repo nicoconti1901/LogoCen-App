@@ -5,7 +5,7 @@ import interactionPlugin from "@fullcalendar/interaction";
 import listPlugin from "@fullcalendar/list";
 import FullCalendar from "@fullcalendar/react";
 import timeGridPlugin from "@fullcalendar/timegrid";
-import type { DateSelectArg, EventClickArg, EventContentArg, EventInput } from "@fullcalendar/core";
+import type { DateSelectArg, DatesSetArg, EventClickArg, EventContentArg, EventInput } from "@fullcalendar/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -201,6 +201,22 @@ function appointmentPaymentCaption(a: Appointment): string {
   return res ? `${withAbsent} · ${res}` : withAbsent;
 }
 
+function slotFromAppointment(a: Appointment): { start: Date; end: Date } {
+  const start = new Date(toCalendarStart(a));
+  let end = new Date(toCalendarEnd(a));
+  if (Number.isNaN(start.getTime())) {
+    const dateStr = getAppointmentDateStr(a);
+    return {
+      start: new Date(`${dateStr}T12:00:00`),
+      end: new Date(`${dateStr}T13:00:00`),
+    };
+  }
+  if (Number.isNaN(end.getTime()) || end.getTime() <= start.getTime()) {
+    end = new Date(start.getTime() + 30 * 60 * 1000);
+  }
+  return { start, end };
+}
+
 function toEvent(a: Appointment): EventInput {
   const fixed = isFixedSeriesAppointment(a);
   return {
@@ -300,6 +316,12 @@ function dateToIsoLocal(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+function addDaysToIso(iso: string, days: number): string {
+  const d = new Date(`${iso}T12:00:00`);
+  d.setDate(d.getDate() + days);
+  return dateToIsoLocal(d);
+}
+
 function hhmmToMinutes(hhmm: string): number {
   const [h, m] = hhmm.split(":").map(Number);
   return h * 60 + m;
@@ -321,6 +343,7 @@ export function AgendaPage() {
   const paymentPatientId = searchParams.get("paymentPatientId");
   const calendarRef = useRef<InstanceType<typeof FullCalendar>>(null);
   const [range, setRange] = useState<{ from: string; to: string } | null>(null);
+  const [calendarView, setCalendarView] = useState("listUpcoming");
   const [modalOpen, setModalOpen] = useState(false);
   const [eventActionOpen, setEventActionOpen] = useState(false);
   const [slot, setSlot] = useState<{ start: Date; end: Date } | null>(null);
@@ -336,6 +359,10 @@ export function AgendaPage() {
   const qc = useQueryClient();
   const shouldOpenQuickSlots = searchParams.get("new") === "1";
   const effectiveSpecialistId = routeSpecialistId ?? (user?.role === "SPECIALIST" ? user.specialistId ?? undefined : undefined);
+  /** Agenda /agenda sin especialista: panel “hoy” arriba + semana en calendario sin repetir el mismo día. */
+  const isAdminGeneralAgenda = user?.role === "ADMIN" && !effectiveSpecialistId;
+  /** Panel “Agenda del día”: oculto en vista Día del calendario (ahí ya se listan los turnos). */
+  const showDayBoardPanel = calendarView !== "listDay";
 
   const specialistQ = useQuery({
     queryKey: ["specialist", effectiveSpecialistId],
@@ -369,12 +396,24 @@ export function AgendaPage() {
     [effectiveSpecialistId, specialistQ.data]
   );
 
-  const onDatesSet = useCallback((arg: { start: Date; end: Date }) => {
+  const onDatesSet = useCallback((arg: DatesSetArg) => {
+    setCalendarView(arg.view.type);
     setRange({
       from: arg.start.toISOString(),
       to: arg.end.toISOString(),
     });
   }, []);
+
+  /** Semana admin: 6 días desde mañana (hoy solo en el panel superior). */
+  useEffect(() => {
+    if (!isAdminGeneralAgenda) return;
+    const api = calendarRef.current?.getApi();
+    if (!api || api.view.type !== "listUpcoming") return;
+    const rangeStartIso = dateToIsoLocal(api.view.currentStart);
+    if (rangeStartIso <= todayIso) {
+      api.gotoDate(addDaysToIso(todayIso, 1));
+    }
+  }, [isAdminGeneralAgenda, todayIso, calendarView]);
 
   const eventClassNames = useCallback(
     (arg: { event: { display: string; start: Date | null } }) => {
@@ -524,18 +563,21 @@ export function AgendaPage() {
     setModalOpen(true);
   }
 
+  const openAppointmentAction = useCallback(
+    (a: Appointment) => {
+      if (user?.role === "SPECIALIST" && user.specialistId && a.specialistId !== user.specialistId) return;
+      if (effectiveSpecialistId && a.specialistId !== effectiveSpecialistId) return;
+      setClickedAppointment(a);
+      setClickedSlot(slotFromAppointment(a));
+      setEventActionOpen(true);
+    },
+    [user?.role, user?.specialistId, effectiveSpecialistId]
+  );
+
   function onEventClick(info: EventClickArg) {
     const raw = info.event.extendedProps.raw as Appointment | undefined;
     if (!raw) return;
-    if (user?.role === "SPECIALIST" && user.specialistId && raw.specialistId !== user.specialistId) return;
-    if (effectiveSpecialistId && raw.specialistId !== effectiveSpecialistId) return;
-
-    const start = info.event.start;
-    if (!start) return;
-    const end = info.event.end ?? new Date(start.getTime() + 30 * 60 * 1000);
-    setClickedAppointment(raw);
-    setClickedSlot({ start, end });
-    setEventActionOpen(true);
+    openAppointmentAction(raw);
   }
 
   function onMoreLinkClick(arg: { date: Date }) {
@@ -654,6 +696,7 @@ export function AgendaPage() {
             )}
           </div>
         )}
+        {showDayBoardPanel && (
         <div className="mb-4 rounded-xl border border-slate-200/80 bg-white/80 p-5 shadow-sm backdrop-blur-[3px]">
           <div className="mb-4">
             <h2 className="text-base font-semibold tracking-tight text-slate-900">Agenda del día</h2>
@@ -747,11 +790,21 @@ export function AgendaPage() {
                             return (
                               <li
                                 key={a.id}
-                                className={`rounded-md border px-3 py-2 ${dayCellTone} ${
+                                role="button"
+                                tabIndex={0}
+                                title="Clic para editar, agendar o cancelar"
+                                className={`cursor-pointer rounded-md border px-3 py-2 text-left transition hover:ring-2 hover:ring-sky-400/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-sky-600 ${dayCellTone} ${
                                   isSingleSpecialistDayBoard
                                     ? "mr-2 inline-block min-w-[210px] align-top"
                                     : ""
                                 } ${muted ? "opacity-60" : ""}`}
+                                onClick={() => openAppointmentAction(a)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" || e.key === " ") {
+                                    e.preventDefault();
+                                    openAppointmentAction(a);
+                                  }
+                                }}
                               >
                                 <div className="flex items-start justify-between gap-1">
                                   <span className="font-semibold text-slate-800">{a.startTime}–{a.endTime}</span>
@@ -766,7 +819,8 @@ export function AgendaPage() {
                                       className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${
                                         hasDebt ? "bg-amber-200 text-amber-900" : "bg-emerald-200 text-emerald-900"
                                       }`}
-                                      onClick={() => {
+                                      onClick={(e) => {
+                                        e.stopPropagation();
                                         setSearchParams((prev) => {
                                           const next = new URLSearchParams(prev);
                                           next.set("paymentPatientId", a.patientId);
@@ -799,6 +853,7 @@ export function AgendaPage() {
             </>
           )}
         </div>
+        )}
         <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
           {(Object.keys(statusLabel) as Appointment["status"][]).map((s) => (
             <span key={s} className={`agenda-pill status-${s.toLowerCase()}`}>
@@ -826,14 +881,21 @@ export function AgendaPage() {
           <FullCalendar
             ref={calendarRef}
             plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin, listPlugin]}
-            initialView="listWeek"
+            initialView={isAdminGeneralAgenda ? "listUpcoming" : "listWeek"}
             initialDate={todayIso}
             headerToolbar={{
               left: "prev,next today",
               center: "title",
-              right: effectiveSpecialistId ? "listWeek,listDay,dayGridMonth" : "dayGridMonth,listWeek,listDay",
+              right: effectiveSpecialistId
+                ? "listWeek,listDay,dayGridMonth"
+                : "dayGridMonth,listUpcoming,listDay",
             }}
             views={{
+              listUpcoming: {
+                type: "list",
+                duration: { days: 6 },
+                buttonText: "Semana",
+              },
               listWeek: {
                 type: "list",
                 duration: { days: 7 },
@@ -845,6 +907,8 @@ export function AgendaPage() {
               },
             }}
             locale={esLocale}
+            listDayFormat={{ weekday: "long" }}
+            listDaySideFormat={{ day: "numeric", month: "long", year: "numeric" }}
             slotMinTime={`${WORKDAY_START}:00`}
             slotMaxTime={`${WORKDAY_END}:00`}
             allDaySlot={false}

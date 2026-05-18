@@ -81,6 +81,17 @@ export type SpecialistAvailability = {
   endTime: string;
 };
 
+/** Ocupación de consultorio (sin datos de paciente) para elegir sala al agendar. */
+export type ConsultorioSlot = {
+  id: string;
+  consultorio: string;
+  appointmentDate: string;
+  startTime: string;
+  endTime: string;
+  status: AppointmentStatus;
+  isFixedSeries?: boolean;
+};
+
 /** Respuesta API enriquecida: fecha, franja horaria, snake_case opcional */
 export type Appointment = {
   id: string;

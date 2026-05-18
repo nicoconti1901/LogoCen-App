@@ -633,6 +633,21 @@ body {
 
 .fc .fc-list-day-cushion {
   background: #fce7f3 !important;
+  padding: 0.5rem 0.75rem !important;
+}
+
+.fc .fc-list-day-text {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #0f172a;
+  text-transform: capitalize;
+}
+
+.fc .fc-list-day-side-text {
+  margin-left: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #475569;
 }
 
 .fc .fc-list-day.fc-day-today .fc-list-day-cushion {

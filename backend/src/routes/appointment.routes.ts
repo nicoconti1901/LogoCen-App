@@ -8,6 +8,7 @@ export const appointmentRouter = Router();
 appointmentRouter.use(requireAuth);
 
 appointmentRouter.get("/", appointmentController.list);
+appointmentRouter.get("/consultorio-slots", appointmentController.consultorioSlots);
 appointmentRouter.get("/fixed-series/by-patient", fixedAppointmentSeriesController.listByPatient);
 appointmentRouter.post("/fixed-series", fixedAppointmentSeriesController.create);
 appointmentRouter.post("/fixed-series/:seriesId/skip", fixedAppointmentSeriesController.skipOccurrence);

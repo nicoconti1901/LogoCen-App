@@ -6,8 +6,10 @@ import {
   fetchConsultorioRentMonths,
   fetchSpecialist,
   updateAppointment,
+  updateFixedAppointmentOccurrence,
   updateSpecialist,
 } from "../../api/endpoints";
+import { getFixedOccurrenceDate, getFixedSeriesId, isFixedSeriesAppointment } from "../../lib/fixedAppointment";
 import { useAuth } from "../../contexts/AuthContext";
 import {
   appointmentDebtAmountArs,
@@ -43,6 +45,27 @@ function getRenditionRange(preset: RenditionPreset, anchorDate: string): { from:
   return getRangeFromPreset(preset, anchorDate, anchorDate, anchorDate);
 }
 
+function isPendingSpecialistSettlement(a: Appointment): boolean {
+  return (
+    a.paymentCompleted &&
+    a.paymentMethod === "TRANSFER_TO_SPECIALIST" &&
+    (a.specialistSettledAt == null || a.specialistSettledAt === "")
+  );
+}
+
+async function markSpecialistSettled(a: Appointment, settledAt: string): Promise<void> {
+  if (isFixedSeriesAppointment(a)) {
+    const seriesId = getFixedSeriesId(a);
+    if (!seriesId) throw new Error("Turno fijo inválido");
+    await updateFixedAppointmentOccurrence(seriesId, {
+      date: getFixedOccurrenceDate(a),
+      specialistSettledAt: settledAt,
+    });
+    return;
+  }
+  await updateAppointment(a.id, { specialistSettledAt: settledAt });
+}
+
 export function SpecialistRenditionPage() {
   const { specialistId: specialistIdParam } = useParams<{ specialistId: string }>();
   const { user } = useAuth();
@@ -71,6 +94,7 @@ export function SpecialistRenditionPage() {
   const [preset, setPreset] = useState<RenditionPreset>("month");
   const [anchorDate, setAnchorDate] = useState(today);
   const [rentDraft, setRentDraft] = useState("");
+  const [settleError, setSettleError] = useState<string | null>(null);
 
   const range = useMemo(() => getRenditionRange(preset, anchorDate), [preset, anchorDate]);
   const monthRef = anchorDate.slice(0, 7);
@@ -109,19 +133,23 @@ export function SpecialistRenditionPage() {
   });
 
   const settleMut = useMutation({
-    mutationFn: async (appointmentIds: string[]) => {
+    mutationFn: async (appointments: Appointment[]) => {
       const now = new Date().toISOString();
-      await Promise.all(
-        appointmentIds.map((id) =>
-          updateAppointment(id, {
-            specialistSettledAt: now,
-          })
-        )
-      );
+      await Promise.all(appointments.map((a) => markSpecialistSettled(a, now)));
     },
+    onMutate: () => setSettleError(null),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["appointments"] });
       await qc.invalidateQueries({ queryKey: ["balance-rendition"] });
+    },
+    onError: (err: unknown) => {
+      const msg =
+        typeof err === "object" && err !== null && "response" in err
+          ? String((err as { response?: { data?: { message?: string } } }).response?.data?.message ?? "")
+          : err instanceof Error
+            ? err.message
+            : "";
+      setSettleError(msg || "No se pudo marcar la rendición. Reintentá.");
     },
   });
 
@@ -155,11 +183,7 @@ export function SpecialistRenditionPage() {
       if (a.paymentCompleted && a.paymentMethod) {
         byMethod[a.paymentMethod] = (byMethod[a.paymentMethod] ?? 0) + parseMoney(a.specialist.consultationFee);
       }
-      if (
-        a.paymentCompleted &&
-        a.paymentMethod === "TRANSFER_TO_SPECIALIST" &&
-        !a.specialistSettledAt
-      ) {
+      if (isPendingSpecialistSettlement(a)) {
         pendingSettlement.push(a);
       }
     }
@@ -301,6 +325,12 @@ export function SpecialistRenditionPage() {
         </section>
       )}
 
+      {settleError && (
+        <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">
+          {settleError}
+        </p>
+      )}
+
       {stats.pendingSettlement.length > 0 && isAdmin && (
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h3 className="text-base font-semibold text-slate-900">Marcar rendición a especialista</h3>
@@ -326,7 +356,7 @@ export function SpecialistRenditionPage() {
                       type="button"
                       disabled={settleMut.isPending}
                       className="rounded-lg bg-brand-600 px-2 py-1 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
-                      onClick={() => settleMut.mutate([a.id])}
+                      onClick={() => settleMut.mutate([a])}
                     >
                       Rendido
                     </button>
@@ -338,7 +368,7 @@ export function SpecialistRenditionPage() {
               type="button"
               disabled={settleMut.isPending}
               className="mt-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-              onClick={() => settleMut.mutate(stats.pendingSettlement.map((a) => a.id))}
+              onClick={() => settleMut.mutate(stats.pendingSettlement)}
             >
               Marcar todos como rendidos
             </button>

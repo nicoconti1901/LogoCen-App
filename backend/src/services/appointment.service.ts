@@ -206,6 +206,35 @@ export async function listAppointments(params: {
   return rows;
 }
 
+/** Franjas ocupadas por consultorio (todos los especialistas + turnos fijos) para validar sala en el modal. */
+export async function listConsultorioSlotsForRange(from: Date, to: Date) {
+  const rangeFrom = toDateOnly(from);
+  const rangeTo = toDateOnly(to);
+  const rows = await appointmentRepository.findMany({
+    appointmentDate: { gte: rangeFrom, lte: rangeTo },
+    status: { not: AppointmentStatus.AUSENTE_CON_AVISO },
+  });
+
+  const { expandFixedAppointmentsForRange } = await import("./fixedAppointmentSeries.service.js");
+  const virtual = await expandFixedAppointmentsForRange({
+    rangeFrom,
+    rangeTo,
+    realAppointments: rows,
+  });
+
+  const merged = [...rows, ...virtual].filter((a) => a.status !== AppointmentStatus.AUSENTE_CON_AVISO);
+
+  return merged.map((a) => ({
+    id: a.id,
+    consultorio: a.consultorio.trim(),
+    appointmentDate: a.appointmentDate,
+    startTime: a.startTime,
+    endTime: a.endTime,
+    status: a.status,
+    isFixedSeries: a.id.startsWith("fixed:"),
+  }));
+}
+
 export async function getAppointmentById(id: string, role: Role, userSpecialistId: string | null) {
   const { parseFixedAppointmentId } = await import("../utils/fixedAppointmentOccurrences.js");
   if (parseFixedAppointmentId(id)) {
@@ -317,6 +346,30 @@ export async function updateAppointment(
   role: Role,
   userSpecialistId: string | null
 ) {
+  const { parseFixedAppointmentId } = await import("../utils/fixedAppointmentOccurrences.js");
+  const fixedParsed = parseFixedAppointmentId(id);
+  if (fixedParsed) {
+    const { upsertFixedAppointmentOccurrence } = await import("./fixedAppointmentSeries.service.js");
+    return upsertFixedAppointmentOccurrence(
+      fixedParsed.seriesId,
+      fixedParsed.dateIso,
+      {
+        ...(data.status !== undefined ? { status: data.status } : {}),
+        ...(data.paymentMethod !== undefined ? { paymentMethod: data.paymentMethod } : {}),
+        ...(data.paymentCompleted !== undefined ? { paymentCompleted: data.paymentCompleted } : {}),
+        ...(data.paymentDate !== undefined ? { paymentDate: data.paymentDate } : {}),
+        ...(data.specialistSettledAt !== undefined ? { specialistSettledAt: data.specialistSettledAt } : {}),
+        ...(data.medicalRecord !== undefined ? { medicalRecord: data.medicalRecord } : {}),
+        ...(data.reasonForVisit !== undefined ? { reasonForVisit: data.reasonForVisit } : {}),
+        ...(data.reservationDepositAmount !== undefined
+          ? { reservationDepositAmount: data.reservationDepositAmount }
+          : {}),
+      },
+      role,
+      userSpecialistId
+    );
+  }
+
   const existing = await appointmentRepository.findById(id);
   if (!existing) throw new AppError(404, "Cita no encontrada");
   assertCanAccessAppointment(role, userSpecialistId, existing.specialistId);

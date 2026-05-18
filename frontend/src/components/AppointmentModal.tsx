@@ -5,6 +5,7 @@ import {
   createFixedAppointmentSeries,
   deleteAppointment,
   fetchAppointments,
+  fetchConsultorioSlots,
   fetchPatientFixedSeries,
   fetchPatients,
   fetchSpecialist,
@@ -180,12 +181,8 @@ export function AppointmentModal({
   /** Especialistas: alta y baja de turnos; no modificación de datos de citas existentes. */
   const specialistEditingForbidden = !isAdmin && isEdit;
   const consultorioDayQ = useQuery({
-    queryKey: ["appointments", "consultorio-day", dateStr],
-    queryFn: () =>
-      fetchAppointments({
-        from: dateStr,
-        to: dateStr,
-      }),
+    queryKey: ["appointments", "consultorio-slots", dateStr],
+    queryFn: () => fetchConsultorioSlots(dateStr, dateStr),
     enabled: open && Boolean(dateStr),
   });
 
@@ -319,6 +316,7 @@ export function AppointmentModal({
       }),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["appointments"] });
+      await qc.invalidateQueries({ queryKey: ["appointments", "consultorio-slots"] });
       onSaved();
       onClose();
     },
@@ -498,6 +496,12 @@ export function AppointmentModal({
       .sort((a, b) => a.office.localeCompare(b.office));
   }, [consultorioDayRows, appointment?.id, startTimeStr, endTimeStr]);
 
+  const selectedConsultorioOccupied = useMemo(() => {
+    if (status === "AUSENTE_CON_AVISO" || !consultorio.trim() || !startTimeStr || !endTimeStr) return false;
+    const opt = consultorioOptions.find((o) => o.office.toLowerCase() === consultorio.trim().toLowerCase());
+    return opt?.occupiedInSelected ?? false;
+  }, [consultorioOptions, consultorio, startTimeStr, endTimeStr, status]);
+
   useEffect(() => {
     if (!patientId || patients.length === 0) return;
     const existsInFilteredList = patients.some((p) => p.id === patientId);
@@ -510,6 +514,7 @@ export function AppointmentModal({
     if (showOccurrenceDetails && !endTimeStr) return false;
     if (isFixedSeries && !isEditFixed && status !== "AUSENTE_CON_AVISO" && !consultorio.trim()) return false;
     if (showOccurrenceDetails && status !== "AUSENTE_CON_AVISO" && !consultorio.trim()) return false;
+    if (status !== "AUSENTE_CON_AVISO" && selectedConsultorioOccupied) return false;
     if (showOccurrenceDetails && paymentCompleted && !paymentDateStr) return false;
     if (isAdmin && !effectiveSpecialistId) return false;
     if (!isAdmin && !mySpecialistId) return false;
@@ -541,6 +546,7 @@ export function AppointmentModal({
     isFixedSeries,
     isEditFixed,
     showOccurrenceDetails,
+    selectedConsultorioOccupied,
   ]);
 
   function onSubmit(e: FormEvent) {
@@ -784,6 +790,11 @@ export function AppointmentModal({
                 </option>
               ))}
             </select>
+            {selectedConsultorioOccupied && (
+              <p className="mt-1 text-xs font-medium text-rose-700">
+                Ese consultorio ya está ocupado en el horario elegido (otro profesional o turno fijo).
+              </p>
+            )}
             {consultorio.trim() && dateStr && (
               <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                 <p className="text-xs font-medium text-slate-700">
