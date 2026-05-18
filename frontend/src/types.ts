@@ -65,6 +65,8 @@ export type Specialist = {
   licenseNumber: string | null;
   phone: string | null;
   consultationFee: string | null;
+  /** Alquiler mensual consultorio (ARS), cargo LogoCen a fin de mes */
+  monthlyConsultorioRent?: string | null;
   transferAlias: string | null;
   availabilities: SpecialistAvailability[];
   active: boolean;
@@ -104,6 +106,25 @@ export type Appointment = {
   patient: Patient;
   specialist: Omit<Specialist, "user">;
   payments?: Payment[];
+  /** Ocurrencia virtual generada desde FixedAppointmentSeries (no es fila en Appointment). */
+  isFixedSeries?: boolean;
+  fixedSeriesId?: string | null;
+};
+
+export type FixedAppointmentSeries = {
+  id: string;
+  patientId: string;
+  specialistId: string;
+  consultorio: string;
+  weekday: SpecialistAvailability["weekday"];
+  startTime: string;
+  displayDurationMinutes: number;
+  effectiveFrom: string;
+  effectiveUntil: string | null;
+  active: boolean;
+  reasonForVisit: string | null;
+  patient: Patient;
+  specialist: Omit<Specialist, "user">;
 };
 
 export type Payment = {
@@ -130,4 +151,17 @@ export type FinanceExpense = {
   description: string;
   amount: string;
   expenseDate: string;
+};
+
+export type SpecialistConsultorioRentMonthRow = {
+  id: string;
+  specialistId: string;
+  yearMonth: string;
+  amount: string;
+  specialist: Pick<Specialist, "id" | "firstName" | "lastName">;
+};
+
+export type ConsultorioRentMonthsResponse = {
+  rows: SpecialistConsultorioRentMonthRow[];
+  total: string;
 };

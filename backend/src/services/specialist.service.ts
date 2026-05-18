@@ -1,5 +1,6 @@
 import { specialistRepository } from "../repositories/specialist.repository.js";
 import { userRepository } from "../repositories/user.repository.js";
+import { syncStoredRentMonthsToMonthlyTemplate } from "./consultorioRentMonth.service.js";
 import { AppError } from "../middleware/errorHandler.js";
 import { normalizeProfilePhotoUrlForStorage } from "../utils/imageUrl.js";
 import { hashPassword } from "../utils/password.js";
@@ -44,6 +45,7 @@ export async function createSpecialist(data: {
   licenseNumber?: string | null;
   phone?: string | null;
   consultationFee?: string | number | null;
+  monthlyConsultorioRent?: string | number | null;
   transferAlias?: string | null;
   availabilities?: Array<{ weekday: Weekday; startTime: string; endTime: string }>;
 }) {
@@ -63,6 +65,10 @@ export async function createSpecialist(data: {
     licenseNumber: data.licenseNumber?.trim() || null,
     phone: data.phone?.trim() || null,
     consultationFee: data.consultationFee === "" ? null : (data.consultationFee ?? null),
+    monthlyConsultorioRent:
+      data.monthlyConsultorioRent === "" || data.monthlyConsultorioRent === undefined
+        ? null
+        : (data.monthlyConsultorioRent ?? null),
     transferAlias: data.transferAlias?.trim() || null,
     availabilities: data.availabilities ? normalizeAvailabilities(data.availabilities) : [],
   });
@@ -80,6 +86,7 @@ export async function updateSpecialist(
     licenseNumber: string | null;
     phone: string | null;
     consultationFee: string | number | null;
+    monthlyConsultorioRent?: string | number | null;
     transferAlias: string | null;
     availabilities: Array<{ weekday: Weekday; startTime: string; endTime: string }>;
     active: boolean;
@@ -99,7 +106,7 @@ export async function updateSpecialist(
   }
 
   try {
-    return await specialistRepository.updateWithUser(id, {
+    const updated = await specialistRepository.updateWithUser(id, {
       ...(data.email ? { email: data.email.toLowerCase().trim() } : {}),
       ...(passwordHash ? { passwordHash } : {}),
       ...(data.firstName !== undefined ? { firstName: normalizePersonNameField(data.firstName) } : {}),
@@ -113,12 +120,25 @@ export async function updateSpecialist(
       ...(data.consultationFee !== undefined
         ? { consultationFee: data.consultationFee === "" ? null : data.consultationFee }
         : {}),
+      ...(data.monthlyConsultorioRent !== undefined
+        ? {
+            monthlyConsultorioRent:
+              data.monthlyConsultorioRent === "" ? null : data.monthlyConsultorioRent,
+          }
+        : {}),
       ...(data.transferAlias !== undefined ? { transferAlias: data.transferAlias?.trim() || null } : {}),
       ...(data.availabilities !== undefined
         ? { availabilities: normalizeAvailabilities(data.availabilities) }
         : {}),
       ...(data.active !== undefined ? { active: data.active } : {}),
     });
+    if (data.monthlyConsultorioRent !== undefined) {
+      await syncStoredRentMonthsToMonthlyTemplate(
+        id,
+        data.monthlyConsultorioRent === "" ? null : data.monthlyConsultorioRent
+      );
+    }
+    return updated;
   } catch (e) {
     if (e instanceof Error && e.message === "SPECIALIST_NOT_FOUND") {
       throw new AppError(404, "Especialista no encontrado");

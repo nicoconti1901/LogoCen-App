@@ -26,6 +26,7 @@ const emptyForm = {
   licenseNumber: "",
   phone: "",
   consultationFee: "",
+  monthlyConsultorioRent: "",
   transferAlias: "",
   availabilities: [] as Array<{
     weekday: "MONDAY" | "TUESDAY" | "WEDNESDAY" | "THURSDAY" | "FRIDAY" | "SATURDAY" | "SUNDAY";
@@ -301,6 +302,7 @@ function SpecialistFormModal({ open, title, editing, onClose, canDelete }: FormM
       licenseNumber: editing.licenseNumber ?? "",
       phone: editing.phone ?? "",
       consultationFee: editing.consultationFee ?? "",
+      monthlyConsultorioRent: editing.monthlyConsultorioRent ?? "",
       transferAlias: editing.transferAlias ?? "",
       availabilities: editing.availabilities.map((a) => ({
         weekday: a.weekday,
@@ -322,6 +324,7 @@ function SpecialistFormModal({ open, title, editing, onClose, canDelete }: FormM
         licenseNumber: form.licenseNumber || null,
         phone: form.phone || null,
         consultationFee: form.consultationFee || null,
+        monthlyConsultorioRent: form.monthlyConsultorioRent.trim() === "" ? null : form.monthlyConsultorioRent,
         transferAlias: form.transferAlias || null,
         availabilities: form.availabilities,
       }),
@@ -345,12 +348,14 @@ function SpecialistFormModal({ open, title, editing, onClose, canDelete }: FormM
         licenseNumber: form.licenseNumber || null,
         phone: form.phone || null,
         consultationFee: form.consultationFee || null,
+        monthlyConsultorioRent: form.monthlyConsultorioRent.trim() === "" ? null : form.monthlyConsultorioRent,
         transferAlias: form.transferAlias || null,
         availabilities: form.availabilities,
       }),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["specialists"] });
       await qc.invalidateQueries({ queryKey: ["specialist"] });
+      await qc.invalidateQueries({ queryKey: ["consultorio-rent-months"] });
       onClose();
     },
     onError: (err) => setFormError(parseApiError(err)),
@@ -568,6 +573,16 @@ function SpecialistFormModal({ open, title, editing, onClose, canDelete }: FormM
               className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 transition focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
               value={form.consultationFee}
               onChange={(e) => setForm((f) => ({ ...f, consultationFee: e.target.value }))}
+            />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-slate-600">Alquiler consultorio mensual (ARS)</label>
+            <input
+              inputMode="decimal"
+              placeholder="Ej. 50000"
+              className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 transition focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+              value={form.monthlyConsultorioRent}
+              onChange={(e) => setForm((f) => ({ ...f, monthlyConsultorioRent: e.target.value }))}
             />
           </div>
           <div>

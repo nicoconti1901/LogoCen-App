@@ -8,7 +8,15 @@ import timeGridPlugin from "@fullcalendar/timegrid";
 import type { DateSelectArg, EventClickArg, EventContentArg, EventInput } from "@fullcalendar/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { deleteAppointment, fetchAppointments, fetchSpecialist, fetchSpecialists } from "../api/endpoints";
+import {
+  cancelFixedAppointmentSeries,
+  deleteAppointment,
+  fetchAppointments,
+  fetchSpecialist,
+  fetchSpecialists,
+  skipFixedAppointmentOccurrence,
+} from "../api/endpoints";
+import { getFixedOccurrenceDate, getFixedSeriesId, isFixedSeriesAppointment } from "../lib/fixedAppointment";
 import { getAppointmentDateStr, toCalendarEnd, toCalendarStart } from "../lib/appointmentDisplay";
 import { formatPersonDisplayLastFirst, formatPersonDisplayLastFirstUpper } from "../lib/personName";
 import { AppointmentModal } from "../components/AppointmentModal";
@@ -194,12 +202,13 @@ function appointmentPaymentCaption(a: Appointment): string {
 }
 
 function toEvent(a: Appointment): EventInput {
+  const fixed = isFixedSeriesAppointment(a);
   return {
     id: a.id,
     title: formatPersonDisplayLastFirstUpper(a.patient.lastName, a.patient.firstName),
     start: toCalendarStart(a),
     end: toCalendarEnd(a),
-    classNames: ["appt-event", `status-${a.status.toLowerCase()}`],
+    classNames: ["appt-event", fixed ? "fixed-series" : "", `status-${a.status.toLowerCase()}`],
     extendedProps: { raw: a },
   };
 }
@@ -211,7 +220,8 @@ function renderEventContent(arg: EventContentArg, buildPatientPaymentTo: (patien
   const patient = formatPersonDisplayLastFirst(raw.patient.lastName, raw.patient.firstName);
   const specialist = formatPersonDisplayLastFirst(raw.specialist.lastName, raw.specialist.firstName);
   const consultorio = raw.consultorio.trim() || "Sin consultorio";
-  const status = statusLabel[raw.status];
+  const fixed = isFixedSeriesAppointment(raw);
+  const status = fixed ? `FIJO · ${statusLabel[raw.status]}` : statusLabel[raw.status];
   const hasDebt = appointmentHasDebt(raw);
   const isListView = arg.view.type.startsWith("list");
   const isMonthView = arg.view.type === "dayGridMonth";
@@ -225,7 +235,11 @@ function renderEventContent(arg: EventContentArg, buildPatientPaymentTo: (patien
             <span className="appt-list-specialist">{specialist}</span>
           </span>
           <span className="appt-list-right">
-            <span className={`appt-list-status status-chip-${raw.status.toLowerCase()}`}>{status}</span>
+            <span
+              className={`appt-list-status ${fixed ? "status-chip-fixed" : `status-chip-${raw.status.toLowerCase()}`}`}
+            >
+              {status}
+            </span>
             <Link
               to={buildPatientPaymentTo(raw.patientId)}
               className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
@@ -259,10 +273,12 @@ function renderEventContent(arg: EventContentArg, buildPatientPaymentTo: (patien
     <div className="appt-week-event-content">
       <div className="appt-week-event-top">
         <div className="appt-week-event-time">{raw.startTime}</div>
-        <div className={`appt-event-status status-chip-${raw.status.toLowerCase()}`}>{status}</div>
+        <div className={`appt-event-status ${fixed ? "status-chip-fixed" : `status-chip-${raw.status.toLowerCase()}`}`}>{status}</div>
       </div>
       <div className="appt-week-event-patient">{patient}</div>
-      <div className="appt-week-event-payment">{appointmentPaymentCaption(raw)}</div>
+      <div className="appt-week-event-payment">
+        {appointmentPaymentCaption(raw)}
+      </div>
       <div className="appt-week-event-bottom">
         <div className="appt-week-event-office">{consultorio}</div>
         <span className={hasDebt ? "appt-week-payment debt" : "appt-week-payment paid"}>
@@ -316,7 +332,7 @@ export function AgendaPage() {
   const [unavailableOpen, setUnavailableOpen] = useState(false);
   const [unavailableHintOpen, setUnavailableHintOpen] = useState(false);
   const [deleteTargetAppointmentId, setDeleteTargetAppointmentId] = useState<string | null>(null);
-  const [monthSimplified, setMonthSimplified] = useState(true);
+  const [fixedCancelMode, setFixedCancelMode] = useState<"occurrence" | "series" | null>(null);
   const qc = useQueryClient();
   const shouldOpenQuickSlots = searchParams.get("new") === "1";
   const effectiveSpecialistId = routeSpecialistId ?? (user?.role === "SPECIALIST" ? user.specialistId ?? undefined : undefined);
@@ -419,12 +435,45 @@ export function AgendaPage() {
     [specialistsSummaryQ.data]
   );
   const isSingleSpecialistDayBoard = specialistDayBoard.length === 1;
+  const clickedIsFixed =
+    Boolean(clickedAppointment) && isFixedSeriesAppointment(clickedAppointment!);
   const canDeleteClickedAppointment =
     Boolean(clickedAppointment) &&
+    !clickedIsFixed &&
     (user?.role === "ADMIN" ||
       (user?.role === "SPECIALIST" &&
         Boolean(user.specialistId) &&
         user.specialistId === clickedAppointment?.specialistId));
+  const canManageFixedClicked =
+    clickedIsFixed &&
+    (user?.role === "ADMIN" ||
+      (user?.role === "SPECIALIST" &&
+        Boolean(user.specialistId) &&
+        user.specialistId === clickedAppointment?.specialistId));
+
+  const skipFixedMut = useMutation({
+    mutationFn: ({ seriesId, date }: { seriesId: string; date: string }) =>
+      skipFixedAppointmentOccurrence(seriesId, date),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["appointments"] });
+      await refetch();
+      setFixedCancelMode(null);
+      setClickedAppointment(null);
+      setClickedSlot(null);
+    },
+  });
+
+  const cancelFixedSeriesMut = useMutation({
+    mutationFn: (seriesId: string) => cancelFixedAppointmentSeries(seriesId),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["appointments"] });
+      await qc.invalidateQueries({ queryKey: ["fixed-series"] });
+      await refetch();
+      setFixedCancelMode(null);
+      setClickedAppointment(null);
+      setClickedSlot(null);
+    },
+  });
 
   const deleteFromActionMut = useMutation({
     mutationFn: (id: string) => deleteAppointment(id),
@@ -756,18 +805,6 @@ export function AgendaPage() {
               {statusLabel[s]}
             </span>
           ))}
-          <button
-            type="button"
-            onClick={() => setMonthSimplified((v) => !v)}
-            className={`rounded-full border px-3 py-1 font-semibold transition ${
-              monthSimplified
-                ? "border-sky-300 bg-sky-100 text-sky-800 hover:bg-sky-200"
-                : "border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200"
-            }`}
-            title="Reducir saturación visual en vista mensual"
-          >
-            Mes simplificado: {monthSimplified ? "ON" : "OFF"}
-          </button>
         </div>
         {effectiveSpecialistId && (
           <p className="mb-3 text-xs text-slate-600">
@@ -819,8 +856,8 @@ export function AgendaPage() {
             selectable={!effectiveSpecialistId || Boolean(specialistQ.data)}
             selectMirror
             dayMaxEvents
-            dayMaxEventRows={monthSimplified ? 2 : true}
-            eventMaxStack={monthSimplified ? 2 : 3}
+            dayMaxEventRows={2}
+            eventMaxStack={2}
             slotEventOverlap={false}
             weekends={false}
             eventOrder="start,-duration,title"
@@ -877,14 +914,16 @@ export function AgendaPage() {
                   Acción sobre este turno
                 </h3>
                 <p id="event-action-desc" className="mt-2 text-sm leading-relaxed text-slate-600">
-                  {user?.role === "ADMIN"
-                    ? "Editá el turno, creá uno nuevo en el mismo horario o eliminá el turno si corresponde."
-                    : "Podés agendar una nueva cita en este horario o eliminar el turno. Para modificar una cita ya cargada, contactá a administración."}
+{clickedIsFixed
+                    ? "Turno fijo semanal: registrá pago y estado, cancelá solo este día o da de baja toda la serie."
+                    : user?.role === "ADMIN"
+                      ? "Editá el turno, creá uno nuevo en el mismo horario o eliminá el turno si corresponde."
+                      : "Podés agendar una nueva cita en este horario o eliminar el turno. Para modificar una cita ya cargada, contactá a administración."}
                 </p>
               </div>
               <div className="space-y-4 px-5 py-5 sm:px-6">
                 <div className="flex flex-col gap-2.5 sm:flex-row sm:flex-wrap">
-                {user?.role === "ADMIN" && (
+                {user?.role === "ADMIN" && clickedAppointment && (
                   <button
                     type="button"
                     className="inline-flex min-h-12 flex-1 items-center justify-center rounded-lg bg-brand-700 px-4 py-2.5 text-sm font-bold tracking-tight text-white shadow-md ring-1 ring-brand-900/20 transition hover:bg-brand-800 active:translate-y-px active:bg-brand-900 active:shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 sm:flex-none sm:min-w-[11rem]"
@@ -898,9 +937,10 @@ export function AgendaPage() {
                       setModalOpen(true);
                     }}
                   >
-                      Editar turno
+                      {clickedIsFixed ? "Pago y estado" : "Editar turno"}
                   </button>
                 )}
+                {!clickedIsFixed && (
                 <button
                   type="button"
                   className="inline-flex min-h-12 flex-1 items-center justify-center rounded-lg border-2 border-slate-300 bg-white px-4 py-2.5 text-sm font-bold tracking-tight text-slate-900 shadow-sm transition hover:border-slate-400 hover:bg-slate-50 active:translate-y-px active:border-slate-500 active:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 sm:flex-none sm:min-w-[12.5rem]"
@@ -925,6 +965,31 @@ export function AgendaPage() {
                 >
                   Nueva cita en este horario
                 </button>
+                )}
+                {canManageFixedClicked && (
+                  <>
+                    <button
+                      type="button"
+                      className="inline-flex min-h-12 flex-1 items-center justify-center rounded-lg border-2 border-violet-400 bg-violet-50 px-4 py-2.5 text-sm font-bold tracking-tight text-violet-950 shadow-sm transition hover:bg-violet-100 sm:flex-none sm:min-w-[12.5rem]"
+                      onClick={() => {
+                        setEventActionOpen(false);
+                        setFixedCancelMode("occurrence");
+                      }}
+                    >
+                      Cancelar solo este día
+                    </button>
+                    <button
+                      type="button"
+                      className="inline-flex min-h-12 flex-1 items-center justify-center rounded-lg border-2 border-rose-500 bg-rose-50 px-4 py-2.5 text-sm font-bold tracking-tight text-rose-950 shadow-sm transition hover:bg-rose-100 sm:flex-none sm:min-w-[12.5rem]"
+                      onClick={() => {
+                        setEventActionOpen(false);
+                        setFixedCancelMode("series");
+                      }}
+                    >
+                      Cancelar turno fijo (serie)
+                    </button>
+                  </>
+                )}
                 {canDeleteClickedAppointment && (
                   <button
                     type="button"
@@ -956,6 +1021,54 @@ export function AgendaPage() {
             </div>
           </div>
         )}
+        {fixedCancelMode && clickedAppointment && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-3 sm:p-4">
+            <div className="w-full max-w-md overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-xl ring-1 ring-slate-900/5" role="dialog">
+              <div className="border-b border-slate-100 bg-gradient-to-b from-slate-50 to-white px-5 pb-4 pt-5 sm:px-6">
+                <h3 className="text-base font-semibold tracking-tight text-slate-900 sm:text-lg">
+                  {fixedCancelMode === "occurrence" ? "Cancelar este día" : "Cancelar turno fijo"}
+                </h3>
+              </div>
+              <div className="px-5 py-4 sm:px-6">
+                <p className="text-sm leading-relaxed text-slate-600">
+                  {fixedCancelMode === "occurrence"
+                    ? "Se ocultará solo la fecha seleccionada en la agenda. El resto de los días de la serie sigue activo."
+                    : "Se dará de baja la serie completa: dejará de generarse en la agenda a partir de hoy."}
+                </p>
+              </div>
+              <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 bg-slate-50/60 px-5 py-4 sm:gap-3 sm:px-6">
+                <button
+                  type="button"
+                  className="inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-300 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700"
+                  disabled={skipFixedMut.isPending || cancelFixedSeriesMut.isPending}
+                  onClick={() => setFixedCancelMode(null)}
+                >
+                  Volver
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex min-h-11 items-center justify-center rounded-lg bg-rose-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
+                  disabled={skipFixedMut.isPending || cancelFixedSeriesMut.isPending}
+                  onClick={() => {
+                    const seriesId = getFixedSeriesId(clickedAppointment);
+                    if (!seriesId) return;
+                    if (fixedCancelMode === "occurrence") {
+                      skipFixedMut.mutate({
+                        seriesId,
+                        date: getFixedOccurrenceDate(clickedAppointment),
+                      });
+                    } else {
+                      cancelFixedSeriesMut.mutate(seriesId);
+                    }
+                  }}
+                >
+                  {skipFixedMut.isPending || cancelFixedSeriesMut.isPending ? "Procesando…" : "Confirmar"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {deleteTargetAppointmentId && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-3 sm:p-4">
             <div

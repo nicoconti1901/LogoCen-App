@@ -1,0 +1,276 @@
+================================================================================
+  LOGOCEN — Resumen de la aplicación y estimación de costos de infraestructura
+  Para: cliente / emprendimiento pequeño (3 consultorios, 3–4 especialistas)
+  Fecha de referencia: mayo 2026
+  Moneda de referencia: USD (dólares); conversión ARS según tipo de cambio del día
+================================================================================
+
+IMPORTANTE
+----------
+- Los montos son APROXIMADOS. Los precios de nube y de Meta cambian; conviene
+  revisar las páginas oficiales antes de contratar.
+- WhatsApp (recordatorios) NO está implementado hoy en la app; se describe como
+  costo futuro si se agrega esa función.
+- La app ya está pensada para PostgreSQL en la nube (p. ej. Neon), no para un
+  servidor “gratis para siempre” en producción sin límites.
+
+
+================================================================================
+1. QUÉ ES LA APLICACIÓN (RESUMEN FUNCIONAL)
+================================================================================
+
+LogoCen es un sistema web de gestión para un centro de fonoaudiología / terapias
+con varios consultorios y varios profesionales. No es una app para pacientes
+(por ahora): la usan administración y especialistas desde navegador.
+
+Módulos principales
+-------------------
+• Login seguro (JWT) con roles:
+  - ADMIN: ve todo, configura, cobros, balance.
+  - SPECIALIST: agenda propia, pacientes asignados, alta de turnos (no edita turnos
+    ya creados salvo reglas definidas).
+
+• Agenda (calendario)
+  - Turnos puntuales por fecha/hora/consultorio/especialista.
+  - Turnos fijos semanales (misma hora cada semana, sin duplicar miles de filas
+    en base de datos): se “expanden” al mostrar la agenda.
+  - Estados: agendado, reservado (con seña), finalizado, ausente con/sin aviso.
+  - Validación de solapamiento: un especialista y un consultorio no pueden tener
+    dos turnos a la vez (incluye bloqueo por turnos fijos).
+
+• Pacientes
+  - Datos: nombre, email, teléfono, documento, notas, especialista referente.
+  - Historial clínico (entradas por fecha/diagnóstico).
+  - Historial de pagos por paciente.
+
+• Especialistas
+  - Perfil, honorario, alquiler mensual de consultorio, alias de transferencia,
+    disponibilidad horaria por día de la semana.
+  - Foto de perfil (archivo subido al servidor).
+
+• Pagos y deuda
+  - Registro de forma de pago (transferencia a LogoCen, al especialista, efectivo).
+  - Marcar pago realizado, fecha de pago, seña en reservas.
+  - Cálculo de deuda pendiente según estado del turno.
+
+• Balance / rendiciones (administración)
+  - Rendición por especialista (lo cobrado vs. lo que corresponde a LogoCen).
+  - Rendición LogoCen (ingresos consultorios, gastos fijos y variables).
+  - Alquiler de consultorio por mes y por especialista.
+
+• Archivos
+  - Fotos de especialistas en carpeta `uploads/` del backend (no en la nube
+    object storage todavía).
+
+
+Lo que NO hace hoy (pero el cliente podría pedir)
+-------------------------------------------------
+• Recordatorios automáticos por WhatsApp, SMS o email (hay dependencia de email
+  en el proyecto pero no está cableada a recordatorios).
+• Portal para que el paciente reserve o cancele solo.
+• Facturación electrónica (AFIP).
+• App móvil nativa (es web responsive).
+
+
+================================================================================
+2. ARQUITECTURA TÉCNICA (QUÉ HAY QUE PAGAR)
+================================================================================
+
+Componente          Tecnología              Dónde corre hoy / típico
+------------------  ----------------------  ------------------------------------------
+Frontend            React + Vite            Hosting estático (CDN)
+Backend API         Node.js + Express       Servidor o PaaS siempre encendido*
+Base de datos       PostgreSQL (Prisma)     Neon u otro Postgres gestionado
+Archivos (fotos)    Disco del servidor      Mismo servidor que el API o S3/R2
+Dominio + HTTPS     DNS + certificado       Registrador + Let's Encrypt (gratis)
+
+* En desarrollo el backend usa puerto 4000; en producción necesita URL pública
+  y CORS configurado hacia el dominio del frontend.
+
+Tráfico esperado (3 consultorios, 3–4 especialistas)
+----------------------------------------------------
+• Usuarios simultáneos: 2–6 en horario pico (admin + especialistas).
+• Pacientes en base: 200–800 en el primer año (estimación conservadora).
+• Turnos: ~150–350 por mes (4 profesionales × varios turnos/día × ~22 días).
+• Turnos fijos: pocos registros en BD; el listado calcula ocurrencias en memoria.
+• Tamaño de base de datos: casi siempre < 500 MB en años (muy liviano).
+• Fotos: < 50 MB total si son pocas imágenes comprimidas.
+
+Conclusión de escala: es un sistema CHICO para estándares de nube; el riesgo no
+es el tamaño sino usar planes gratuitos que se suspenden, duermen o cortan.
+
+
+================================================================================
+3. PLANES GRATUITOS — QUÉ PASA SI SE QUEDA SOLO EN “FREE”
+================================================================================
+
+Neon (PostgreSQL) — plan Free
+-----------------------------
+• ~0,5 GB almacenamiento por proyecto, compute limitado (CU-hours/mes).
+• La base puede “dormir” tras inactividad → primer acceso lento o error si el
+  cliente no espera 1–5 segundos de arranque.
+• Sin SLA de producción; adecuado para pruebas, arriesgado como única BD en
+  horario de atención sin plan de respaldo.
+
+Render / Railway / Fly.io — tier gratuito o muy barato
+------------------------------------------------------
+• Muchos planes free “duermen” el backend tras minutos sin uso → la agenda no
+  carga hasta que alguien “despierta” el servicio (mala experiencia en recepción).
+• Límites de horas gratis mensuales: se agotan si hay monitoreo o cron jobs.
+
+Vercel / Netlify / Cloudflare Pages — frontend estático
+-------------------------------------------------------
+• El frontend compilado suele entrar bien en plan gratuito (tráfico bajo).
+• Recomendable: frontend en plan free + backend y BD de pago.
+
+Riesgo resumido para el cliente
+-------------------------------
+“Gratis” = posible corte, lentitud al abrir la agenda a la mañana, o base
+suspendida si se superan cuotas. Para un negocio con pacientes en vivo, conviene
+presupuestar un piso de ~USD 15–35/mes (ver sección 5).
+
+
+================================================================================
+4. WHATSAPP / META — RECORDATORIOS (NO IMPLEMENTADO AÚN)
+================================================================================
+
+Si se agregan recordatorios (ej. 24 h antes del turno), hace falta:
+
+1) Cuenta Meta Business verificada.
+2) WhatsApp Business Platform (Cloud API) o un proveedor (BSP): Twilio, 360dialog,
+   MessageBird, etc.
+3) Plantillas de mensaje aprobadas por Meta (categoría “utilidad” para recordatorio
+   de cita; no se puede enviar texto libre salvo ventana de 24 h si el paciente
+   escribió primero).
+4) Número de WhatsApp Business (puede ser el de la clínica).
+5) Job programado en el servidor (cron) que lea turnos del día siguiente y dispare
+   envíos; hoy la app ya guarda teléfono del paciente (campo opcional).
+
+Estimación de volumen de mensajes
+---------------------------------
+• 1 recordatorio por turno ≈ 150–350 mensajes/mes (misma orden que turnos/mes).
+• Turnos fijos: 1 mensaje por ocurrencia real (no por serie infinita).
+
+Costos Meta (referencia Argentina, 2025–2026)
+---------------------------------------------
+Meta cobra por mensaje/plantilla según categoría y país. Cifras orientativas
+(consultar https://developers.facebook.com/docs/whatsapp/pricing):
+
+• Mensajes de utilidad (recordatorio de turno): del orden de USD 0,005 a 0,05
+  por mensaje según proveedor y volumen (Argentina a veces figura en tablas
+  regionales LATAM).
+• Ejemplo 300 recordatorios/mes × USD 0,02 ≈ USD 6/mes solo Meta.
+• El BSP (intermediario) puede sumar: fee mensual (USD 0–50) + margen por mensaje.
+
+Costos adicionales de desarrollo (una vez)
+------------------------------------------
+• Integración API + plantillas + cron + manejo de errores: trabajo de desarrollo
+  (no es solo “activar WhatsApp”).
+• Verificación de negocio Meta: puede tardar días/semanas.
+
+Alternativa más barata para empezar
+----------------------------------
+• Recordatorios por email (SMTP): SendGrid/Resend free tier limitado, o cuenta
+  Gmail con límites — menor costo pero menos lectura que WhatsApp.
+
+
+================================================================================
+5. ESCENARIOS DE COSTO MENSUAL (APROXIMADOS)
+================================================================================
+
+--- ESCENARIO A: Mínimo posible (acepta riesgos) ---
+Frontend .............. Vercel / Netlify / Cloudflare Pages    USD   0
+Backend ............... Render free / Railway trial             USD   0–5
+PostgreSQL ............ Neon Free                               USD   0
+Dominio ............... .com o .com.ar (prorrateado /12)       USD   1–2
+WhatsApp .............. No / manual                            USD   0
+----------------------------------------------------------------------
+TOTAL MENSUAL APROX.                                         USD   1–7
+En pesos (ej. TC 1.200):                                      ARS  1.200–8.400
+
+Riesgos: backend o BD dormidos, sin soporte, sin backups serios.
+
+
+--- ESCENARIO B: Producción recomendada (clínica pequeña estable) ---
+Frontend .............. Cloudflare Pages o Vercel               USD   0
+Backend ............... Railway / Render / Fly.io (1 instancia) USD   7–12
+PostgreSQL ............ Neon Launch / Scale uso bajo            USD   5–15
+Backups / monitoreo ... Incluido parcial en planes de pago      USD   0–5
+Dominio + DNS .........                                           USD   1–2
+Fotos ................. Disco del mismo backend (< 1 GB)        USD   0
+WhatsApp recordatorios  Meta + BSP (300 msg/mes, estimado)      USD   8–25
+----------------------------------------------------------------------
+TOTAL MENSUAL APROX.                                         USD  21–59
+En pesos (ej. TC 1.200):                                      ARS  25.000–71.000
+
+Notas:
+• Sin WhatsApp: restar USD 8–25 → ~USD 13–34/mes.
+• Un VPS único (Hetzner ~USD 5–8 + dominio) puede alojar API + BD + archivos,
+  pero requiere mantenimiento técnico (actualizaciones, seguridad).
+
+
+--- ESCENARIO C: Crecimiento (más especialistas, más recordatorios) ---
+Mismos servicios con más compute / más mensajes WhatsApp:
+TOTAL MENSUAL APROX.                                         USD  50–120
+
+
+================================================================================
+6. COSTOS ANUALES Y “SORPRESAS” A EVITAR
+================================================================================
+
+• Dominio: renovación anual (no mensual).
+• Aumento de precio del dólar: presupuestar en ARS con margen del 15–20 %.
+• Neon / PaaS: si superan CU-hours o transferencia, factura extra (avisos por mail).
+• WhatsApp: mensajes fallidos igual pueden consumir intentos; validar teléfonos.
+• Soporte técnico: este documento NO incluye horas de mantenimiento del desarrollador.
+• Certificado y backups: en planes baratos, backup manual o export semanal recomendado.
+
+
+================================================================================
+7. RECOMENDACIÓN PARA PRESENTAR AL CLIENTE
+================================================================================
+
+Mensaje simple:
+“Para que la agenda y los pagos funcionen todos los días sin quedarse colgada,
+conviene un presupuesto de infraestructura de unos USD 20–40 por mes (hoy unos
+ARS 25.000–50.000). Si sumamos recordatorios por WhatsApp, sumar otros USD 10–25
+mensuales según cantidad de turnos. Los planes 100 % gratuitos sirven para probar,
+no para depender en horario de atención.”
+
+Desglose sugerido para presupuesto interno del cliente:
+• Infraestructura web (sin WhatsApp): USD 15–35/mes
+• WhatsApp Meta (opcional, cuando exista la función): USD 10–25/mes
+• Dominio: ~USD 10–20/año
+• Contingencia / suba de dólar: +15 %
+
+Para 3 consultorios y 3–4 especialistas, el Escenario B es el más realista.
+
+
+================================================================================
+8. CHECKLIST TÉCNICO (PARA COTIZAR CON PROVEEDORES)
+================================================================================
+
+[ ] Dominio propio (ej. agenda.logocen.com.ar)
+[ ] Frontend en CDN (build estático de Vite)
+[ ] Backend Node 24/7 sin sleep (mín. 512 MB RAM)
+[ ] PostgreSQL gestionado con conexión pooler + directa (migraciones)
+[ ] Variables de entorno: DATABASE_URL, DIRECT_URL, JWT_SECRET, CORS_ORIGIN
+[ ] HTTPS en frontend y API
+[ ] Backup automático BD (diario) o export programado
+[ ] Carpeta uploads respaldada o migrada a almacenamiento objeto (futuro)
+[ ] (Futuro) Cron recordatorios + WhatsApp Cloud API + plantillas aprobadas
+
+
+================================================================================
+9. REFERENCIAS ÚTILES
+================================================================================
+
+• Neon pricing: https://neon.tech/pricing
+• Meta WhatsApp pricing: https://developers.facebook.com/docs/whatsapp/pricing
+• Render pricing: https://render.com/pricing
+• Railway pricing: https://railway.app/pricing
+• Cloudflare Pages: https://pages.cloudflare.com/
+
+================================================================================
+Fin del documento — LogoCen App
+================================================================================

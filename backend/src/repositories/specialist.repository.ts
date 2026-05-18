@@ -34,6 +34,7 @@ export const specialistRepository = {
     licenseNumber?: string | null;
     phone?: string | null;
     consultationFee?: Prisma.Decimal | number | string | null;
+    monthlyConsultorioRent?: Prisma.Decimal | number | string | null;
     transferAlias?: string | null;
     availabilities?: Array<{ weekday: Weekday; startTime: string; endTime: string }>;
   }): Promise<SpecialistWithUser> {
@@ -55,6 +56,7 @@ export const specialistRepository = {
           licenseNumber: input.licenseNumber ?? null,
           phone: input.phone ?? null,
           consultationFee: input.consultationFee ?? null,
+          monthlyConsultorioRent: input.monthlyConsultorioRent ?? null,
           transferAlias: input.transferAlias ?? null,
           availabilities: input.availabilities?.length
             ? {
@@ -86,6 +88,7 @@ export const specialistRepository = {
       licenseNumber?: string | null;
       phone?: string | null;
       consultationFee?: Prisma.Decimal | number | string | null;
+      monthlyConsultorioRent?: Prisma.Decimal | number | string | null;
       transferAlias?: string | null;
       availabilities?: Array<{ weekday: Weekday; startTime: string; endTime: string }>;
       active?: boolean;
@@ -112,6 +115,9 @@ export const specialistRepository = {
           ...(data.licenseNumber !== undefined ? { licenseNumber: data.licenseNumber } : {}),
           ...(data.phone !== undefined ? { phone: data.phone } : {}),
           ...(data.consultationFee !== undefined ? { consultationFee: data.consultationFee } : {}),
+          ...(data.monthlyConsultorioRent !== undefined
+            ? { monthlyConsultorioRent: data.monthlyConsultorioRent }
+            : {}),
           ...(data.transferAlias !== undefined ? { transferAlias: data.transferAlias } : {}),
           ...(data.active !== undefined ? { active: data.active } : {}),
           ...(data.availabilities !== undefined

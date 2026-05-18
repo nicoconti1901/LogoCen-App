@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { fetchAppointments, updateAppointment } from "../api/endpoints";
+import { fetchAppointments, updateAppointment, updateFixedAppointmentOccurrence } from "../api/endpoints";
+import { getFixedOccurrenceDate, getFixedSeriesId, isFixedSeriesAppointment } from "../lib/fixedAppointment";
 import { useAuth } from "../contexts/AuthContext";
 import type { Appointment, AppointmentStatus, Patient } from "../types";
 import { appointmentHasDebt, appointmentDebtAmountArs, appointmentImputadoPagadoArs, appointmentReferenciaHonorarioArs } from "../lib/appointmentDebt";
@@ -46,6 +47,7 @@ export function PatientPaymentHistoryModal({ patientId, patientHint, onClose }: 
   const [paymentMethodByAppointmentId, setPaymentMethodByAppointmentId] = useState<
     Record<string, Exclude<Appointment["paymentMethod"], null>>
   >({});
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const { data: paymentHistory = [], isLoading: isLoadingPaymentHistory } = useQuery({
     queryKey: ["appointments", "patient-payment-history", patientId],
@@ -71,15 +73,35 @@ export function PatientPaymentHistoryModal({ patientId, patientHint, onClose }: 
   }, [paymentHistory]);
 
   const markDebtPaidMut = useMutation({
-    mutationFn: (a: Appointment) =>
-      updateAppointment(a.id, {
+    mutationFn: (a: Appointment) => {
+      const payload = {
         paymentCompleted: true,
         paymentDate: new Date().toISOString().slice(0, 10),
         paymentMethod: paymentMethodByAppointmentId[a.id] ?? a.paymentMethod ?? "CASH_TO_LOGOCEN",
-      }),
+      };
+      if (isFixedSeriesAppointment(a)) {
+        const seriesId = getFixedSeriesId(a);
+        if (!seriesId) throw new Error("Turno fijo inválido");
+        return updateFixedAppointmentOccurrence(seriesId, {
+          date: getFixedOccurrenceDate(a),
+          ...payload,
+        });
+      }
+      return updateAppointment(a.id, payload);
+    },
+    onMutate: () => setActionError(null),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["appointments"] });
       await qc.invalidateQueries({ queryKey: ["patients"] });
+    },
+    onError: (err: unknown) => {
+      const msg =
+        err instanceof Error
+          ? err.message
+          : typeof err === "object" && err !== null && "response" in err
+            ? String((err as { response?: { data?: { message?: string } } }).response?.data?.message ?? "No se pudo registrar el pago")
+            : "No se pudo registrar el pago";
+      setActionError(msg);
     },
   });
 
@@ -124,6 +146,11 @@ export function PatientPaymentHistoryModal({ patientId, patientHint, onClose }: 
           </div>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-2 sm:px-6 sm:pb-6">
+          {actionError && (
+            <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">
+              {actionError}
+            </p>
+          )}
           {isLoadingPaymentHistory && <p className="text-sm text-slate-600">Cargando historial de pagos…</p>}
           {!isLoadingPaymentHistory && paymentHistory.length === 0 && (
             <p className="text-sm text-slate-600">Este paciente todavía no tiene turnos.</p>
@@ -165,7 +192,7 @@ export function PatientPaymentHistoryModal({ patientId, patientHint, onClose }: 
                         {a.startTime}–{a.endTime}
                       </td>
                       <td className="truncate px-2 py-2 sm:px-3" title={appointmentStatusLabel[a.status]}>
-                        {appointmentStatusLabel[a.status]}
+                        {isFixedSeriesAppointment(a) ? `Fijo · ${appointmentStatusLabel[a.status]}` : appointmentStatusLabel[a.status]}
                       </td>
                       <td className="truncate px-2 py-2 sm:px-3" title={a.paymentMethod ? paymentMethodLabel[a.paymentMethod] : ""}>
                         {a.paymentMethod
