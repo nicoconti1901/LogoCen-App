@@ -17,6 +17,8 @@ enum Role {
 
 enum AppointmentStatus {
   RESERVED
+  /// Paciente confirmó asistencia (WhatsApp o manual vía cambio de estado en el turno).
+  CONFIRMADO
   RESERVADO
   ATTENDED
   AUSENTE_CON_AVISO
@@ -34,6 +36,12 @@ enum AppointmentPaymentMethod {
   TRANSFER_TO_LOGOCEN
   TRANSFER_TO_SPECIALIST
   CASH_TO_LOGOCEN
+}
+
+/// Origen de la confirmación del paciente (WhatsApp se usará cuando esté integrado).
+enum PatientConfirmationSource {
+  MANUAL
+  WHATSAPP
 }
 
 enum Weekday {
@@ -76,9 +84,12 @@ model Specialist {
   /// Alquiler mensual del consultorio (LogoCen cobra a fin de mes; ingreso administrativo).
   monthlyConsultorioRent Decimal? @db.Decimal(12, 2)
   transferAlias    String?
+  /// Notas internas (admin): consideraciones operativas del profesional.
+  considerations   String?       @db.Text
   active           Boolean       @default(true)
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
+  documents     SpecialistDocument[]
   appointments  Appointment[]
   fixedAppointmentSeries FixedAppointmentSeries[]
   patients      Patient[]
@@ -100,6 +111,20 @@ model SpecialistConsultorioRentMonth {
 
   @@unique([specialistId, yearMonth])
   @@index([yearMonth])
+}
+
+model SpecialistDocument {
+  id           String     @id @default(uuid())
+  specialistId String
+  specialist   Specialist @relation(fields: [specialistId], references: [id], onDelete: Cascade)
+  fileName     String
+  mimeType     String
+  /// Ruta relativa bajo `uploads/` (p. ej. specialist-documents/{id}/archivo.pdf)
+  storagePath  String
+  fileSize     Int
+  createdAt    DateTime   @default(now())
+
+  @@index([specialistId])
 }
 
 model SpecialistAvailability {
@@ -177,11 +202,15 @@ model Appointment {
   paymentDate     DateTime?         @db.Date
   /// Fecha/hora en que LogoCen rindió este turno al especialista (solo aplica para TRANSFER_TO_SPECIALIST)
   specialistSettledAt DateTime?
+  /// Confirmación del paciente para asistir (p. ej. vía recordatorio WhatsApp).
+  patientConfirmedAt DateTime?
+  patientConfirmationSource PatientConfirmationSource?
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
   payments        Payment[]
 
   @@index([specialistId, appointmentDate])
+  @@index([patientConfirmedAt])
   @@index([consultorio, appointmentDate])
   @@index([appointmentDate])
 }
@@ -223,12 +252,15 @@ model FixedAppointmentOccurrence {
   paymentCompleted         Boolean                   @default(false)
   paymentDate              DateTime?                 @db.Date
   specialistSettledAt      DateTime?
+  patientConfirmedAt       DateTime?
+  patientConfirmationSource PatientConfirmationSource?
   medicalRecord            String?                   @db.Text
   reasonForVisit           String?
   createdAt                DateTime                  @default(now())
   updatedAt                DateTime                  @updatedAt
 
   @@unique([seriesId, occurrenceDate])
+  @@index([patientConfirmedAt])
   @@index([seriesId, occurrenceDate])
 }
 

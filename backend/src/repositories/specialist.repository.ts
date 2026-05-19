@@ -4,6 +4,7 @@ import { prisma } from "../config/database.js";
 const include = {
   user: { select: { id: true, email: true } },
   availabilities: { orderBy: [{ weekday: "asc" }, { startTime: "asc" }] },
+  _count: { select: { documents: true } },
 } satisfies Prisma.SpecialistInclude;
 
 export type SpecialistWithUser = Prisma.SpecialistGetPayload<{ include: typeof include }>;
@@ -36,6 +37,7 @@ export const specialistRepository = {
     consultationFee?: Prisma.Decimal | number | string | null;
     monthlyConsultorioRent?: Prisma.Decimal | number | string | null;
     transferAlias?: string | null;
+    considerations?: string | null;
     availabilities?: Array<{ weekday: Weekday; startTime: string; endTime: string }>;
   }): Promise<SpecialistWithUser> {
     return prisma.$transaction(async (tx) => {
@@ -58,6 +60,7 @@ export const specialistRepository = {
           consultationFee: input.consultationFee ?? null,
           monthlyConsultorioRent: input.monthlyConsultorioRent ?? null,
           transferAlias: input.transferAlias ?? null,
+          considerations: input.considerations ?? null,
           availabilities: input.availabilities?.length
             ? {
                 createMany: {
@@ -90,6 +93,7 @@ export const specialistRepository = {
       consultationFee?: Prisma.Decimal | number | string | null;
       monthlyConsultorioRent?: Prisma.Decimal | number | string | null;
       transferAlias?: string | null;
+      considerations?: string | null;
       availabilities?: Array<{ weekday: Weekday; startTime: string; endTime: string }>;
       active?: boolean;
     }
@@ -119,6 +123,7 @@ export const specialistRepository = {
             ? { monthlyConsultorioRent: data.monthlyConsultorioRent }
             : {}),
           ...(data.transferAlias !== undefined ? { transferAlias: data.transferAlias } : {}),
+          ...(data.considerations !== undefined ? { considerations: data.considerations } : {}),
           ...(data.active !== undefined ? { active: data.active } : {}),
           ...(data.availabilities !== undefined
             ? {

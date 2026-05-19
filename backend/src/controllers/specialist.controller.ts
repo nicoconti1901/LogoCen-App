@@ -1,9 +1,18 @@
 import { Role, Weekday } from "@prisma/client";
 import type { Request, Response } from "express";
 import { z } from "zod";
+import type { SpecialistWithUser } from "../repositories/specialist.repository.js";
 import * as specialistService from "../services/specialist.service.js";
 import { AppError } from "../middleware/errorHandler.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+
+function serializeSpecialist(row: SpecialistWithUser) {
+  const { _count, ...rest } = row;
+  return {
+    ...rest,
+    documentCount: _count?.documents ?? 0,
+  };
+}
 
 /** URLs largas (p. ej. Drive con query) o data URLs superaban 2048 y rompían el POST. */
 const optionalUrl = z.union([z.string().max(32_000), z.literal(""), z.null()]).optional();
@@ -16,6 +25,7 @@ const timeSchema = z
   .regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Use HH:mm (24 h)");
 const optionalMoney = z.union([z.number().nonnegative(), z.string().regex(/^\d+(\.\d{1,2})?$/), z.literal(""), z.null()]).optional();
 const optionalAlias = z.union([z.string().max(120), z.literal(""), z.null()]).optional();
+const optionalLongText = z.union([z.string().max(10_000), z.literal(""), z.null()]).optional();
 const availabilitySchema = z.object({
   weekday: z.nativeEnum(Weekday),
   startTime: timeSchema,
@@ -34,6 +44,7 @@ const createSchema = z.object({
   consultationFee: optionalMoney,
   monthlyConsultorioRent: optionalMoney,
   transferAlias: optionalAlias,
+  considerations: optionalLongText,
   availabilities: z.array(availabilitySchema).optional(),
 });
 
@@ -49,6 +60,7 @@ const updateSchema = z.object({
   consultationFee: optionalMoney,
   monthlyConsultorioRent: optionalMoney,
   transferAlias: optionalAlias,
+  considerations: optionalLongText,
   availabilities: z.array(availabilitySchema).optional(),
   active: z.boolean().optional(),
 });
@@ -56,7 +68,7 @@ const updateSchema = z.object({
 export const list = asyncHandler(async (req: Request, res: Response) => {
   const includeInactive = req.query.includeInactive === "true";
   const rows = await specialistService.listSpecialists(includeInactive);
-  res.json(rows);
+  res.json(rows.map((row) => serializeSpecialist(row)));
 });
 
 export const getById = asyncHandler(async (req: Request, res: Response) => {
@@ -65,7 +77,7 @@ export const getById = asyncHandler(async (req: Request, res: Response) => {
     throw new AppError(403, "Sin permisos");
   }
   const row = await specialistService.getSpecialistById(id);
-  res.json(row);
+  res.json(serializeSpecialist(row));
 });
 
 export const getMe = asyncHandler(async (req: Request, res: Response) => {
@@ -73,13 +85,13 @@ export const getMe = asyncHandler(async (req: Request, res: Response) => {
     throw new AppError(403, "Solo especialistas");
   }
   const row = await specialistService.getSpecialistById(req.user.specialistId);
-  res.json(row);
+  res.json(serializeSpecialist(row));
 });
 
 export const create = asyncHandler(async (req: Request, res: Response) => {
   const body = createSchema.parse(req.body);
   const row = await specialistService.createSpecialist(body);
-  res.status(201).json(row);
+  res.status(201).json(serializeSpecialist(row));
 });
 
 export const update = asyncHandler(async (req: Request, res: Response) => {
@@ -94,8 +106,11 @@ export const update = asyncHandler(async (req: Request, res: Response) => {
   if (req.user?.role === Role.SPECIALIST && "monthlyConsultorioRent" in body) {
     delete (body as { monthlyConsultorioRent?: unknown }).monthlyConsultorioRent;
   }
+  if (req.user?.role === Role.SPECIALIST && "considerations" in body) {
+    delete (body as { considerations?: unknown }).considerations;
+  }
   const row = await specialistService.updateSpecialist(id, body);
-  res.json(row);
+  res.json(serializeSpecialist(row));
 });
 
 export const uploadProfilePhoto = asyncHandler(async (req: Request, res: Response) => {

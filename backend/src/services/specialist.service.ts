@@ -47,6 +47,7 @@ export async function createSpecialist(data: {
   consultationFee?: string | number | null;
   monthlyConsultorioRent?: string | number | null;
   transferAlias?: string | null;
+  considerations?: string | null;
   availabilities?: Array<{ weekday: Weekday; startTime: string; endTime: string }>;
 }) {
   const email = data.email.toLowerCase().trim();
@@ -70,6 +71,7 @@ export async function createSpecialist(data: {
         ? null
         : (data.monthlyConsultorioRent ?? null),
     transferAlias: data.transferAlias?.trim() || null,
+    considerations: data.considerations?.trim() || null,
     availabilities: data.availabilities ? normalizeAvailabilities(data.availabilities) : [],
   });
 }
@@ -88,6 +90,7 @@ export async function updateSpecialist(
     consultationFee: string | number | null;
     monthlyConsultorioRent?: string | number | null;
     transferAlias: string | null;
+    considerations: string | null;
     availabilities: Array<{ weekday: Weekday; startTime: string; endTime: string }>;
     active: boolean;
   }>
@@ -127,6 +130,9 @@ export async function updateSpecialist(
           }
         : {}),
       ...(data.transferAlias !== undefined ? { transferAlias: data.transferAlias?.trim() || null } : {}),
+      ...(data.considerations !== undefined
+        ? { considerations: data.considerations?.trim() || null }
+        : {}),
       ...(data.availabilities !== undefined
         ? { availabilities: normalizeAvailabilities(data.availabilities) }
         : {}),

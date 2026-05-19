@@ -2,6 +2,7 @@ export type Role = "ADMIN" | "SPECIALIST";
 
 export type AppointmentStatus =
   | "RESERVED"
+  | "CONFIRMADO"
   | "RESERVADO"
   | "ATTENDED"
   | "AUSENTE_CON_AVISO"
@@ -12,6 +13,8 @@ export type AppointmentPaymentMethod =
   | "TRANSFER_TO_LOGOCEN"
   | "TRANSFER_TO_SPECIALIST"
   | "CASH_TO_LOGOCEN";
+
+export type PatientConfirmationSource = "MANUAL" | "WHATSAPP";
 
 export type AuthUser = {
   id: string;
@@ -68,9 +71,22 @@ export type Specialist = {
   /** Alquiler mensual consultorio (ARS), cargo LogoCen a fin de mes */
   monthlyConsultorioRent?: string | null;
   transferAlias: string | null;
+  considerations?: string | null;
+  documentCount?: number;
   availabilities: SpecialistAvailability[];
   active: boolean;
   user: { id: string; email: string };
+};
+
+export type SpecialistDocument = {
+  id: string;
+  specialistId: string;
+  fileName: string;
+  mimeType: string;
+  fileSize: number;
+  createdAt: string;
+  fileUrl: string;
+  relativeUrl: string;
 };
 
 export type SpecialistAvailability = {
@@ -108,6 +124,8 @@ export type Appointment = {
   paymentCompleted: boolean;
   paymentDate: string | null;
   specialistSettledAt: string | null;
+  patientConfirmedAt?: string | null;
+  patientConfirmationSource?: PatientConfirmationSource | null;
   medicalRecord: string | null;
   reasonForVisit: string | null;
   date?: string;

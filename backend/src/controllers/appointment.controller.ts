@@ -1,4 +1,5 @@
 import { AppointmentPaymentMethod, AppointmentStatus, Role } from "@prisma/client";
+import type { ConfirmationListFilter } from "../utils/appointmentConfirmation.js";
 import type { Request, Response } from "express";
 import { z } from "zod";
 import * as appointmentService from "../services/appointment.service.js";
@@ -57,6 +58,7 @@ const updateSchema = z.object({
   medicalRecord: z.string().optional().nullable(),
   reasonForVisit: z.string().optional().nullable(),
   reservationDepositAmount: z.union([z.string(), z.number()]).optional().nullable(),
+  patientConfirmationSource: z.enum(["MANUAL", "WHATSAPP"]).optional().nullable(),
 });
 
 function ctx(req: Request) {
@@ -105,6 +107,15 @@ export const list = asyncHandler(async (req: Request, res: Response) => {
     throw new AppError(403, "Sin permisos para ver la agenda de otro especialista");
   }
 
+  const confirmationRaw = typeof q.confirmation === "string" ? q.confirmation : undefined;
+  const confirmation =
+    confirmationRaw === "pending" || confirmationRaw === "confirmed"
+      ? (confirmationRaw as ConfirmationListFilter)
+      : undefined;
+  if (confirmation && req.user!.role !== Role.ADMIN) {
+    throw new AppError(403, "Sin permisos");
+  }
+
   const rows = await appointmentService.listAppointments({
     ...ctx(req),
     from: fromStr ? parseDateOnlyISO(fromStr) : undefined,
@@ -114,6 +125,7 @@ export const list = asyncHandler(async (req: Request, res: Response) => {
     status,
     specialistId: req.user!.role === Role.ADMIN ? specialistId : undefined,
     patientId,
+    confirmation,
   });
   res.json(rows.map((a) => enrichListRow(a)));
 });
@@ -173,6 +185,9 @@ export const update = asyncHandler(async (req: Request, res: Response) => {
       ...(body.reasonForVisit !== undefined ? { reasonForVisit: body.reasonForVisit } : {}),
       ...(body.reservationDepositAmount !== undefined
         ? { reservationDepositAmount: body.reservationDepositAmount }
+        : {}),
+      ...(body.patientConfirmationSource !== undefined
+        ? { patientConfirmationSource: body.patientConfirmationSource }
         : {}),
     },
     ctx(req).role,

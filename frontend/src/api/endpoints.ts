@@ -6,6 +6,7 @@ import type {
   Patient,
   Payment,
   Specialist,
+  SpecialistDocument,
   ClinicalHistoryEntry,
   FinanceConfig,
   FinanceExpense,
@@ -49,6 +50,7 @@ export async function createSpecialist(body: {
   consultationFee?: string | number | null;
   monthlyConsultorioRent?: string | number | null;
   transferAlias?: string | null;
+  considerations?: string | null;
   availabilities?: Array<{
     weekday: "MONDAY" | "TUESDAY" | "WEDNESDAY" | "THURSDAY" | "FRIDAY" | "SATURDAY" | "SUNDAY";
     startTime: string;
@@ -73,6 +75,7 @@ export async function updateSpecialist(
     consultationFee: string | number | null;
     monthlyConsultorioRent?: string | number | null;
     transferAlias: string | null;
+    considerations: string | null;
     availabilities: Array<{
       weekday: "MONDAY" | "TUESDAY" | "WEDNESDAY" | "THURSDAY" | "FRIDAY" | "SATURDAY" | "SUNDAY";
       startTime: string;
@@ -101,6 +104,24 @@ export async function uploadSpecialistProfilePhoto(file: File): Promise<Uploaded
 
 export async function deleteSpecialist(id: string): Promise<void> {
   await api.delete(`/specialists/${id}`);
+}
+
+export async function fetchSpecialistDocuments(specialistId: string): Promise<SpecialistDocument[]> {
+  const { data } = await api.get<SpecialistDocument[]>(`/specialists/${specialistId}/documents`);
+  return data;
+}
+
+export async function uploadSpecialistDocument(specialistId: string, file: File): Promise<SpecialistDocument> {
+  const formData = new FormData();
+  formData.append("document", file);
+  const { data } = await api.post<SpecialistDocument>(`/specialists/${specialistId}/documents`, formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return data;
+}
+
+export async function deleteSpecialistDocument(specialistId: string, documentId: string): Promise<void> {
+  await api.delete(`/specialists/${specialistId}/documents/${documentId}`);
 }
 
 export async function fetchPatients(search?: string, specialistId?: string): Promise<Patient[]> {
@@ -170,6 +191,8 @@ export type AppointmentListParams = {
   status?: string;
   specialistId?: string;
   patientId?: string;
+  /** Solo admin: filtrar turnos por confirmación del paciente. */
+  confirmation?: "pending" | "confirmed";
 };
 
 export async function fetchAppointments(params?: AppointmentListParams): Promise<Appointment[]> {

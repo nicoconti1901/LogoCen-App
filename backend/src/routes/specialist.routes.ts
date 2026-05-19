@@ -1,8 +1,10 @@
 import { Router } from "express";
 import { Role } from "@prisma/client";
 import * as specialistController from "../controllers/specialist.controller.js";
+import * as specialistDocumentController from "../controllers/specialistDocument.controller.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { uploadSpecialistPhotoMiddleware } from "../middleware/upload.js";
+import { uploadSpecialistDocumentMiddleware } from "../middleware/uploadSpecialistDocument.js";
 
 export const specialistRouter = Router();
 
@@ -15,6 +17,22 @@ specialistRouter.post(
   requireRole(Role.ADMIN),
   uploadSpecialistPhotoMiddleware,
   specialistController.uploadProfilePhoto
+);
+specialistRouter.get(
+  "/:id/documents",
+  requireRole(Role.ADMIN),
+  specialistDocumentController.list
+);
+specialistRouter.post(
+  "/:id/documents",
+  requireRole(Role.ADMIN),
+  uploadSpecialistDocumentMiddleware,
+  specialistDocumentController.upload
+);
+specialistRouter.delete(
+  "/:id/documents/:documentId",
+  requireRole(Role.ADMIN),
+  specialistDocumentController.remove
 );
 specialistRouter.get("/:id", specialistController.getById);
 specialistRouter.post("/", requireRole(Role.ADMIN), specialistController.create);

@@ -41,6 +41,7 @@ function formatMoney(amount: number): string {
 
 const appointmentStatusLabel: Record<AppointmentStatus, string> = {
   RESERVED: "Agendado",
+  CONFIRMADO: "Confirmado",
   RESERVADO: "Reservado",
   ATTENDED: "FINALIZADO",
   AUSENTE_CON_AVISO: "Ausente c/ aviso",

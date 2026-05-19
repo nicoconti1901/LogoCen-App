@@ -1,4 +1,10 @@
-import { AppointmentPaymentMethod, AppointmentStatus, Prisma, Role } from "@prisma/client";
+import {
+  AppointmentPaymentMethod,
+  AppointmentStatus,
+  PatientConfirmationSource,
+  Prisma,
+  Role,
+} from "@prisma/client";
 import { appointmentRepository } from "../repositories/appointment.repository.js";
 import { patientRepository } from "../repositories/patient.repository.js";
 import { specialistRepository } from "../repositories/specialist.repository.js";
@@ -13,6 +19,11 @@ import {
 } from "../utils/appointmentTime.js";
 import { endOfLocalDay, startOfLocalDay } from "../utils/date.js";
 import { parseMoneyToDecimal, reservationDepositForStatus } from "./appointmentPayment.utils.js";
+import {
+  matchesConfirmationListFilter,
+  syncPatientConfirmationForStatusChange,
+  type ConfirmationListFilter,
+} from "../utils/appointmentConfirmation.js";
 
 export { reservationDepositForStatus } from "./appointmentPayment.utils.js";
 
@@ -123,6 +134,7 @@ export async function listAppointments(params: {
   status?: AppointmentStatus;
   specialistId?: string;
   patientId?: string;
+  confirmation?: ConfirmationListFilter;
 }) {
   const todayOnly = toDateOnly(new Date());
   const nowT = currentTimeHHmm();
@@ -195,6 +207,9 @@ export async function listAppointments(params: {
     if (params.status) {
       merged = merged.filter((a) => a.status === params.status);
     }
+    if (params.confirmation) {
+      merged = merged.filter((a) => matchesConfirmationListFilter(a, params.confirmation!));
+    }
     merged.sort((a, b) => {
       const d = a.appointmentDate.getTime() - b.appointmentDate.getTime();
       if (d !== 0) return d;
@@ -203,6 +218,9 @@ export async function listAppointments(params: {
     return merged;
   }
 
+  if (params.confirmation) {
+    return rows.filter((a) => matchesConfirmationListFilter(a, params.confirmation!));
+  }
   return rows;
 }
 
@@ -335,6 +353,7 @@ export async function updateAppointment(
     startTime: string;
     endTime: string;
     status: AppointmentStatus;
+    patientConfirmationSource?: PatientConfirmationSource | null;
     paymentMethod: AppointmentPaymentMethod | null;
     paymentCompleted: boolean;
     paymentDate: Date | null;
@@ -363,6 +382,9 @@ export async function updateAppointment(
         ...(data.reasonForVisit !== undefined ? { reasonForVisit: data.reasonForVisit } : {}),
         ...(data.reservationDepositAmount !== undefined
           ? { reservationDepositAmount: data.reservationDepositAmount }
+          : {}),
+        ...(data.patientConfirmationSource !== undefined
+          ? { patientConfirmationSource: data.patientConfirmationSource }
           : {}),
       },
       role,
@@ -437,6 +459,17 @@ export async function updateAppointment(
     ? reservationDepositForStatus(nextStatus, depositFromBody, existingDeposit, fee)
     : undefined;
 
+  const confirmationPatch =
+    data.status !== undefined
+      ? syncPatientConfirmationForStatusChange(
+          nextStatus,
+          existing.status,
+          existing.patientConfirmedAt,
+          existing.patientConfirmationSource,
+          data.patientConfirmationSource
+        )
+      : {};
+
   return appointmentRepository.update(id, {
     ...(data.patientId !== undefined ? { patient: { connect: { id: data.patientId } } } : {}),
     ...(data.specialistId !== undefined ? { specialist: { connect: { id: data.specialistId } } } : {}),
@@ -445,6 +478,7 @@ export async function updateAppointment(
     ...(data.startTime !== undefined ? { startTime: nextStart } : {}),
     ...(data.endTime !== undefined ? { endTime: nextEnd } : {}),
     ...(data.status !== undefined ? { status: data.status } : {}),
+    ...confirmationPatch,
     ...(nextReservationDeposit !== undefined ? { reservationDepositAmount: nextReservationDeposit } : {}),
     ...(data.paymentMethod !== undefined ? { paymentMethod: data.paymentMethod } : {}),
     ...(data.paymentCompleted !== undefined ? { paymentCompleted: data.paymentCompleted } : {}),
@@ -470,3 +504,4 @@ export async function deleteAppointment(id: string, role: Role, userSpecialistId
   assertCanAccessAppointment(role, userSpecialistId, existing.specialistId);
   await appointmentRepository.delete(id);
 }
+

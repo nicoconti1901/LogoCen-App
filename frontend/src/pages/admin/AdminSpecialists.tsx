@@ -1,4 +1,4 @@
-import axios from "axios";
+﻿import axios from "axios";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -10,6 +10,7 @@ import {
   updateSpecialist,
 } from "../../api/endpoints";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { SpecialistDocumentsModal } from "../../components/SpecialistDocumentsModal";
 import { useAuth } from "../../contexts/AuthContext";
 import { imageSrcCandidates, normalizeProfilePhotoUrlForStorage } from "../../lib/imageUrl";
 import { normalizePersonNameField, formatPersonDisplayLastFirst } from "../../lib/personName";
@@ -28,6 +29,7 @@ const emptyForm = {
   consultationFee: "",
   monthlyConsultorioRent: "",
   transferAlias: "",
+  considerations: "",
   availabilities: [] as Array<{
     weekday: "MONDAY" | "TUESDAY" | "WEDNESDAY" | "THURSDAY" | "FRIDAY" | "SATURDAY" | "SUNDAY";
     startTime: string;
@@ -71,15 +73,16 @@ function formatArsAmount(value: string | null): string | null {
 
 function specialtyBadge(specialty: string): { icon: string; label: string } {
   const normalized = specialty.toLowerCase();
-  if (normalized.includes("kinesi")) return { icon: "🦴", label: "Kinesiología" };
-  if (normalized.includes("cardio")) return { icon: "❤️", label: "Cardiología" };
-  if (normalized.includes("pedia")) return { icon: "🧒", label: "Pediatría" };
-  if (normalized.includes("nutri")) return { icon: "🥗", label: "Nutrición" };
-  if (normalized.includes("psico")) return { icon: "🧠", label: "Psicología" };
-  if (normalized.includes("derma")) return { icon: "🧴", label: "Dermatología" };
-  if (normalized.includes("odonto")) return { icon: "🦷", label: "Odontología" };
-  if (normalized.includes("trauma")) return { icon: "🦵", label: "Traumatología" };
-  return { icon: "🩺", label: specialty };
+  const icon = String.fromCodePoint;
+  if (normalized.includes("kinesi")) return { icon: icon(0x1f9b4), label: "Kinesiología" };
+  if (normalized.includes("cardio")) return { icon: icon(0x2764, 0xfe0f), label: "Cardiología" };
+  if (normalized.includes("pedia")) return { icon: icon(0x1f9d2), label: "Pediatría" };
+  if (normalized.includes("nutri")) return { icon: icon(0x1f957), label: "Nutrición" };
+  if (normalized.includes("psico")) return { icon: icon(0x1f9e0), label: "Psicología" };
+  if (normalized.includes("derma")) return { icon: icon(0x1f9f4), label: "Dermatología" };
+  if (normalized.includes("odonto")) return { icon: icon(0x1f9b7), label: "Odontología" };
+  if (normalized.includes("trauma")) return { icon: icon(0x1f9b5), label: "Traumatología" };
+  return { icon: icon(0x1fa7a), label: specialty };
 }
 
 function SpecialistAvatar({ specialist }: { specialist: Specialist }) {
@@ -125,7 +128,9 @@ type SpecialistCardProps = {
   canEdit: boolean;
   canViewAgenda: boolean;
   canViewFinancialData: boolean;
+  canViewDocuments: boolean;
   onEdit: () => void;
+  onViewDocuments: () => void;
 };
 
 const cardVariants = [
@@ -163,7 +168,16 @@ function variantIndexFromSpecialist(id: string): number {
   return hash % cardVariants.length;
 }
 
-function SpecialistCard({ specialist: s, size, canEdit, canViewAgenda, canViewFinancialData, onEdit }: SpecialistCardProps) {
+function SpecialistCard({
+  specialist: s,
+  size,
+  canEdit,
+  canViewAgenda,
+  canViewFinancialData,
+  canViewDocuments,
+  onEdit,
+  onViewDocuments,
+}: SpecialistCardProps) {
   const widthClass =
     size === "fluid"
       ? "w-full"
@@ -205,8 +219,14 @@ function SpecialistCard({ specialist: s, size, canEdit, canViewAgenda, canViewFi
         <p className="mt-2 w-full max-w-[min(100%,280px)] text-center text-sm leading-snug text-slate-600 sm:max-w-none">
           {s.specialty}
         </p>
-        <span className="mt-2 inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
-          <span aria-hidden>{specialtyTag.icon}</span>
+        <span className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
+          <span
+            aria-hidden
+            className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-base leading-none"
+            style={{ fontFamily: '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif' }}
+          >
+            {specialtyTag.icon}
+          </span>
           {specialtyTag.label}
         </span>
 
@@ -227,20 +247,30 @@ function SpecialistCard({ specialist: s, size, canEdit, canViewAgenda, canViewFi
           )}
         </div>
 
-        <div className="mt-7 flex w-full gap-2.5">
+        <div className="mt-7 flex w-full flex-col gap-2.5">
           {canViewAgenda && (
             <Link
               to={`/specialists/${s.id}/agenda`}
-              className="flex-1 rounded-full bg-sky-600 py-2.5 text-center text-sm font-semibold text-white transition hover:bg-sky-700 active:scale-[0.98]"
+              className="w-full rounded-full bg-sky-600 py-2.5 text-center text-sm font-semibold text-white transition hover:bg-sky-700 active:scale-[0.98]"
             >
               Ver agenda
             </Link>
+          )}
+          {canViewDocuments && (
+            <button
+              type="button"
+              onClick={onViewDocuments}
+              className="w-full rounded-full border border-sky-200 bg-sky-50 py-2.5 text-sm font-semibold text-sky-800 transition hover:bg-sky-100 active:scale-[0.98]"
+            >
+              Ver documentación
+              {(s.documentCount ?? 0) > 0 ? ` (${s.documentCount})` : ""}
+            </button>
           )}
           {canEdit && (
             <button
               type="button"
               onClick={onEdit}
-              className="flex-1 rounded-full border border-slate-300 bg-white py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 active:scale-[0.98]"
+              className="w-full rounded-full border border-slate-300 bg-white py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 active:scale-[0.98]"
             >
               Editar
             </button>
@@ -304,6 +334,7 @@ function SpecialistFormModal({ open, title, editing, onClose, canDelete }: FormM
       consultationFee: editing.consultationFee ?? "",
       monthlyConsultorioRent: editing.monthlyConsultorioRent ?? "",
       transferAlias: editing.transferAlias ?? "",
+      considerations: editing.considerations ?? "",
       availabilities: editing.availabilities.map((a) => ({
         weekday: a.weekday,
         startTime: a.startTime,
@@ -326,6 +357,7 @@ function SpecialistFormModal({ open, title, editing, onClose, canDelete }: FormM
         consultationFee: form.consultationFee || null,
         monthlyConsultorioRent: form.monthlyConsultorioRent.trim() === "" ? null : form.monthlyConsultorioRent,
         transferAlias: form.transferAlias || null,
+        considerations: form.considerations.trim() || null,
         availabilities: form.availabilities,
       }),
     onSuccess: async () => {
@@ -350,6 +382,7 @@ function SpecialistFormModal({ open, title, editing, onClose, canDelete }: FormM
         consultationFee: form.consultationFee || null,
         monthlyConsultorioRent: form.monthlyConsultorioRent.trim() === "" ? null : form.monthlyConsultorioRent,
         transferAlias: form.transferAlias || null,
+        considerations: form.considerations.trim() || null,
         availabilities: form.availabilities,
       }),
     onSuccess: async () => {
@@ -689,6 +722,16 @@ function SpecialistFormModal({ open, title, editing, onClose, canDelete }: FormM
               </div>
             )}
           </div>
+          <div className="sm:col-span-2">
+            <label className="text-sm font-medium text-slate-600">Consideraciones</label>
+            <textarea
+              rows={4}
+              placeholder="Notas internas sobre el profesional…"
+              className="mt-1.5 w-full resize-y rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 text-sm transition focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+              value={form.considerations}
+              onChange={(e) => setForm((f) => ({ ...f, considerations: e.target.value }))}
+            />
+          </div>
           <div className="flex flex-wrap gap-2 sm:col-span-2">
             <button
               type="submit"
@@ -745,6 +788,7 @@ export function AdminSpecialistsPage() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Specialist | null>(null);
+  const [documentsSpecialist, setDocumentsSpecialist] = useState<Specialist | null>(null);
 
   function openCreate() {
     setEditing(null);
@@ -787,9 +831,6 @@ export function AdminSpecialistsPage() {
         <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
           <div className="max-w-2xl">
             <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">Especialistas</h1>
-            <p className="mt-3 text-sm leading-relaxed text-slate-600 sm:text-base">
-              Equipo médico en un vistazo. Abrí la agenda de cada profesional o sumá nuevos perfiles.
-            </p>
           </div>
           {isAdmin && (
             <button
@@ -852,7 +893,9 @@ export function AdminSpecialistsPage() {
                     canEdit={isAdmin || s.id === mySpecialistId}
                     canViewAgenda={isAdmin || s.id === mySpecialistId}
                     canViewFinancialData={isAdmin}
+                    canViewDocuments={isAdmin}
                     onEdit={() => openEdit(s)}
+                    onViewDocuments={() => setDocumentsSpecialist(s)}
                   />
                 ))}
               </div>
@@ -868,7 +911,9 @@ export function AdminSpecialistsPage() {
                     canEdit={isAdmin || s.id === mySpecialistId}
                     canViewAgenda={isAdmin || s.id === mySpecialistId}
                     canViewFinancialData={isAdmin}
+                    canViewDocuments={isAdmin}
                     onEdit={() => openEdit(s)}
+                    onViewDocuments={() => setDocumentsSpecialist(s)}
                   />
                 ))}
               </div>
@@ -883,6 +928,12 @@ export function AdminSpecialistsPage() {
         editing={editing}
         canDelete={isAdmin}
         onClose={closeModal}
+      />
+
+      <SpecialistDocumentsModal
+        open={documentsSpecialist !== null}
+        specialist={documentsSpecialist}
+        onClose={() => setDocumentsSpecialist(null)}
       />
     </div>
   );

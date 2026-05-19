@@ -3,6 +3,8 @@ type AppointmentLike = {
   startTime: string;
   endTime: string;
   paymentDate?: Date | null;
+  patientConfirmedAt?: Date | null;
+  patientConfirmationSource?: string | null;
   medicalRecord: string | null;
   reasonForVisit: string | null;
   reservationDepositAmount?: unknown;
@@ -22,6 +24,8 @@ export function enrichAppointment<T extends AppointmentLike>(a: T) {
     // puede correrse al día anterior en zonas horarias negativas.
     date: a.appointmentDate.toISOString().slice(0, 10),
     paymentDate: a.paymentDate ? a.paymentDate.toISOString().slice(0, 10) : null,
+    patientConfirmedAt: a.patientConfirmedAt ? a.patientConfirmedAt.toISOString() : null,
+    patientConfirmationSource: a.patientConfirmationSource ?? null,
     time: { start: a.startTime, end: a.endTime },
     medical_record: a.medicalRecord ?? null,
     reason_for_visit: a.reasonForVisit ?? null,
