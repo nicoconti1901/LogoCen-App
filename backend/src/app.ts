@@ -4,6 +4,7 @@ import path from "node:path";
 import { env } from "./config/env.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { apiRouter } from "./routes/index.js";
+import { whatsappWebhookRouter } from "./routes/whatsapp.webhook.routes.js";
 
 export function createApp() {
   const app = express();
@@ -14,6 +15,8 @@ export function createApp() {
       credentials: true,
     })
   );
+
+  app.use("/webhooks/whatsapp", whatsappWebhookRouter);
   app.use(express.json());
   app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
 

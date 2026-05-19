@@ -24,6 +24,10 @@ import {
   syncPatientConfirmationForStatusChange,
   type ConfirmationListFilter,
 } from "../utils/appointmentConfirmation.js";
+import {
+  cancelWhatsappRemindersForAppointment,
+  syncWhatsappReminderForAppointment,
+} from "./whatsappReminder.service.js";
 
 export { reservationDepositForStatus } from "./appointmentPayment.utils.js";
 
@@ -326,7 +330,7 @@ export async function createAppointment(
     specialist.consultationFee
   );
 
-  return appointmentRepository.create({
+  const created = await appointmentRepository.create({
     patient: { connect: { id: data.patientId } },
     specialist: { connect: { id: data.specialistId } },
     consultorio,
@@ -341,6 +345,19 @@ export async function createAppointment(
     medicalRecord: data.medicalRecord?.trim() || null,
     reasonForVisit: data.reasonForVisit?.trim() || null,
   });
+
+  await syncWhatsappReminderForAppointment({
+    appointmentRef: created.id,
+    patientId: created.patientId,
+    specialistId: created.specialistId,
+    appointmentDate: created.appointmentDate,
+    startTime: created.startTime,
+    endTime: created.endTime,
+    consultorio: created.consultorio,
+    status: created.status,
+  }).catch(() => undefined);
+
+  return created;
 }
 
 export async function updateAppointment(
@@ -470,7 +487,7 @@ export async function updateAppointment(
         )
       : {};
 
-  return appointmentRepository.update(id, {
+  const updated = await appointmentRepository.update(id, {
     ...(data.patientId !== undefined ? { patient: { connect: { id: data.patientId } } } : {}),
     ...(data.specialistId !== undefined ? { specialist: { connect: { id: data.specialistId } } } : {}),
     ...(data.consultorio !== undefined || data.status !== undefined ? { consultorio: nextConsultorio } : {}),
@@ -496,12 +513,26 @@ export async function updateAppointment(
     ...(data.medicalRecord !== undefined ? { medicalRecord: data.medicalRecord?.trim() || null } : {}),
     ...(data.reasonForVisit !== undefined ? { reasonForVisit: data.reasonForVisit?.trim() || null } : {}),
   });
+
+  await syncWhatsappReminderForAppointment({
+    appointmentRef: updated.id,
+    patientId: updated.patientId,
+    specialistId: updated.specialistId,
+    appointmentDate: updated.appointmentDate,
+    startTime: updated.startTime,
+    endTime: updated.endTime,
+    consultorio: updated.consultorio,
+    status: updated.status,
+  }).catch(() => undefined);
+
+  return updated;
 }
 
 export async function deleteAppointment(id: string, role: Role, userSpecialistId: string | null) {
   const existing = await appointmentRepository.findById(id);
   if (!existing) throw new AppError(404, "Cita no encontrada");
   assertCanAccessAppointment(role, userSpecialistId, existing.specialistId);
+  await cancelWhatsappRemindersForAppointment(id).catch(() => undefined);
   await appointmentRepository.delete(id);
 }
 

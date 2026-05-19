@@ -44,6 +44,22 @@ enum PatientConfirmationSource {
   WHATSAPP
 }
 
+/// Tipo de recordatorio WhatsApp según anticipación del turno.
+enum WhatsappReminderKind {
+  /// Envío programado 24 h antes del inicio del turno.
+  STANDARD_24H
+  /// Turno agendado con menos de 24 h: solicitud de confirmación inmediata.
+  SHORT_NOTICE
+}
+
+enum WhatsappReminderStatus {
+  SCHEDULED
+  SENT
+  FAILED
+  SKIPPED
+  CANCELLED
+}
+
 enum Weekday {
   MONDAY
   TUESDAY
@@ -156,8 +172,30 @@ model Patient {
   appointments Appointment[]
   fixedAppointmentSeries FixedAppointmentSeries[]
   clinicalHistoryEntries ClinicalHistoryEntry[]
+  whatsappReminders      WhatsappReminder[]
 
   @@index([specialistId])
+}
+
+/// Cola de recordatorios / confirmación por WhatsApp (Meta Cloud API).
+model WhatsappReminder {
+  id              String                 @id @default(uuid())
+  /// ID de turno en API (`uuid` o `fixed:{seriesId}:{YYYY-MM-DD}`).
+  appointmentRef  String
+  patientId       String
+  patient         Patient                @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  kind            WhatsappReminderKind
+  status          WhatsappReminderStatus @default(SCHEDULED)
+  scheduledSendAt DateTime
+  sentAt          DateTime?
+  waMessageId     String?
+  lastError       String?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  @@unique([appointmentRef, kind])
+  @@index([status, scheduledSendAt])
+  @@index([patientId])
 }
 
 model ClinicalHistoryEntry {
