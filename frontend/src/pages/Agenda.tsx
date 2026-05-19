@@ -878,7 +878,7 @@ export function AgendaPage() {
                 {pendingConfirmationsQ.data!.length === 1 ? "" : "s"} en estado Agendado (próximos 14 días)
               </p>
               <p className="mt-0.5 text-xs text-amber-900">
-                Abrí el turno y cambiá el estado a Confirmado cuando el paciente confirme (manual o WhatsApp).
+                El paciente recibe WhatsApp 24 h antes (o al instante si el turno es en menos de 24 h) con un botón para confirmar.
               </p>
             </div>
             <Link

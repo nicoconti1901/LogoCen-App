@@ -1,0 +1,24 @@
+import { env } from "./env.js";
+
+export const whatsappConfig = {
+  enabled: env.WHATSAPP_ENABLED,
+  phoneNumberId: env.WHATSAPP_PHONE_NUMBER_ID,
+  accessToken: env.WHATSAPP_ACCESS_TOKEN,
+  verifyToken: env.WHATSAPP_VERIFY_TOKEN,
+  appSecret: env.WHATSAPP_APP_SECRET,
+  apiVersion: env.WHATSAPP_API_VERSION,
+  clinicName: env.CLINIC_NAME,
+  clinicAddress: env.CLINIC_ADDRESS,
+  /** Minutos de espera tras agendar un turno corto antes de enviar la solicitud de confirmación. */
+  shortNoticeDelayMinutes: env.WHATSAPP_SHORT_NOTICE_DELAY_MINUTES,
+  /** ID del botón de confirmación (máx. 256 caracteres en Meta). */
+  confirmButtonIdPrefix: "cfm",
+} as const;
+
+export function isWhatsappConfigured(): boolean {
+  return Boolean(
+    whatsappConfig.enabled &&
+      whatsappConfig.phoneNumberId &&
+      whatsappConfig.accessToken
+  );
+}

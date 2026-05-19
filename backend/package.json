@@ -14,7 +14,8 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:seed-appointments": "tsx prisma/scripts/seed-week-appointments.ts",
     "db:seed-appointments:cleanup": "tsx prisma/scripts/cleanup-load-appointments.ts",
-    "db:seed-appointments:status": "tsx prisma/scripts/check-load-count.ts"
+    "db:seed-appointments:status": "tsx prisma/scripts/check-load-count.ts",
+    "whatsapp:reminders": "tsx scripts/run-whatsapp-reminders.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.5.0",

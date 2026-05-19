@@ -129,11 +129,12 @@ export function AppointmentConfirmationsPage() {
       <div className="mx-auto max-w-6xl space-y-6">
         <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-sm font-medium text-sky-800">Recordatorios WhatsApp (proximamente)</p>
-            <h1 className="text-3xl font-bold tracking-tight text-slate-900">Confirmacion de turnos</h1>
+            <p className="text-sm font-medium text-sky-800">Recordatorios WhatsApp (Meta Business)</p>
+            <h1 className="text-3xl font-bold tracking-tight text-slate-900">Confirmación de turnos</h1>
             <p className="mt-2 max-w-2xl text-sm text-slate-600">
-              Los turnos en estado <strong>Agendado</strong> aun no fueron confirmados por el paciente. Para confirmar,
-              abri el turno y cambia el estado a <strong>Confirmado</strong> (manual o via WhatsApp cuando este integrado).
+              Los turnos en estado <strong>Agendado</strong> aún no fueron confirmados. El paciente puede confirmar con
+              el botón del WhatsApp (24 h antes, o de inmediato si el turno es en menos de 24 h). También podés cambiar el
+              estado a <strong>Confirmado</strong> desde el turno.
             </p>
           </div>
           <Link
