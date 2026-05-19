@@ -1,4 +1,10 @@
-import { AppointmentPaymentMethod, AppointmentStatus, Prisma, Role } from "@prisma/client";
+import {
+  AppointmentPaymentMethod,
+  AppointmentStatus,
+  PatientConfirmationSource,
+  Prisma,
+  Role,
+} from "@prisma/client";
 import { fixedAppointmentSeriesRepository } from "../repositories/fixedAppointmentSeries.repository.js";
 import { fixedAppointmentOccurrenceRepository } from "../repositories/fixedAppointmentOccurrence.repository.js";
 import { appointmentRepository } from "../repositories/appointment.repository.js";
@@ -6,6 +12,7 @@ import { patientRepository } from "../repositories/patient.repository.js";
 import { specialistRepository } from "../repositories/specialist.repository.js";
 import { AppError } from "../middleware/errorHandler.js";
 import { reservationDepositForStatus } from "./appointmentPayment.utils.js";
+import { syncPatientConfirmationForStatusChange } from "../utils/appointmentConfirmation.js";
 import {
   assertValidTime,
   formatDateOnlyISO,
@@ -288,6 +295,7 @@ export async function upsertFixedAppointmentOccurrence(
     medicalRecord: string | null;
     reasonForVisit: string | null;
     reservationDepositAmount: string | number | null;
+    patientConfirmationSource: PatientConfirmationSource | null;
   }>,
   role: Role,
   userSpecialistId: string | null
@@ -318,8 +326,20 @@ export async function upsertFixedAppointmentOccurrence(
   const today = toDateOnly(new Date());
   const defaultStatus =
     !existing && occurrenceDate < today ? AppointmentStatus.ATTENDED : AppointmentStatus.RESERVED;
-  const nextStatus = data.status ?? existing?.status ?? defaultStatus;
+  const previousStatus = existing?.status ?? defaultStatus;
+  const nextStatus = data.status ?? previousStatus;
   const isAusenteConAviso = nextStatus === AppointmentStatus.AUSENTE_CON_AVISO;
+
+  const confirmationPatch =
+    data.status !== undefined
+      ? syncPatientConfirmationForStatusChange(
+          nextStatus,
+          previousStatus,
+          existing?.patientConfirmedAt ?? null,
+          existing?.patientConfirmationSource ?? null,
+          data.patientConfirmationSource
+        )
+      : {};
 
   const specialist = await specialistRepository.findById(series.specialistId);
   const fee = specialist?.consultationFee ?? null;
@@ -360,6 +380,7 @@ export async function upsertFixedAppointmentOccurrence(
       data.reasonForVisit !== undefined
         ? data.reasonForVisit?.trim() || null
         : (existing?.reasonForVisit ?? null),
+    ...confirmationPatch,
   });
 
   const refreshed = await fixedAppointmentSeriesRepository.findById(seriesId);

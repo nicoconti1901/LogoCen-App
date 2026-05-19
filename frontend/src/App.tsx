@@ -3,6 +3,7 @@ import { Layout } from "./components/Layout";
 import { PrivateRoute } from "./components/PrivateRoute";
 import { AdminPatientsPage } from "./pages/admin/AdminPatients";
 import { AdminSpecialistsPage } from "./pages/admin/AdminSpecialists";
+import { AppointmentConfirmationsPage } from "./pages/admin/AppointmentConfirmationsPage";
 import { BalanceLayout, BalanceIndexRedirect } from "./pages/balance/BalanceLayout";
 import { SpecialistsRenditionListPage } from "./pages/balance/SpecialistsRenditionList";
 import { SpecialistRenditionPage } from "./pages/balance/SpecialistRenditionPage";
@@ -31,6 +32,7 @@ export default function App() {
             path="patients"
             element={<AdminPatientsPage />}
           />
+          <Route path="confirmaciones" element={<AppointmentConfirmationsPage />} />
           <Route path="balance" element={<BalanceLayout />}>
             <Route index element={<BalanceIndexRedirect />} />
             <Route path="especialistas" element={<SpecialistsRenditionListPage />} />

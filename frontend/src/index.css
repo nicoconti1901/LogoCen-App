@@ -698,6 +698,11 @@ body {
   color: #06283d !important;
 }
 
+.status-confirmado {
+  background: #14b8a6 !important;
+  color: #042f2e !important;
+}
+
 .status-reservado {
   background: #8b5cf6 !important;
   color: #faf5ff !important;

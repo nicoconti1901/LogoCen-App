@@ -33,6 +33,7 @@ const paymentMethodLabel: Record<AppointmentPaymentMethod, string> = {
 
 const statusLabel: Record<Appointment["status"], string> = {
   RESERVED: "Reservado",
+  CONFIRMADO: "Confirmado",
   RESERVADO: "Reservado (pago parcial)",
   ATTENDED: "Finalizado",
   AUSENTE_CON_AVISO: "Ausente con aviso",

@@ -29,7 +29,7 @@ export const appointmentRepository = {
     return prisma.appointment
       .updateMany({
         where: {
-          status: AppointmentStatus.RESERVED,
+          status: { in: [AppointmentStatus.RESERVED, AppointmentStatus.CONFIRMADO] },
           OR: [
             { appointmentDate: { lt: today } },
             {

@@ -115,6 +115,7 @@ function isSelectionWithinSpecialistAvailability(start: Date, end: Date, special
 
 const statusLabel: Record<Appointment["status"], string> = {
   RESERVED: "AGENDADO",
+  CONFIRMADO: "CONFIRMADO",
   RESERVADO: "RESERVADO",
   ATTENDED: "FINALIZADO",
   AUSENTE_CON_AVISO: "AUSENTE C/ AVISO",
@@ -360,7 +361,8 @@ export function AgendaPage() {
   const shouldOpenQuickSlots = searchParams.get("new") === "1";
   const effectiveSpecialistId = routeSpecialistId ?? (user?.role === "SPECIALIST" ? user.specialistId ?? undefined : undefined);
   /** Agenda /agenda sin especialista: panel “hoy” arriba + semana en calendario sin repetir el mismo día. */
-  const isAdminGeneralAgenda = user?.role === "ADMIN" && !effectiveSpecialistId;
+  const isAdmin = user?.role === "ADMIN";
+  const isAdminGeneralAgenda = isAdmin && !effectiveSpecialistId;
   /** Panel “Agenda del día”: oculto en vista Día del calendario (ahí ya se listan los turnos). */
   const showDayBoardPanel = calendarView !== "listDay";
 
@@ -386,6 +388,18 @@ export function AgendaPage() {
     [data, effectiveSpecialistId]
   );
   const todayIso = todayStr();
+
+  const pendingConfirmationsQ = useQuery({
+    queryKey: ["appointment-confirmations-banner", todayIso, effectiveSpecialistId],
+    queryFn: () =>
+      fetchAppointments({
+        from: todayIso,
+        to: addDaysToIso(todayIso, 13),
+        confirmation: "pending",
+        ...(effectiveSpecialistId ? { specialistId: effectiveSpecialistId } : {}),
+      }),
+    enabled: isAdmin,
+  });
 
   const dayCellClassNames = useCallback(
     (arg: { date: Date }) => {
@@ -785,7 +799,9 @@ export function AgendaPage() {
                                     ? "bg-amber-50 border-amber-200"
                                     : a.status === "RESERVADO"
                                       ? "bg-violet-50 border-violet-200"
-                                      : "bg-sky-50 border-sky-200";
+                                      : a.status === "CONFIRMADO"
+                                        ? "bg-teal-50 border-teal-200"
+                                        : "bg-sky-50 border-sky-200";
                             const hasDebt = appointmentHasDebt(a);
                             return (
                               <li
@@ -808,7 +824,7 @@ export function AgendaPage() {
                               >
                                 <div className="flex items-start justify-between gap-1">
                                   <span className="font-semibold text-slate-800">{a.startTime}–{a.endTime}</span>
-                                  <div className="flex shrink-0 items-center gap-1">
+                                  <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
                                     <span
                                       className={`rounded px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide agenda-pill status-${a.status.toLowerCase()}`}
                                     >
@@ -853,6 +869,25 @@ export function AgendaPage() {
             </>
           )}
         </div>
+        )}
+        {isAdmin && (pendingConfirmationsQ.data?.length ?? 0) > 0 && (
+          <div className="mb-4 flex flex-col gap-3 rounded-xl border border-amber-300 bg-amber-50/95 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-amber-950">
+                {pendingConfirmationsQ.data!.length} turno
+                {pendingConfirmationsQ.data!.length === 1 ? "" : "s"} en estado Agendado (próximos 14 días)
+              </p>
+              <p className="mt-0.5 text-xs text-amber-900">
+                Abrí el turno y cambiá el estado a Confirmado cuando el paciente confirme (manual o WhatsApp).
+              </p>
+            </div>
+            <Link
+              to="/confirmaciones"
+              className="inline-flex shrink-0 items-center justify-center rounded-full bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700"
+            >
+              Ver confirmaciones
+            </Link>
+          </div>
         )}
         <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
           {(Object.keys(statusLabel) as Appointment["status"][]).map((s) => (
