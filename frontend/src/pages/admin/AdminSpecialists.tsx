@@ -10,10 +10,12 @@ import {
   updateSpecialist,
 } from "../../api/endpoints";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { FormFieldError, invalidFieldClass } from "../../components/FormFieldError";
 import { SpecialistDocumentsModal } from "../../components/SpecialistDocumentsModal";
 import { useAuth } from "../../contexts/AuthContext";
 import { imageSrcCandidates, normalizeProfilePhotoUrlForStorage } from "../../lib/imageUrl";
 import { normalizePersonNameField, formatPersonDisplayLastFirst } from "../../lib/personName";
+import { type FieldErrors, type SpecialistFormFields, validateSpecialistForm } from "../../lib/validation";
 import type { Specialist } from "../../types";
 
 const emptyForm = {
@@ -312,11 +314,13 @@ function SpecialistFormModal({ open, title, editing, onClose, canDelete }: FormM
   const qc = useQueryClient();
   const [form, setForm] = useState(emptyForm);
   const [formError, setFormError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors<SpecialistFormFields>>({});
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setFormError(null);
+    setFieldErrors({});
     if (!editing) {
       setForm(emptyForm);
       return;
@@ -416,22 +420,25 @@ function SpecialistFormModal({ open, title, editing, onClose, canDelete }: FormM
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!editing) {
-      if (form.password !== form.confirmPassword) {
-        setFormError("La confirmación de contraseña no coincide");
-        return;
-      }
-    } else if (form.password && form.password !== form.confirmPassword) {
-      setFormError("La confirmación de contraseña no coincide");
+    const validation = validateSpecialistForm(form, { editing: Boolean(editing) });
+    if (!validation.ok) {
+      setFieldErrors(validation.fields);
       return;
     }
+    setFieldErrors({});
+    setFormError(null);
     if (editing) updateMut.mutate();
     else createMut.mutate();
   }
 
   const pending = createMut.isPending || updateMut.isPending || deleteMut.isPending || uploadPhotoMut.isPending;
-  const passwordNeedsConfirmation = !editing || Boolean(form.password);
-  const passwordMismatch = passwordNeedsConfirmation && form.password !== form.confirmPassword;
+  const specialistFieldClass =
+    "mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 transition focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20";
+  const fieldClassFor = (field: SpecialistFormFields) =>
+    invalidFieldClass(Boolean(fieldErrors[field]), specialistFieldClass);
+  const clearField = (field: SpecialistFormFields) => {
+    if (fieldErrors[field]) setFieldErrors((prev) => ({ ...prev, [field]: undefined }));
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-3 sm:p-4">
@@ -512,10 +519,14 @@ function SpecialistFormModal({ open, title, editing, onClose, canDelete }: FormM
               type="email"
               name="specialist-email"
               autoComplete="new-password"
-              className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 transition focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+              className={fieldClassFor("email")}
               value={form.email}
-              onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+              onChange={(e) => {
+                setForm((f) => ({ ...f, email: e.target.value }));
+                clearField("email");
+              }}
             />
+            <FormFieldError message={fieldErrors.email} />
           </div>
           {!editing && (
             <>
@@ -526,10 +537,14 @@ function SpecialistFormModal({ open, title, editing, onClose, canDelete }: FormM
                   required
                   name="specialist-new-password"
                   autoComplete="new-password"
-                  className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 transition focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                  className={fieldClassFor("password")}
                   value={form.password}
-                  onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+                  onChange={(e) => {
+                    setForm((f) => ({ ...f, password: e.target.value }));
+                    clearField("password");
+                  }}
                 />
+                <FormFieldError message={fieldErrors.password} />
                 <p className="mt-1 text-xs text-slate-500">
                   Debe tener al menos 8 caracteres, mayúscula, minúscula, número y símbolo.
                 </p>
@@ -541,13 +556,14 @@ function SpecialistFormModal({ open, title, editing, onClose, canDelete }: FormM
                   required
                   name="specialist-confirm-password"
                   autoComplete="new-password"
-                  className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 transition focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                  className={fieldClassFor("confirmPassword")}
                   value={form.confirmPassword}
-                  onChange={(e) => setForm((f) => ({ ...f, confirmPassword: e.target.value }))}
+                  onChange={(e) => {
+                    setForm((f) => ({ ...f, confirmPassword: e.target.value }));
+                    clearField("confirmPassword");
+                  }}
                 />
-                {passwordMismatch && (
-                  <p className="mt-1 text-xs text-red-600">La confirmación de contraseña no coincide.</p>
-                )}
+                <FormFieldError message={fieldErrors.confirmPassword} />
               </div>
             </>
           )}
@@ -557,10 +573,14 @@ function SpecialistFormModal({ open, title, editing, onClose, canDelete }: FormM
               required
               name="specialist-first-name"
               autoComplete="off"
-              className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 transition focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+              className={fieldClassFor("firstName")}
               value={form.firstName}
-              onChange={(e) => setForm((f) => ({ ...f, firstName: e.target.value }))}
+              onChange={(e) => {
+                setForm((f) => ({ ...f, firstName: e.target.value }));
+                clearField("firstName");
+              }}
             />
+            <FormFieldError message={fieldErrors.firstName} />
           </div>
           <div>
             <label className="text-sm font-medium text-slate-600">Apellido</label>
@@ -568,64 +588,95 @@ function SpecialistFormModal({ open, title, editing, onClose, canDelete }: FormM
               required
               name="specialist-last-name"
               autoComplete="off"
-              className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 transition focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+              className={fieldClassFor("lastName")}
               value={form.lastName}
-              onChange={(e) => setForm((f) => ({ ...f, lastName: e.target.value }))}
+              onChange={(e) => {
+                setForm((f) => ({ ...f, lastName: e.target.value }));
+                clearField("lastName");
+              }}
             />
+            <FormFieldError message={fieldErrors.lastName} />
           </div>
           <div className="sm:col-span-2">
             <label className="text-sm font-medium text-slate-600">Especialidad</label>
             <input
               required
-              className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 transition focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+              className={fieldClassFor("specialty")}
               value={form.specialty}
-              onChange={(e) => setForm((f) => ({ ...f, specialty: e.target.value }))}
+              onChange={(e) => {
+                setForm((f) => ({ ...f, specialty: e.target.value }));
+                clearField("specialty");
+              }}
             />
+            <FormFieldError message={fieldErrors.specialty} />
           </div>
           <div>
             <label className="text-sm font-medium text-slate-600">Matrícula</label>
             <input
-              className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 transition focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+              className={fieldClassFor("licenseNumber")}
               value={form.licenseNumber}
-              onChange={(e) => setForm((f) => ({ ...f, licenseNumber: e.target.value }))}
+              onChange={(e) => {
+                setForm((f) => ({ ...f, licenseNumber: e.target.value }));
+                clearField("licenseNumber");
+              }}
             />
+            <FormFieldError message={fieldErrors.licenseNumber} />
           </div>
           <div>
             <label className="text-sm font-medium text-slate-600">Teléfono</label>
             <input
-              className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 transition focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+              inputMode="tel"
+              placeholder="Ej. 2914021589"
+              maxLength={20}
+              className={fieldClassFor("phone")}
               value={form.phone}
-              onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+              onChange={(e) => {
+                setForm((f) => ({ ...f, phone: e.target.value }));
+                clearField("phone");
+              }}
             />
+            <FormFieldError message={fieldErrors.phone} />
           </div>
           <div>
             <label className="text-sm font-medium text-slate-600">Valor consulta (ARS)</label>
             <input
               inputMode="decimal"
               placeholder="Ej. 25000"
-              className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 transition focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+              className={fieldClassFor("consultationFee")}
               value={form.consultationFee}
-              onChange={(e) => setForm((f) => ({ ...f, consultationFee: e.target.value }))}
+              onChange={(e) => {
+                setForm((f) => ({ ...f, consultationFee: e.target.value }));
+                clearField("consultationFee");
+              }}
             />
+            <FormFieldError message={fieldErrors.consultationFee} />
           </div>
           <div>
             <label className="text-sm font-medium text-slate-600">Alquiler consultorio mensual (ARS)</label>
             <input
               inputMode="decimal"
               placeholder="Ej. 50000"
-              className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 transition focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+              className={fieldClassFor("monthlyConsultorioRent")}
               value={form.monthlyConsultorioRent}
-              onChange={(e) => setForm((f) => ({ ...f, monthlyConsultorioRent: e.target.value }))}
+              onChange={(e) => {
+                setForm((f) => ({ ...f, monthlyConsultorioRent: e.target.value }));
+                clearField("monthlyConsultorioRent");
+              }}
             />
+            <FormFieldError message={fieldErrors.monthlyConsultorioRent} />
           </div>
           <div>
             <label className="text-sm font-medium text-slate-600">Alias para transferencias</label>
             <input
               placeholder="Ej. nombre.apellido.mp"
-              className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 transition focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+              className={fieldClassFor("transferAlias")}
               value={form.transferAlias}
-              onChange={(e) => setForm((f) => ({ ...f, transferAlias: e.target.value }))}
+              onChange={(e) => {
+                setForm((f) => ({ ...f, transferAlias: e.target.value }));
+                clearField("transferAlias");
+              }}
             />
+            <FormFieldError message={fieldErrors.transferAlias} />
           </div>
           <div className="sm:col-span-2 rounded-xl border border-slate-200 bg-slate-50/50 p-3">
             <div className="mb-2 flex items-center justify-between">
@@ -721,21 +772,26 @@ function SpecialistFormModal({ open, title, editing, onClose, canDelete }: FormM
                 ))}
               </div>
             )}
+            <FormFieldError message={fieldErrors.availabilities} />
           </div>
           <div className="sm:col-span-2">
             <label className="text-sm font-medium text-slate-600">Consideraciones</label>
             <textarea
               rows={4}
               placeholder="Notas internas sobre el profesional…"
-              className="mt-1.5 w-full resize-y rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 text-sm transition focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+              className={fieldClassFor("considerations")}
               value={form.considerations}
-              onChange={(e) => setForm((f) => ({ ...f, considerations: e.target.value }))}
+              onChange={(e) => {
+                setForm((f) => ({ ...f, considerations: e.target.value }));
+                clearField("considerations");
+              }}
             />
+            <FormFieldError message={fieldErrors.considerations} />
           </div>
           <div className="flex flex-wrap gap-2 sm:col-span-2">
             <button
               type="submit"
-              disabled={pending || passwordMismatch}
+              disabled={pending}
               className="inline-flex min-h-11 items-center justify-center rounded-lg bg-brand-700 px-5 py-2.5 text-sm font-bold tracking-tight text-white shadow-md ring-1 ring-brand-900/20 transition hover:bg-brand-800 active:translate-y-px active:bg-brand-900 active:shadow-sm disabled:opacity-50"
             >
               {editing ? "Guardar" : "Crear especialista"}

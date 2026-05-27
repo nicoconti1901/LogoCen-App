@@ -1,5 +1,11 @@
 import { whatsappConfig, isWhatsappConfigured } from "../config/whatsapp.js";
-import { CONFIRM_BUTTON_TITLE, buildConfirmButtonId } from "./messageBuilder.js";
+import {
+  CONFIRM_BUTTON_TITLE,
+  buildConfirmButtonId,
+  buildReminderTemplateComponents,
+  type ReminderMessageContext,
+} from "./messageBuilder.js";
+import { formatPhoneForMetaWhatsapp } from "./phone.js";
 
 export type SendInteractiveResult =
   | { ok: true; messageId: string }
@@ -8,35 +14,55 @@ export type SendInteractiveResult =
 export async function sendConfirmationReminderMessage(
   toE164: string,
   bodyText: string,
-  appointmentRef: string
+  appointmentRef: string,
+  templateContext?: ReminderMessageContext
 ): Promise<SendInteractiveResult> {
   if (!isWhatsappConfigured()) {
     return { ok: false, error: "WhatsApp no está configurado" };
   }
 
+  const to = formatPhoneForMetaWhatsapp(toE164);
+  if (!to) {
+    return { ok: false, error: "Teléfono del destinatario inválido" };
+  }
+
   const url = `https://graph.facebook.com/${whatsappConfig.apiVersion}/${whatsappConfig.phoneNumberId}/messages`;
 
-  const payload = {
-    messaging_product: "whatsapp",
-    recipient_type: "individual",
-    to: toE164.replace(/^\+/, ""),
-    type: "interactive",
-    interactive: {
-      type: "button",
-      body: { text: bodyText },
-      action: {
-        buttons: [
-          {
-            type: "reply",
-            reply: {
-              id: buildConfirmButtonId(appointmentRef),
-              title: CONFIRM_BUTTON_TITLE,
-            },
+  const useTemplate = Boolean(whatsappConfig.reminderTemplateName && templateContext);
+
+  const payload = useTemplate
+    ? {
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to,
+        type: "template",
+        template: {
+          name: whatsappConfig.reminderTemplateName,
+          language: { code: whatsappConfig.reminderTemplateLanguage },
+          components: buildReminderTemplateComponents(templateContext!, appointmentRef),
+        },
+      }
+    : {
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to,
+        type: "interactive",
+        interactive: {
+          type: "button",
+          body: { text: bodyText },
+          action: {
+            buttons: [
+              {
+                type: "reply",
+                reply: {
+                  id: buildConfirmButtonId(appointmentRef),
+                  title: CONFIRM_BUTTON_TITLE,
+                },
+              },
+            ],
           },
-        ],
-      },
-    },
-  };
+        },
+      };
 
   try {
     const res = await fetch(url, {

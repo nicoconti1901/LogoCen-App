@@ -6,6 +6,15 @@ import * as appointmentService from "../services/appointment.service.js";
 import { AppError } from "../middleware/errorHandler.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { parseDateOnlyISO } from "../utils/appointmentTime.js";
+import {
+  MEDICAL_RECORD_MAX,
+  REASON_MAX,
+  dateOnlyStringSchema,
+  optionalDateOnlyStringSchema,
+  optionalLongTextSchema,
+  optionalMoneySchema,
+  timeSchema,
+} from "../utils/fieldValidation.js";
 import type { AppointmentWithRelations } from "../repositories/appointment.repository.js";
 import { enrichAppointment } from "../utils/datetime.js";
 import { FIXED_APPOINTMENT_ID_PREFIX, parseFixedAppointmentId } from "../utils/fixedAppointmentOccurrences.js";
@@ -21,45 +30,62 @@ function enrichListRow(a: AppointmentWithRelations) {
   };
 }
 
-const timeSchema = z
-  .string()
-  .regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Use HH:mm (24 h)");
+const createSchema = z
+  .object({
+    patientId: z.string().uuid(),
+    specialistId: z.string().uuid(),
+    /** Vacío solo si el servicio acepta el estado (p. ej. ausente con aviso). */
+    consultorio: z.string(),
+    date: dateOnlyStringSchema,
+    startTime: timeSchema,
+    endTime: timeSchema,
+    status: z.nativeEnum(AppointmentStatus).optional(),
+    paymentMethod: z.nativeEnum(AppointmentPaymentMethod).optional().nullable(),
+    paymentCompleted: z.boolean().optional(),
+    paymentDate: optionalDateOnlyStringSchema,
+    medicalRecord: optionalLongTextSchema(MEDICAL_RECORD_MAX),
+    reasonForVisit: optionalLongTextSchema(REASON_MAX),
+    reservationDepositAmount: optionalMoneySchema,
+  })
+  .superRefine((body, ctx) => {
+    if (body.paymentCompleted && !body.paymentDate) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Indique la fecha de pago",
+        path: ["paymentDate"],
+      });
+    }
+  });
 
-const createSchema = z.object({
-  patientId: z.string().uuid(),
-  specialistId: z.string().uuid(),
-  /** Vacío solo si el servicio acepta el estado (p. ej. ausente con aviso). */
-  consultorio: z.string(),
-  date: z.string().min(1),
-  startTime: timeSchema,
-  endTime: timeSchema,
-  status: z.nativeEnum(AppointmentStatus).optional(),
-  paymentMethod: z.nativeEnum(AppointmentPaymentMethod).optional().nullable(),
-  paymentCompleted: z.boolean().optional(),
-  paymentDate: z.string().optional().nullable(),
-  medicalRecord: z.string().optional().nullable(),
-  reasonForVisit: z.string().optional().nullable(),
-  reservationDepositAmount: z.union([z.string(), z.number()]).optional().nullable(),
-});
-
-const updateSchema = z.object({
-  patientId: z.string().uuid().optional(),
-  specialistId: z.string().uuid().optional(),
-  /** Permite "" (p. ej. ausente con aviso). La regla de negocio valida el servicio. */
-  consultorio: z.string().optional(),
-  date: z.string().optional(),
-  startTime: timeSchema.optional(),
-  endTime: timeSchema.optional(),
-  status: z.nativeEnum(AppointmentStatus).optional(),
-  paymentMethod: z.nativeEnum(AppointmentPaymentMethod).optional().nullable(),
-  paymentCompleted: z.boolean().optional(),
-  paymentDate: z.string().optional().nullable(),
-  specialistSettledAt: z.coerce.date().optional().nullable(),
-  medicalRecord: z.string().optional().nullable(),
-  reasonForVisit: z.string().optional().nullable(),
-  reservationDepositAmount: z.union([z.string(), z.number()]).optional().nullable(),
-  patientConfirmationSource: z.enum(["MANUAL", "WHATSAPP"]).optional().nullable(),
-});
+const updateSchema = z
+  .object({
+    patientId: z.string().uuid().optional(),
+    specialistId: z.string().uuid().optional(),
+    /** Permite "" (p. ej. ausente con aviso). La regla de negocio valida el servicio. */
+    consultorio: z.string().optional(),
+    date: dateOnlyStringSchema.optional(),
+    startTime: timeSchema.optional(),
+    endTime: timeSchema.optional(),
+    status: z.nativeEnum(AppointmentStatus).optional(),
+    paymentMethod: z.nativeEnum(AppointmentPaymentMethod).optional().nullable(),
+    paymentCompleted: z.boolean().optional(),
+    paymentDate: optionalDateOnlyStringSchema,
+    specialistSettledAt: z.coerce.date().optional().nullable(),
+    medicalRecord: optionalLongTextSchema(MEDICAL_RECORD_MAX),
+    reasonForVisit: optionalLongTextSchema(REASON_MAX),
+    reservationDepositAmount: optionalMoneySchema,
+    patientConfirmationSource: z.enum(["MANUAL", "WHATSAPP"]).optional().nullable(),
+  })
+  .superRefine((body, ctx) => {
+    if (body.paymentCompleted && body.paymentDate === undefined) return;
+    if (body.paymentCompleted && !body.paymentDate) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Indique la fecha de pago",
+        path: ["paymentDate"],
+      });
+    }
+  });
 
 function ctx(req: Request) {
   return {

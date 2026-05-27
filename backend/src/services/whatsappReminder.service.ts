@@ -11,11 +11,11 @@ import { fixedAppointmentSeriesRepository } from "../repositories/fixedAppointme
 import { patientRepository } from "../repositories/patient.repository.js";
 import { whatsappReminderRepository } from "../repositories/whatsappReminder.repository.js";
 import { syncPatientConfirmationForStatusChange } from "../utils/appointmentConfirmation.js";
-import { parseDateOnlyISO, minutesToHHmm, timeToMinutes } from "../utils/appointmentTime.js";
+import { parseDateOnlyISO, minutesToHHmm, timeToMinutes, toDateOnly } from "../utils/appointmentTime.js";
 import { parseFixedAppointmentId } from "../utils/fixedAppointmentOccurrences.js";
-import { buildReminderBody } from "../whatsapp/messageBuilder.js";
+import { buildReminderBody, isWhatsappConfirmText } from "../whatsapp/messageBuilder.js";
 import { sendConfirmationReminderMessage } from "../whatsapp/metaClient.js";
-import { normalizePhoneToE164 } from "../whatsapp/phone.js";
+import { normalizePhoneToE164, whatsappPhonesMatch } from "../whatsapp/phone.js";
 import { appointmentStartInstant, planWhatsappReminder } from "../whatsapp/reminderSchedule.js";
 import { upsertFixedAppointmentOccurrence } from "./fixedAppointmentSeries.service.js";
 
@@ -131,7 +131,20 @@ async function sendSingleReminder(
     kind,
   });
 
-  const send = await sendConfirmationReminderMessage(phone, body, appointmentRef);
+  const send = await sendConfirmationReminderMessage(
+    phone,
+    body,
+    appointmentRef,
+    {
+      patientFirstName: ctx.patientFirstName,
+      appointmentDate: ctx.appointmentDate,
+      startTime: ctx.startTime,
+      endTime: ctx.endTime,
+      specialistName: ctx.specialistName,
+      consultorio: ctx.consultorio,
+      kind,
+    }
+  );
   if (!send.ok) {
     await whatsappReminderRepository.markFailed(reminderId, send.error);
     return "failed";
@@ -207,6 +220,7 @@ export async function confirmAppointmentFromWhatsapp(appointmentRef: string): Pr
       occurrenceDate
     );
     const previousStatus = existing?.status ?? AppointmentStatus.RESERVED;
+    if (previousStatus !== AppointmentStatus.RESERVED) return false;
     const patch = syncPatientConfirmationForStatusChange(
       AppointmentStatus.CONFIRMADO,
       previousStatus,
@@ -227,6 +241,7 @@ export async function confirmAppointmentFromWhatsapp(appointmentRef: string): Pr
 
   const appt = await appointmentRepository.findById(appointmentRef);
   if (!appt) return false;
+  if (appt.status !== AppointmentStatus.RESERVED) return false;
 
   const patch = syncPatientConfirmationForStatusChange(
     AppointmentStatus.CONFIRMADO,
@@ -242,4 +257,26 @@ export async function confirmAppointmentFromWhatsapp(appointmentRef: string): Pr
   });
   await cancelWhatsappRemindersForAppointment(appointmentRef);
   return true;
+}
+
+/** Confirma el turno más reciente cuando el paciente responde CONFIRMO por texto. */
+export async function confirmAppointmentFromWhatsappTextReply(
+  waFrom: string,
+  text: string
+): Promise<boolean> {
+  if (!isWhatsappConfirmText(text)) return false;
+
+  const sentReminders = await whatsappReminderRepository.findRecentSent(20);
+  for (const reminder of sentReminders) {
+    if (!whatsappPhonesMatch(reminder.patientPhone, waFrom)) continue;
+    if (await confirmAppointmentFromWhatsapp(reminder.appointmentRef)) return true;
+  }
+
+  const upcoming = await appointmentRepository.findUpcomingReserved(toDateOnly(new Date()));
+  for (const appt of upcoming) {
+    if (!whatsappPhonesMatch(appt.patient.phone, waFrom)) continue;
+    if (await confirmAppointmentFromWhatsapp(appt.id)) return true;
+  }
+
+  return false;
 }

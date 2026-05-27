@@ -21,6 +21,9 @@ const envSchema = z.object({
   WHATSAPP_APP_SECRET: z.string().optional(),
   WHATSAPP_API_VERSION: z.string().default("v21.0"),
   WHATSAPP_SHORT_NOTICE_DELAY_MINUTES: z.coerce.number().int().min(1).max(120).default(5),
+  /** Plantilla aprobada en Meta (producción). Vacío = mensaje interactivo de sesión (pruebas). */
+  WHATSAPP_REMINDER_TEMPLATE_NAME: z.string().optional(),
+  WHATSAPP_REMINDER_TEMPLATE_LANGUAGE: z.string().default("es_AR"),
   CLINIC_NAME: z.string().default("LogoCen"),
   CLINIC_ADDRESS: z
     .string()

@@ -32,13 +32,3 @@ export function normalizePersonNameField(value: string): string {
     })
     .join(" ");
 }
-
-/** "Apellido, Nombre" para mostrar en listados. */
-export function formatPersonDisplayLastFirst(lastName: string, firstName: string): string {
-  return `${normalizePersonNameField(lastName)}, ${normalizePersonNameField(firstName)}`;
-}
-
-/** Variante en mayúsculas (agenda compacta, tablas de pacientes, etc.). */
-export function formatPersonDisplayLastFirstUpper(lastName: string, firstName: string): string {
-  return formatPersonDisplayLastFirst(lastName, firstName).toLocaleUpperCase(LOCALE);
-}

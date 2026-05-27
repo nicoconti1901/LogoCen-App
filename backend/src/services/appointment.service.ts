@@ -16,6 +16,7 @@ import {
   timeToMinutes,
   timesOverlap,
   toDateOnly,
+  weekdayFromDate,
 } from "../utils/appointmentTime.js";
 import { endOfLocalDay, startOfLocalDay } from "../utils/date.js";
 import { parseMoneyToDecimal, reservationDepositForStatus } from "./appointmentPayment.utils.js";
@@ -28,8 +29,6 @@ import {
   cancelWhatsappRemindersForAppointment,
   syncWhatsappReminderForAppointment,
 } from "./whatsappReminder.service.js";
-
-export { reservationDepositForStatus } from "./appointmentPayment.utils.js";
 
 function assertCanAccessAppointment(
   role: Role,
@@ -46,8 +45,6 @@ function assertEndAfterStart(startTime: string, endTime: string): void {
     throw new AppError(400, "La hora de fin debe ser posterior al inicio");
   }
 }
-
-import { weekdayFromDate } from "../utils/appointmentTime.js";
 
 export function assertInsideAvailability(
   specialist: Awaited<ReturnType<typeof specialistRepository.findById>>,

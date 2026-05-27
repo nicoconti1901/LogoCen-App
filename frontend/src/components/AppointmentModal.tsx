@@ -22,6 +22,13 @@ import {
 } from "../lib/fixedAppointment";
 import { getAppointmentDateStr, getEndTimeStr, getStartTimeStr } from "../lib/appointmentDisplay";
 import { formatPersonDisplayLastFirst, formatPersonDisplayLastFirstUpper, normalizePersonNameField } from "../lib/personName";
+import { FormFieldError, invalidFieldClass } from "./FormFieldError";
+import {
+  type AppointmentFormFields,
+  type FieldErrors,
+  parsePositiveMoneyInput,
+  validateAppointmentForm,
+} from "../lib/validation";
 import { useAuth } from "../contexts/AuthContext";
 import { ConfirmDialog } from "./ConfirmDialog";
 import type { Appointment, AppointmentPaymentMethod, AppointmentStatus } from "../types";
@@ -117,15 +124,6 @@ function formatArsAmount(value: string | null): string | null {
   return `$${formatted}`;
 }
 
-/** Monto estrictamente positivo desde texto (coma o punto decimal). */
-function parsePositiveMoneyInput(s: string): number | null {
-  const t = s.trim();
-  if (!t) return null;
-  const n = Number(t.replace(",", "."));
-  if (!Number.isFinite(n) || n <= 0) return null;
-  return n;
-}
-
 export function AppointmentModal({
   open,
   onClose,
@@ -155,6 +153,7 @@ export function AppointmentModal({
   const [isFixedSeries, setIsFixedSeries] = useState(false);
   const [fixedEffectiveUntil, setFixedEffectiveUntil] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors<AppointmentFormFields>>({});
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const effectiveSpecialistId = fixedSpecialistId ?? (isAdmin ? specialistId : mySpecialistId);
 
@@ -178,9 +177,9 @@ export function AppointmentModal({
 
   const isEdit = Boolean(appointment);
   const isEditFixed = isEdit && Boolean(appointment && isFixedSeriesAppointment(appointment));
-  /** Campos de pago/estado: turno normal o ediciÃ³n de una fecha de serie fija. */
+  /** Campos de pago/estado: turno normal o edición de una fecha de serie fija. */
   const showOccurrenceDetails = !isFixedSeries || isEditFixed;
-  /** Especialistas: alta y baja de turnos; no modificaciÃ³n de datos de citas existentes. */
+  /** Especialistas: alta y baja de turnos; no modificación de datos de citas existentes. */
   const specialistEditingForbidden = !isAdmin && isEdit;
   const consultorioDayQ = useQuery({
     queryKey: ["appointments", "consultorio-slots", dateStr],
@@ -231,6 +230,7 @@ export function AppointmentModal({
   useEffect(() => {
     if (!open) return;
     setError(null);
+    setFieldErrors({});
     if (appointment) {
       setPatientId(appointment.patientId);
       setSpecialistId(appointment.specialistId);
@@ -340,7 +340,7 @@ export function AppointmentModal({
     mutationFn: () => {
       if (isEditFixed && appointment) {
         const seriesId = getFixedSeriesId(appointment);
-        if (!seriesId) throw new Error("Serie fija invÃ¡lida");
+        if (!seriesId) throw new Error("Serie fija inválida");
         return updateFixedAppointmentOccurrence(seriesId, {
           date: getFixedOccurrenceDate(appointment),
           status,
@@ -491,8 +491,8 @@ export function AppointmentModal({
             ? "Ocupado en ese horario"
             : "Disponible en ese horario"
           : occupiedRanges.length > 0
-            ? "Con turnos ese dÃ­a"
-            : "Libre ese dÃ­a";
+            ? "Con turnos ese día"
+            : "Libre ese día";
 
         return {
           office,
@@ -560,11 +560,39 @@ export function AppointmentModal({
     e.preventDefault();
     if (specialistEditingForbidden) return;
     setError(null);
-    if (!canSubmit) return;
+    const validation = validateAppointmentForm({
+      dateStr,
+      startTimeStr,
+      endTimeStr,
+      showEndTime: showOccurrenceDetails,
+      paymentCompleted,
+      paymentDateStr,
+      status,
+      reservationDepositStr,
+      reasonForVisit,
+      medicalRecord,
+      fixedEffectiveUntil,
+      isFixedSeries,
+    });
+    if (!validation.ok) {
+      setFieldErrors(validation.fields);
+      return;
+    }
+    setFieldErrors({});
+    if (!canSubmit) {
+      setError("Revisá los datos del turno antes de guardar.");
+      return;
+    }
     if (isEdit) updateMut.mutate();
     else if (isFixedSeries) createFixedMut.mutate();
     else createMut.mutate();
   }
+
+  const apptFieldFor = (field: AppointmentFormFields) =>
+    invalidFieldClass(Boolean(fieldErrors[field]), fieldClass);
+  const clearApptField = (field: AppointmentFormFields) => {
+    if (fieldErrors[field]) setFieldErrors((prev) => ({ ...prev, [field]: undefined }));
+  };
 
   if (!open) return null;
 
@@ -580,7 +608,7 @@ export function AppointmentModal({
             {specialistEditingForbidden
               ? "Detalle del turno"
               : isEditFixed
-                ? "Turno fijo â€” pago y estado"
+                ? "Turno fijo — pago y estado"
                 : isEdit
                   ? "Editar cita"
                   : "Nueva cita"}
@@ -591,15 +619,15 @@ export function AppointmentModal({
             onClick={onClose}
             aria-label="Cerrar"
           >
-            âœ•
+            ×
           </button>
         </div>
 
         <form className="mt-4 space-y-4" onSubmit={onSubmit}>
           {specialistEditingForbidden && (
             <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-              No podÃ©s modificar los datos de un turno ya cargado. Si necesitÃ¡s cambios, contactÃ¡ a un administrador.
-              PodÃ©s eliminar este turno con el botÃ³n inferior.
+              No podés modificar los datos de un turno ya cargado. Si necesitás cambios, contactá a un administrador.
+              Podés eliminar este turno con el botón inferior.
             </p>
           )}
           <fieldset
@@ -615,11 +643,11 @@ export function AppointmentModal({
               value={patientId}
               onChange={(e) => setPatientId(e.target.value)}
             >
-              <option value="">Seleccioneâ€¦</option>
+              <option value="">Seleccione…</option>
               {patients.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {formatPersonDisplayLastFirstUpper(p.lastName, p.firstName)} â€” {p.email}
-                  {patientIdsWithDebtFromAgenda.has(p.id) ? " â€” con deuda" : ""}
+                  {formatPersonDisplayLastFirstUpper(p.lastName, p.firstName)} — {p.email}
+                  {patientIdsWithDebtFromAgenda.has(p.id) ? " — con deuda" : ""}
                 </option>
               ))}
             </select>
@@ -627,7 +655,7 @@ export function AppointmentModal({
 
           {isEditFixed && (
             <p className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm text-violet-950">
-              EstÃ¡s registrando pago y estado para <strong>este dÃ­a</strong> del turno fijo semanal. Los cambios no
+              Estás registrando pago y estado para <strong>este día</strong> del turno fijo semanal. Los cambios no
               afectan otras semanas salvo que indiques lo contrario en cada fecha.
             </p>
           )}
@@ -644,8 +672,8 @@ export function AppointmentModal({
               <span>
                 <span className="font-semibold">Turno fijo semanal</span>
                 <span className="mt-0.5 block text-xs text-violet-900/90">
-                  Mismo paciente, especialista, dÃ­a de la semana y hora de inicio. Se repite automÃ¡ticamente en la agenda
-                  (no se guarda un turno por semana en la base). PodÃ©s cancelar la serie o una fecha puntual despuÃ©s.
+                  Mismo paciente, especialista, día de la semana y hora de inicio. Se repite automáticamente en la agenda
+                  (no se guarda un turno por semana en la base). Podés cancelar la serie o una fecha puntual después.
                 </span>
               </span>
             </label>
@@ -653,9 +681,9 @@ export function AppointmentModal({
 
           {isFixedSeries && dateStr && (
             <p className="rounded-lg border border-violet-100 bg-violet-50/60 px-3 py-2 text-xs text-violet-900">
-              Se repetirÃ¡ cada <strong>{weekdayLabelFromDate(dateStr)}</strong> a las{" "}
-              <strong>{startTimeStr || "â€”"}</strong>. La duraciÃ³n en el calendario es orientativa (1 h); la terapia puede
-              extenderse mÃ¡s.
+              Se repetirá cada <strong>{weekdayLabelFromDate(dateStr)}</strong> a las{" "}
+              <strong>{startTimeStr || "—"}</strong>. La duración en el calendario es orientativa (1 h); la terapia puede
+              extenderse más.
             </p>
           )}
 
@@ -665,8 +693,8 @@ export function AppointmentModal({
               <ul className="mt-1 list-inside list-disc space-y-0.5">
                 {(patientFixedSeriesQ.data ?? []).map((s) => (
                   <li key={s.id}>
-                    {WEEKDAY_LABEL_ES[s.weekday] ?? s.weekday} {s.startTime} Â· {s.consultorio}
-                    {s.effectiveUntil ? ` Â· hasta ${s.effectiveUntil.slice(0, 10)}` : " Â· sin fecha de fin"}
+                    {WEEKDAY_LABEL_ES[s.weekday] ?? s.weekday} {s.startTime} · {s.consultorio}
+                    {s.effectiveUntil ? ` · hasta ${s.effectiveUntil.slice(0, 10)}` : " · sin fecha de fin"}
                   </li>
                 ))}
               </ul>
@@ -683,11 +711,11 @@ export function AppointmentModal({
                 {patientDebtBanner.total > 0 ? (
                   <>
                     Total estimado pendiente:{" "}
-                    <strong>{formatArsAmount(String(patientDebtBanner.total))}</strong> (segÃºn honorarios cargados).
+                    <strong>{formatArsAmount(String(patientDebtBanner.total))}</strong> (según honorarios cargados).
                   </>
                 ) : (
                   <>
-                    Hay turnos marcados con saldo pendiente; cargÃ¡ el honorario del profesional en esos turnos para ver
+                    Hay turnos marcados con saldo pendiente; cargá el honorario del profesional en esos turnos para ver
                     montos exactos.
                   </>
                 )}
@@ -704,10 +732,10 @@ export function AppointmentModal({
                 value={specialistId}
                 onChange={(e) => setSpecialistId(e.target.value)}
               >
-                <option value="">Seleccioneâ€¦</option>
+                <option value="">Seleccione…</option>
                 {specialists.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {formatPersonDisplayLastFirst(s.lastName, s.firstName)} â€” {s.specialty}
+                    {formatPersonDisplayLastFirst(s.lastName, s.firstName)} — {s.specialty}
                   </option>
                 ))}
               </select>
@@ -729,7 +757,7 @@ export function AppointmentModal({
             <div className="rounded-lg border border-sky-100 bg-sky-50/70 px-3 py-2 text-xs text-slate-700">
               <p className="font-semibold text-sky-900">Valor de la consulta y cobro</p>
               {specialistForFeesQ.isLoading ? (
-                <p className="mt-1 text-slate-600">Cargando honorario y aliasâ€¦</p>
+                <p className="mt-1 text-slate-600">Cargando honorario y alias…</p>
               ) : (
                 <>
                   <p className="mt-1">
@@ -763,10 +791,14 @@ export function AppointmentModal({
             <input
               type="date"
               required
-              className={fieldClass}
+              className={apptFieldFor("dateStr")}
               value={dateStr}
-              onChange={(e) => setDateStr(e.target.value)}
+              onChange={(e) => {
+                setDateStr(e.target.value);
+                clearApptField("dateStr");
+              }}
             />
+            <FormFieldError message={fieldErrors.dateStr} />
           </div>
 
           {isFixedSeries && (
@@ -774,12 +806,16 @@ export function AppointmentModal({
               <label className={labelClass}>Vigente hasta (opcional)</label>
               <input
                 type="date"
-                className={fieldClass}
+                className={apptFieldFor("fixedEffectiveUntil")}
                 value={fixedEffectiveUntil}
-                onChange={(e) => setFixedEffectiveUntil(e.target.value)}
+                onChange={(e) => {
+                  setFixedEffectiveUntil(e.target.value);
+                  clearApptField("fixedEffectiveUntil");
+                }}
               />
+              <FormFieldError message={fieldErrors.fixedEffectiveUntil} />
               <p className="mt-1 text-xs text-slate-600">
-                DejÃ¡ vacÃ­o si el turno fijo no tiene fecha de fin. PodÃ©s cancelar la serie completa en cualquier momento.
+                Dejá vacío si el turno fijo no tiene fecha de fin. Podés cancelar la serie completa en cualquier momento.
               </p>
             </div>
           )}
@@ -789,7 +825,7 @@ export function AppointmentModal({
               <p className="font-medium">Inasistencia con aviso</p>
               <p className="mt-1 text-xs text-amber-900">
                 No se asigna consultorio. Se imputa al paciente el <strong>50%</strong> del honorario de referencia
-                (salvo Â«Pago realizadoÂ» en SÃ­).
+                (salvo «Pago realizado» en Sí).
               </p>
             </div>
           ) : (
@@ -801,16 +837,16 @@ export function AppointmentModal({
               value={consultorio}
               onChange={(e) => setConsultorio(e.target.value)}
             >
-              <option value="">Seleccione consultorioâ€¦</option>
+              <option value="">Seleccione consultorio…</option>
               {consultorioOptions.map((o) => (
                 <option key={o.office} value={o.office} disabled={o.occupiedInSelected}>
-                  {o.office} â€” {o.status}
+                  {o.office} — {o.status}
                 </option>
               ))}
             </select>
             {selectedConsultorioOccupied && (
               <p className="mt-1 text-xs font-medium text-rose-700">
-                Ese consultorio ya estÃ¡ ocupado en el horario elegido (otro profesional o turno fijo).
+                Ese consultorio ya está ocupado en el horario elegido (otro profesional o turno fijo).
               </p>
             )}
             {consultorio.trim() && dateStr && (
@@ -819,7 +855,7 @@ export function AppointmentModal({
                   Disponibilidad en {consultorio.trim()} ({dateStr})
                 </p>
                 {consultorioDayQ.isLoading ? (
-                  <p className="mt-1 text-xs text-slate-500">Calculando rangos libresâ€¦</p>
+                  <p className="mt-1 text-xs text-slate-500">Calculando rangos libres…</p>
                 ) : (
                   <div className="mt-1">
                     <p className="text-xs text-slate-600">Libres:</p>
@@ -840,7 +876,7 @@ export function AppointmentModal({
                       })}
                     </div>
                     <p className="mt-1 text-[11px] text-slate-500">
-                      Verde: hueco util (&gt;= {SHORT_FREE_RANGE_MINUTES} min) Â· Amarillo: hueco corto.
+                      Verde: hueco util (&gt;= {SHORT_FREE_RANGE_MINUTES} min) · Amarillo: hueco corto.
                     </p>
                   </div>
                 )}
@@ -855,10 +891,15 @@ export function AppointmentModal({
               <input
                 type="time"
                 required
-                className={fieldClass}
+                className={apptFieldFor("startTimeStr")}
                 value={startTimeStr}
-                onChange={(e) => setStartTimeStr(e.target.value)}
+                onChange={(e) => {
+                  setStartTimeStr(e.target.value);
+                  clearApptField("startTimeStr");
+                  clearApptField("endTimeStr");
+                }}
               />
+              <FormFieldError message={fieldErrors.startTimeStr} />
             </div>
             {showOccurrenceDetails && (
             <div>
@@ -866,10 +907,14 @@ export function AppointmentModal({
               <input
                 type="time"
                 required
-                className={fieldClass}
+                className={apptFieldFor("endTimeStr")}
                 value={endTimeStr}
-                onChange={(e) => setEndTimeStr(e.target.value)}
+                onChange={(e) => {
+                  setEndTimeStr(e.target.value);
+                  clearApptField("endTimeStr");
+                }}
               />
+              <FormFieldError message={fieldErrors.endTimeStr} />
             </div>
             )}
           </div>
@@ -897,22 +942,26 @@ export function AppointmentModal({
           </div>
           {status === "AUSENTE_SIN_AVISO" && (
             <p className="mt-1 text-xs text-rose-800">
-              Inasistencia sin aviso: se imputa el <strong>100%</strong> del honorario de referencia mientras Â«Pago
-              realizadoÂ» sea No.
+              Inasistencia sin aviso: se imputa el <strong>100%</strong> del honorario de referencia mientras «Pago
+              realizado» sea No.
             </p>
           )}
           {status === "RESERVADO" && (
             <div>
-              <label className={labelClass}>Monto del anticipo / seÃ±a (ARS)</label>
+              <label className={labelClass}>Monto del anticipo / seña (ARS)</label>
               <input
                 type="text"
                 inputMode="decimal"
                 required
                 placeholder="Ej. 5000 o 5000,50"
-                className={fieldClass}
+                className={apptFieldFor("reservationDepositStr")}
                 value={reservationDepositStr}
-                onChange={(e) => setReservationDepositStr(e.target.value)}
+                onChange={(e) => {
+                  setReservationDepositStr(e.target.value);
+                  clearApptField("reservationDepositStr");
+                }}
               />
+              <FormFieldError message={fieldErrors.reservationDepositStr} />
               <p className="mt-1 text-xs text-slate-600">
                 {(() => {
                   const dep = parsePositiveMoneyInput(reservationDepositStr);
@@ -922,10 +971,10 @@ export function AppointmentModal({
                       ? Number(String(feeRaw).replace(",", "."))
                       : null;
                   if (reservationDepositStr.trim() === "" || dep == null) {
-                    return "IngresÃ¡ el monto abonado como reserva (mayor a cero).";
+                    return "Ingresá el monto abonado como reserva (mayor a cero).";
                   }
                   if (fee == null || !Number.isFinite(fee) || fee <= 0) {
-                    return "Anticipo registrado. Si el profesional tiene honorario cargado, se mostrarÃ¡ cuÃ¡nto falta pagar.";
+                    return "Anticipo registrado. Si el profesional tiene honorario cargado, se mostrará cuánto falta pagar.";
                   }
                   if (dep > fee) {
                     return "El anticipo no puede ser mayor al valor de la consulta.";
@@ -964,12 +1013,12 @@ export function AppointmentModal({
               }}
             >
               <option value="NO">No</option>
-              <option value="YES">SÃ­</option>
+              <option value="YES">Sí</option>
             </select>
             {status === "RESERVADO" && (
               <p className="mt-1 text-xs text-slate-600">
-                La seÃ±a indicada se contabiliza como ya abonada sobre el honorario. <strong>No</strong> en Â«Pago
-                realizadoÂ» indica que sigue pendiente el saldo a pagar en la consulta, no que la seÃ±a no se haya
+                La seña indicada se contabiliza como ya abonada sobre el honorario. <strong>No</strong> en «Pago
+                realizado» indica que sigue pendiente el saldo a pagar en la consulta, no que la seña no se haya
                 cobrado.
               </p>
             )}
@@ -983,31 +1032,45 @@ export function AppointmentModal({
               <input
                 type="date"
                 required
-                className={fieldClass}
+                className={apptFieldFor("paymentDateStr")}
                 value={paymentDateStr}
-                onChange={(e) => setPaymentDateStr(e.target.value)}
+                onChange={(e) => {
+                  setPaymentDateStr(e.target.value);
+                  clearApptField("paymentDateStr");
+                }}
               />
+              <FormFieldError message={fieldErrors.paymentDateStr} />
             </div>
           )}
           <div>
             <label className={labelClass}>Motivo de consulta</label>
             <textarea
-              className={`${fieldClass} resize-y`}
+              className={`${apptFieldFor("reasonForVisit")} resize-y`}
               rows={2}
+              maxLength={1000}
               value={reasonForVisit}
-              onChange={(e) => setReasonForVisit(e.target.value)}
+              onChange={(e) => {
+                setReasonForVisit(e.target.value);
+                clearApptField("reasonForVisit");
+              }}
             />
+            <FormFieldError message={fieldErrors.reasonForVisit} />
           </div>
 
           {isEdit && (
             <div>
-              <label className={labelClass}>Historial / registro mÃ©dico</label>
+              <label className={labelClass}>Historial / registro médico</label>
               <textarea
-                className={`${fieldClass} resize-y font-mono text-sm`}
+                className={`${apptFieldFor("medicalRecord")} resize-y font-mono text-sm`}
                 rows={5}
+                maxLength={5000}
                 value={medicalRecord}
-                onChange={(e) => setMedicalRecord(e.target.value)}
+                onChange={(e) => {
+                  setMedicalRecord(e.target.value);
+                  clearApptField("medicalRecord");
+                }}
               />
+              <FormFieldError message={fieldErrors.medicalRecord} />
             </div>
           )}
 
@@ -1047,7 +1110,7 @@ export function AppointmentModal({
       <ConfirmDialog
         open={showDeleteConfirm}
         title="Eliminar cita"
-        message="Esta acciÃ³n eliminarÃ¡ la cita de forma permanente."
+        message="Esta acción eliminará la cita de forma permanente."
         confirmLabel="Eliminar"
         tone="danger"
         busy={deleteMut.isPending}

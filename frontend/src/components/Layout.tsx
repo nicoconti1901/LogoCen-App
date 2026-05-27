@@ -18,7 +18,6 @@ export function Layout() {
   const isAdminMedicalRoute =
     location.pathname === "/patients" ||
     location.pathname === "/specialists" ||
-    location.pathname === "/confirmaciones" ||
     location.pathname.startsWith("/balance");
 
   return (
@@ -45,11 +44,6 @@ export function Layout() {
                   <NavLink to="/patients" className={linkClass}>
                     Pacientes
                   </NavLink>
-                  {user?.role === "ADMIN" && (
-                    <NavLink to="/confirmaciones" className={linkClass}>
-                      Confirmaciones
-                    </NavLink>
-                  )}
                   {(user?.role === "ADMIN" || user?.role === "SPECIALIST") && (
                     <NavLink to="/balance" className={linkClass}>
                       Balance

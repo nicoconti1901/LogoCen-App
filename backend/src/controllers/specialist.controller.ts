@@ -1,10 +1,22 @@
-import { Role, Weekday } from "@prisma/client";
+import { Role } from "@prisma/client";
 import type { Request, Response } from "express";
 import { z } from "zod";
 import type { SpecialistWithUser } from "../repositories/specialist.repository.js";
 import * as specialistService from "../services/specialist.service.js";
 import { AppError } from "../middleware/errorHandler.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import {
+  CONSIDERATIONS_MAX,
+  availabilitySchema,
+  emailSchema,
+  optionalLicenseSchema,
+  optionalLongTextSchema,
+  optionalMoneySchema,
+  optionalPhoneSchema,
+  optionalTransferAliasSchema,
+  personNameSchema,
+  strongPasswordSchema,
+} from "../utils/fieldValidation.js";
 
 function serializeSpecialist(row: SpecialistWithUser) {
   const { _count, ...rest } = row;
@@ -16,51 +28,36 @@ function serializeSpecialist(row: SpecialistWithUser) {
 
 /** URLs largas (p. ej. Drive con query) o data URLs superaban 2048 y rompían el POST. */
 const optionalUrl = z.union([z.string().max(32_000), z.literal(""), z.null()]).optional();
-const strongPassword = z
-  .string()
-  .min(8)
-  .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).+$/, "La contraseña debe tener mayúscula, minúscula, número y símbolo");
-const timeSchema = z
-  .string()
-  .regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Use HH:mm (24 h)");
-const optionalMoney = z.union([z.number().nonnegative(), z.string().regex(/^\d+(\.\d{1,2})?$/), z.literal(""), z.null()]).optional();
-const optionalAlias = z.union([z.string().max(120), z.literal(""), z.null()]).optional();
-const optionalLongText = z.union([z.string().max(10_000), z.literal(""), z.null()]).optional();
-const availabilitySchema = z.object({
-  weekday: z.nativeEnum(Weekday),
-  startTime: timeSchema,
-  endTime: timeSchema,
-});
 
 const createSchema = z.object({
-  email: z.string().email(),
-  password: strongPassword,
-  firstName: z.string().min(1),
-  lastName: z.string().min(1),
-  specialty: z.string().min(1),
+  email: emailSchema,
+  password: strongPasswordSchema,
+  firstName: personNameSchema,
+  lastName: personNameSchema,
+  specialty: z.string().trim().min(2, "Especialidad: mínimo 2 caracteres").max(120),
   profilePhotoUrl: optionalUrl,
-  licenseNumber: z.union([z.string().max(500), z.literal(""), z.null()]).optional(),
-  phone: z.union([z.string().max(50), z.literal(""), z.null()]).optional(),
-  consultationFee: optionalMoney,
-  monthlyConsultorioRent: optionalMoney,
-  transferAlias: optionalAlias,
-  considerations: optionalLongText,
+  licenseNumber: optionalLicenseSchema,
+  phone: optionalPhoneSchema,
+  consultationFee: optionalMoneySchema,
+  monthlyConsultorioRent: optionalMoneySchema,
+  transferAlias: optionalTransferAliasSchema,
+  considerations: optionalLongTextSchema(CONSIDERATIONS_MAX),
   availabilities: z.array(availabilitySchema).optional(),
 });
 
 const updateSchema = z.object({
-  email: z.string().email().optional(),
-  password: strongPassword.optional(),
-  firstName: z.string().min(1).optional(),
-  lastName: z.string().min(1).optional(),
-  specialty: z.string().min(1).optional(),
+  email: emailSchema.optional(),
+  password: strongPasswordSchema.optional(),
+  firstName: personNameSchema.optional(),
+  lastName: personNameSchema.optional(),
+  specialty: z.string().trim().min(2).max(120).optional(),
   profilePhotoUrl: optionalUrl,
-  licenseNumber: z.union([z.string().max(500), z.literal(""), z.null()]).optional(),
-  phone: z.union([z.string().max(50), z.literal(""), z.null()]).optional(),
-  consultationFee: optionalMoney,
-  monthlyConsultorioRent: optionalMoney,
-  transferAlias: optionalAlias,
-  considerations: optionalLongText,
+  licenseNumber: optionalLicenseSchema,
+  phone: optionalPhoneSchema,
+  consultationFee: optionalMoneySchema,
+  monthlyConsultorioRent: optionalMoneySchema,
+  transferAlias: optionalTransferAliasSchema,
+  considerations: optionalLongTextSchema(CONSIDERATIONS_MAX),
   availabilities: z.array(availabilitySchema).optional(),
   active: z.boolean().optional(),
 });

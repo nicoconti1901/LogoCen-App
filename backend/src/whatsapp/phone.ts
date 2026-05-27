@@ -8,7 +8,10 @@ export function normalizePhoneToE164(raw: string | null | undefined): string | n
   if (!digits) return null;
 
   if (digits.startsWith("54")) {
-    // ya incluye país
+    // 54 + móvil AR debe llevar 9: 549XXXXXXXX...
+    if (!digits.startsWith("549") && digits.length >= 12) {
+      digits = `549${digits.slice(2)}`;
+    }
   } else if (digits.startsWith("0")) {
     digits = `54${digits.slice(1)}`;
   } else if (digits.length === 10 || digits.length === 11) {
@@ -24,14 +27,72 @@ export function normalizePhoneToE164(raw: string | null | undefined): string | n
     digits = `54${digits}`;
   }
 
-  // Móviles: 54 + 9 + área (sin 0) + número
-  if (digits.startsWith("54") && !digits.startsWith("549") && digits.length >= 12) {
-    const afterCountry = digits.slice(2);
-    if (afterCountry.startsWith("11") || afterCountry.startsWith("15")) {
-      digits = `549${afterCountry.replace(/^15/, "")}`;
+  // Móviles CABA / 15: 54 + 11... o 54 + 15...
+  if (digits.startsWith("549") && digits.length >= 12) {
+    const afterMobile = digits.slice(3);
+    if (afterMobile.startsWith("15")) {
+      digits = `549${afterMobile.slice(2)}`;
     }
   }
 
   if (digits.length < 12 || digits.length > 15) return null;
   return `+${digits}`;
+}
+
+/**
+ * Formato `to` para la Cloud API de Meta con móviles argentinos.
+ * En modo prueba Meta hace match exacto: 54 + área + 15 + abonado (sin el 9).
+ * Ej: +5492914021589 → 54291154021589
+ */
+export function formatPhoneForMetaWhatsapp(e164: string | null | undefined): string | null {
+  if (!e164) return null;
+  let digits = e164.replace(/\D/g, "");
+  if (!digits) return null;
+
+  if (digits.startsWith("549")) {
+    const local = digits.slice(3);
+    if (local.length >= 10) {
+      const areaLen = local.startsWith("11") ? 2 : 3;
+      const area = local.slice(0, areaLen);
+      const subscriber = local.slice(areaLen);
+      return `54${area}15${subscriber}`;
+    }
+  }
+
+  return digits;
+}
+
+/** Compará teléfono guardado con wa_id / from del webhook de Meta. */
+export function whatsappPhonesMatch(
+  stored: string | null | undefined,
+  waFrom: string | null | undefined
+): boolean {
+  if (!stored?.trim() || !waFrom?.trim()) return false;
+  const from = waFrom.replace(/\D/g, "");
+  if (!from) return false;
+
+  const candidates = new Set<string>();
+  const push = (value: string | null | undefined) => {
+    if (!value) return;
+    const digits = value.replace(/\D/g, "");
+    if (digits) candidates.add(digits);
+  };
+
+  push(stored);
+  const e164 = normalizePhoneToE164(stored);
+  push(e164);
+  push(formatPhoneForMetaWhatsapp(e164));
+
+  if (candidates.has(from)) return true;
+
+  const localFrom = from.startsWith("549") ? from.slice(3) : from.startsWith("54") ? from.slice(2) : from;
+  for (const candidate of candidates) {
+    const local = candidate.startsWith("549")
+      ? candidate.slice(3)
+      : candidate.startsWith("54")
+        ? candidate.slice(2)
+        : candidate;
+    if (local.slice(-10) === localFrom.slice(-10)) return true;
+  }
+  return false;
 }

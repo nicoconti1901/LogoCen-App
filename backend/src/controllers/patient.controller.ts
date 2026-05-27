@@ -3,22 +3,32 @@ import type { Request, Response } from "express";
 import { z } from "zod";
 import * as patientService from "../services/patient.service.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import {
+  DIAGNOSIS_MAX,
+  NOTES_MAX,
+  birthDateSchema,
+  emailSchema,
+  optionalDocumentIdSchema,
+  optionalLongTextSchema,
+  optionalPhoneSchema,
+  personNameSchema,
+} from "../utils/fieldValidation.js";
 
 const createSchema = z.object({
-  firstName: z.string().min(1),
-  lastName: z.string().min(1),
-  email: z.string().email(),
-  phone: z.string().optional().nullable(),
-  documentId: z.string().optional().nullable(),
-  birthDate: z.coerce.date().optional().nullable(),
-  notes: z.string().optional().nullable(),
+  firstName: personNameSchema,
+  lastName: personNameSchema,
+  email: emailSchema,
+  phone: optionalPhoneSchema,
+  documentId: optionalDocumentIdSchema,
+  birthDate: birthDateSchema,
+  notes: optionalLongTextSchema(NOTES_MAX),
   specialistId: z.string().uuid().optional().nullable(),
 });
 
 const updateSchema = createSchema.partial();
 const createClinicalHistorySchema = z.object({
   recordDate: z.coerce.date(),
-  diagnosis: z.string().min(1),
+  diagnosis: z.string().trim().min(2, "Diagnóstico: mínimo 2 caracteres").max(DIAGNOSIS_MAX),
 });
 const updateClinicalHistorySchema = createClinicalHistorySchema.partial();
 

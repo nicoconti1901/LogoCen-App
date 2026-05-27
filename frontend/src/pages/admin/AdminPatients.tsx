@@ -14,11 +14,19 @@ import {
   updatePatient,
 } from "../../api/endpoints";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { FormFieldError, invalidFieldClass } from "../../components/FormFieldError";
 import { PatientPaymentHistoryModal } from "../../components/PatientPaymentHistoryModal";
 import { useAuth } from "../../contexts/AuthContext";
 import type { AppointmentStatus, ClinicalHistoryEntry, Patient, Specialist } from "../../types";
 import { appointmentDebtAmountArs, appointmentHasDebt } from "../../lib/appointmentDebt";
 import { formatPersonDisplayLastFirst, formatPersonDisplayLastFirstUpper } from "../../lib/personName";
+import {
+  type ClinicalHistoryFields,
+  type FieldErrors,
+  type PatientFormFields,
+  validateClinicalHistoryForm,
+  validatePatientForm,
+} from "../../lib/validation";
 
 const emptyForm = {
   firstName: "",
@@ -120,6 +128,8 @@ export function AdminPatientsPage() {
 
   const [editing, setEditing] = useState<Patient | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors<PatientFormFields>>({});
+  const [clinicalFieldErrors, setClinicalFieldErrors] = useState<FieldErrors<ClinicalHistoryFields>>({});
   const { data: appointmentHistory = [], isLoading: isLoadingHistory } = useQuery({
     queryKey: ["appointments", "patient-history", historyPatient?.id],
     queryFn: async () => {
@@ -181,7 +191,7 @@ export function AdminPatientsPage() {
         email: form.email,
         phone: form.phone || null,
         documentId: form.documentId || null,
-        birthDate: form.birthDate ? new Date(form.birthDate).toISOString() : null,
+        birthDate: form.birthDate || null,
         notes: form.notes || null,
         specialistId: form.specialistId || null,
       }),
@@ -215,7 +225,7 @@ export function AdminPatientsPage() {
         email: form.email,
         phone: form.phone || null,
         documentId: form.documentId || null,
-        birthDate: form.birthDate ? new Date(form.birthDate).toISOString() : null,
+        birthDate: form.birthDate || null,
         notes: form.notes || null,
         specialistId: form.specialistId || null,
       }),
@@ -233,6 +243,12 @@ export function AdminPatientsPage() {
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
+    const validation = validatePatientForm(form, { requireSpecialist: isAdmin });
+    if (!validation.ok) {
+      setFieldErrors(validation.fields);
+      return;
+    }
+    setFieldErrors({});
     if (editing) updateMut.mutate();
     else createMut.mutate();
   }
@@ -429,63 +445,95 @@ export function AdminPatientsPage() {
                 <label className="text-sm text-slate-600">Nombre</label>
                 <input
                   required
-                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                  className={invalidFieldClass(Boolean(fieldErrors.firstName), "mt-1 w-full rounded-lg border border-slate-300 px-3 py-2")}
                   value={form.firstName}
-                  onChange={(e) => setForm((f) => ({ ...f, firstName: e.target.value }))}
+                  onChange={(e) => {
+                    setForm((f) => ({ ...f, firstName: e.target.value }));
+                    if (fieldErrors.firstName) setFieldErrors((prev) => ({ ...prev, firstName: undefined }));
+                  }}
                 />
+                <FormFieldError message={fieldErrors.firstName} />
               </div>
               <div>
                 <label className="text-sm text-slate-600">Apellido</label>
                 <input
                   required
-                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                  className={invalidFieldClass(Boolean(fieldErrors.lastName), "mt-1 w-full rounded-lg border border-slate-300 px-3 py-2")}
                   value={form.lastName}
-                  onChange={(e) => setForm((f) => ({ ...f, lastName: e.target.value }))}
+                  onChange={(e) => {
+                    setForm((f) => ({ ...f, lastName: e.target.value }));
+                    if (fieldErrors.lastName) setFieldErrors((prev) => ({ ...prev, lastName: undefined }));
+                  }}
                 />
+                <FormFieldError message={fieldErrors.lastName} />
               </div>
               <div>
                 <label className="text-sm text-slate-600">Correo</label>
                 <input
                   required
                   type="email"
-                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                  className={invalidFieldClass(Boolean(fieldErrors.email), "mt-1 w-full rounded-lg border border-slate-300 px-3 py-2")}
                   value={form.email}
-                  onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                  onChange={(e) => {
+                    setForm((f) => ({ ...f, email: e.target.value }));
+                    if (fieldErrors.email) setFieldErrors((prev) => ({ ...prev, email: undefined }));
+                  }}
                 />
+                <FormFieldError message={fieldErrors.email} />
               </div>
               <div>
                 <label className="text-sm text-slate-600">Teléfono</label>
                 <input
-                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                  inputMode="tel"
+                  placeholder="Ej. 2914021589"
+                  maxLength={20}
+                  className={invalidFieldClass(Boolean(fieldErrors.phone), "mt-1 w-full rounded-lg border border-slate-300 px-3 py-2")}
                   value={form.phone}
-                  onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+                  onChange={(e) => {
+                    setForm((f) => ({ ...f, phone: e.target.value }));
+                    if (fieldErrors.phone) setFieldErrors((prev) => ({ ...prev, phone: undefined }));
+                  }}
                 />
+                <FormFieldError message={fieldErrors.phone} />
               </div>
               <div>
                 <label className="text-sm text-slate-600">Documento</label>
                 <input
-                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                  placeholder="DNI o pasaporte"
+                  maxLength={20}
+                  className={invalidFieldClass(Boolean(fieldErrors.documentId), "mt-1 w-full rounded-lg border border-slate-300 px-3 py-2")}
                   value={form.documentId}
-                  onChange={(e) => setForm((f) => ({ ...f, documentId: e.target.value }))}
+                  onChange={(e) => {
+                    setForm((f) => ({ ...f, documentId: e.target.value }));
+                    if (fieldErrors.documentId) setFieldErrors((prev) => ({ ...prev, documentId: undefined }));
+                  }}
                 />
+                <FormFieldError message={fieldErrors.documentId} />
               </div>
               <div>
                 <label className="text-sm text-slate-600">Fecha de nacimiento</label>
                 <input
                   type="date"
-                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                  className={invalidFieldClass(Boolean(fieldErrors.birthDate), "mt-1 w-full rounded-lg border border-slate-300 px-3 py-2")}
                   value={form.birthDate}
-                  onChange={(e) => setForm((f) => ({ ...f, birthDate: e.target.value }))}
+                  onChange={(e) => {
+                    setForm((f) => ({ ...f, birthDate: e.target.value }));
+                    if (fieldErrors.birthDate) setFieldErrors((prev) => ({ ...prev, birthDate: undefined }));
+                  }}
                 />
+                <FormFieldError message={fieldErrors.birthDate} />
               </div>
               {isAdmin && (
                 <div>
                   <label className="text-sm text-slate-600">Especialista</label>
                   <select
                     required
-                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                    className={invalidFieldClass(Boolean(fieldErrors.specialistId), "mt-1 w-full rounded-lg border border-slate-300 px-3 py-2")}
                     value={form.specialistId}
-                    onChange={(e) => setForm((f) => ({ ...f, specialistId: e.target.value }))}
+                    onChange={(e) => {
+                      setForm((f) => ({ ...f, specialistId: e.target.value }));
+                      if (fieldErrors.specialistId) setFieldErrors((prev) => ({ ...prev, specialistId: undefined }));
+                    }}
                   >
                     <option value="">Seleccionar especialista</option>
                     {specialists.map((s) => (
@@ -494,16 +542,22 @@ export function AdminPatientsPage() {
                       </option>
                     ))}
                   </select>
+                  <FormFieldError message={fieldErrors.specialistId} />
                 </div>
               )}
               <div className="sm:col-span-2">
                 <label className="text-sm text-slate-600">Notas</label>
                 <textarea
-                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                  className={invalidFieldClass(Boolean(fieldErrors.notes), "mt-1 w-full rounded-lg border border-slate-300 px-3 py-2")}
                   rows={2}
+                  maxLength={2000}
                   value={form.notes}
-                  onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+                  onChange={(e) => {
+                    setForm((f) => ({ ...f, notes: e.target.value }));
+                    if (fieldErrors.notes) setFieldErrors((prev) => ({ ...prev, notes: undefined }));
+                  }}
                 />
+                <FormFieldError message={fieldErrors.notes} />
               </div>
               <div className="flex flex-wrap gap-2 sm:col-span-2 lg:col-span-3">
                 <button
@@ -606,7 +660,15 @@ export function AdminPatientsPage() {
               className="mb-4 grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[180px_1fr_auto]"
               onSubmit={(e) => {
                 e.preventDefault();
-                if (!clinicalDiagnosis.trim()) return;
+                const validation = validateClinicalHistoryForm({
+                  recordDate: clinicalDate,
+                  diagnosis: clinicalDiagnosis,
+                });
+                if (!validation.ok) {
+                  setClinicalFieldErrors(validation.fields);
+                  return;
+                }
+                setClinicalFieldErrors({});
                 createClinicalHistoryMut.mutate();
               }}
             >
@@ -615,20 +677,32 @@ export function AdminPatientsPage() {
                 <input
                   type="date"
                   required
-                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                  className={invalidFieldClass(Boolean(clinicalFieldErrors.recordDate), "mt-1 w-full rounded-lg border border-slate-300 px-3 py-2")}
                   value={clinicalDate}
-                  onChange={(e) => setClinicalDate(e.target.value)}
+                  onChange={(e) => {
+                    setClinicalDate(e.target.value);
+                    if (clinicalFieldErrors.recordDate) {
+                      setClinicalFieldErrors((prev) => ({ ...prev, recordDate: undefined }));
+                    }
+                  }}
                 />
+                <FormFieldError message={clinicalFieldErrors.recordDate} />
               </div>
               <div>
                 <label className="text-sm text-slate-600">Diagnóstico</label>
                 <input
                   required
-                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                  className={invalidFieldClass(Boolean(clinicalFieldErrors.diagnosis), "mt-1 w-full rounded-lg border border-slate-300 px-3 py-2")}
                   placeholder="Ej: Lumbalgia aguda. Reposo y control en 7 días."
                   value={clinicalDiagnosis}
-                  onChange={(e) => setClinicalDiagnosis(e.target.value)}
+                  onChange={(e) => {
+                    setClinicalDiagnosis(e.target.value);
+                    if (clinicalFieldErrors.diagnosis) {
+                      setClinicalFieldErrors((prev) => ({ ...prev, diagnosis: undefined }));
+                    }
+                  }}
                 />
+                <FormFieldError message={clinicalFieldErrors.diagnosis} />
               </div>
               <div className="self-end">
                 <button

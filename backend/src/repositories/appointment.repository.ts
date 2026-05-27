@@ -25,6 +25,17 @@ export const appointmentRepository = {
     });
   },
 
+  findUpcomingReserved(fromDate: Date): Promise<AppointmentWithRelations[]> {
+    return prisma.appointment.findMany({
+      where: {
+        status: AppointmentStatus.RESERVED,
+        appointmentDate: { gte: fromDate },
+      },
+      include,
+      orderBy: [{ appointmentDate: "asc" }, { startTime: "asc" }],
+    });
+  },
+
   markExpiredReservedAsAttended(today: Date, nowHHmm: string): Promise<number> {
     return prisma.appointment
       .updateMany({

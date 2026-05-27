@@ -50,6 +50,7 @@ export function buildReminderBody(ctx: ReminderMessageContext): string {
     `🏥 ${sala}`,
     "",
     "Tocá el botón para confirmar tu asistencia.",
+    "Si no ves el botón, respondé *CONFIRMO* a este chat.",
   ].join("\n");
 }
 
@@ -57,6 +58,47 @@ export function buildReminderBody(ctx: ReminderMessageContext): string {
 export function buildConfirmButtonId(appointmentRef: string): string {
   const safe = appointmentRef.replace(/:/g, "_");
   return `${whatsappConfig.confirmButtonIdPrefix}_${safe}`;
+}
+
+/**
+ * Componentes para plantilla Meta `recordatorio_turno` (crear en WhatsApp Manager):
+ *
+ * Cuerpo:
+ * Hola {{1}}, recordatorio de turno en {{2}}.
+ * Fecha: {{3}} · Horario: {{4}}
+ * Profesional: {{5}} · Consultorio: {{6}}
+ * Confirmá con el botón.
+ *
+ * Botón: respuesta rápida «Si, confirmo» (payload dinámico al enviar).
+ */
+export function buildReminderTemplateComponents(
+  ctx: ReminderMessageContext,
+  appointmentRef: string
+): Array<Record<string, unknown>> {
+  const fecha = formatDateEs(ctx.appointmentDate);
+  const horario = formatTimeRange(ctx.startTime, ctx.endTime);
+  const nombre = ctx.patientFirstName.trim() || "paciente";
+  const sala = ctx.consultorio.trim() || "consultorio asignado";
+
+  return [
+    {
+      type: "body",
+      parameters: [
+        { type: "text", text: nombre },
+        { type: "text", text: whatsappConfig.clinicName },
+        { type: "text", text: fecha },
+        { type: "text", text: horario },
+        { type: "text", text: ctx.specialistName },
+        { type: "text", text: sala },
+      ],
+    },
+    {
+      type: "button",
+      sub_type: "quick_reply",
+      index: "0",
+      parameters: [{ type: "payload", payload: buildConfirmButtonId(appointmentRef) }],
+    },
+  ];
 }
 
 export function parseConfirmButtonId(buttonId: string): string | null {
@@ -76,3 +118,20 @@ export function parseConfirmButtonId(buttonId: string): string | null {
 }
 
 export const CONFIRM_BUTTON_TITLE = "Sí, confirmo";
+
+const CONFIRM_TEXT_PATTERN = /^(si|confirmo|confirma|confirmar|ok)$/i;
+
+/** Respuestas de texto cuando no aparece el botón interactivo (modo prueba Meta). */
+export function isWhatsappConfirmText(text: string | null | undefined): boolean {
+  if (!text?.trim()) return false;
+  const normalized = text
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (CONFIRM_TEXT_PATTERN.test(normalized)) return true;
+  return normalized.includes("confirmo") || normalized.includes("confirma");
+}
