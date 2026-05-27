@@ -10,7 +10,9 @@ import {
 } from "../../api/endpoints";
 import { useAuth } from "../../contexts/AuthContext";
 import type { FinanceExpense, FinanceExpenseType } from "../../types";
+import { FormFieldError, invalidFieldClass } from "../../components/FormFieldError";
 import { formatPersonDisplayLastFirst } from "../../lib/personName";
+import { type ExpenseFormFields, type FieldErrors, validateExpenseForm } from "../../lib/validation";
 import {
   dateToIsoLocal,
   formatMoney,
@@ -38,6 +40,7 @@ export function AdminOfficeRenditionPage() {
     amount: "",
     expenseDate: today,
   });
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors<ExpenseFormFields>>({});
 
   if (user?.role !== "ADMIN") return <Navigate to="/agenda" replace />;
 
@@ -206,6 +209,12 @@ export function AdminOfficeRenditionPage() {
           className="mt-4 grid gap-3 md:grid-cols-2"
           onSubmit={(e) => {
             e.preventDefault();
+            const validation = validateExpenseForm(expenseDraft);
+            if (!validation.ok) {
+              setFieldErrors(validation.fields);
+              return;
+            }
+            setFieldErrors({});
             saveExpenseMut.mutate();
           }}
         >
@@ -227,12 +236,16 @@ export function AdminOfficeRenditionPage() {
             <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Descripción</span>
             <input
               type="text"
-              className="w-full rounded-lg border border-slate-300 px-3 py-2"
+              className={invalidFieldClass(Boolean(fieldErrors.description), "w-full rounded-lg border border-slate-300 px-3 py-2")}
               value={expenseDraft.description}
-              onChange={(e) => setExpenseDraft((prev) => ({ ...prev, description: e.target.value }))}
+              onChange={(e) => {
+                setExpenseDraft((prev) => ({ ...prev, description: e.target.value }));
+                if (fieldErrors.description) setFieldErrors((prev) => ({ ...prev, description: undefined }));
+              }}
               required
               disabled={saveExpenseMut.isPending}
             />
+            <FormFieldError message={fieldErrors.description} />
           </label>
           <label className="space-y-1">
             <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Monto</span>
@@ -241,23 +254,31 @@ export function AdminOfficeRenditionPage() {
               inputMode="decimal"
               min={0}
               step="0.01"
-              className="w-full rounded-lg border border-slate-300 px-3 py-2"
+              className={invalidFieldClass(Boolean(fieldErrors.amount), "w-full rounded-lg border border-slate-300 px-3 py-2")}
               value={expenseDraft.amount}
-              onChange={(e) => setExpenseDraft((prev) => ({ ...prev, amount: e.target.value }))}
+              onChange={(e) => {
+                setExpenseDraft((prev) => ({ ...prev, amount: e.target.value }));
+                if (fieldErrors.amount) setFieldErrors((prev) => ({ ...prev, amount: undefined }));
+              }}
               required
               disabled={saveExpenseMut.isPending}
             />
+            <FormFieldError message={fieldErrors.amount} />
           </label>
           <label className="space-y-1">
             <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Fecha</span>
             <input
               type="date"
-              className="w-full rounded-lg border border-slate-300 px-3 py-2"
+              className={invalidFieldClass(Boolean(fieldErrors.expenseDate), "w-full rounded-lg border border-slate-300 px-3 py-2")}
               value={expenseDraft.expenseDate}
-              onChange={(e) => setExpenseDraft((prev) => ({ ...prev, expenseDate: e.target.value }))}
+              onChange={(e) => {
+                setExpenseDraft((prev) => ({ ...prev, expenseDate: e.target.value }));
+                if (fieldErrors.expenseDate) setFieldErrors((prev) => ({ ...prev, expenseDate: undefined }));
+              }}
               required
               disabled={saveExpenseMut.isPending}
             />
+            <FormFieldError message={fieldErrors.expenseDate} />
           </label>
           <div className="md:col-span-2 flex flex-wrap items-center gap-2">
             <button

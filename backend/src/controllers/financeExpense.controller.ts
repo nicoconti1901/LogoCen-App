@@ -3,20 +3,21 @@ import type { Request, Response } from "express";
 import { z } from "zod";
 import * as financeExpenseService from "../services/financeExpense.service.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import { EXPENSE_DESC_MAX, dateOnlyStringSchema, requiredNonNegativeMoneySchema } from "../utils/fieldValidation.js";
 
 const monthSchema = z.string().regex(/^\d{4}-\d{2}$/);
 
 const createSchema = z.object({
   type: z.nativeEnum(FinanceExpenseType),
-  description: z.string().min(1),
-  amount: z.union([z.number().min(0), z.string()]),
+  description: z.string().trim().min(2).max(EXPENSE_DESC_MAX),
+  amount: requiredNonNegativeMoneySchema,
   expenseDate: z.coerce.date(),
 });
 
 const updateSchema = z.object({
   type: z.nativeEnum(FinanceExpenseType).optional(),
-  description: z.string().min(1).optional(),
-  amount: z.union([z.number().min(0), z.string()]).optional(),
+  description: z.string().trim().min(2).max(EXPENSE_DESC_MAX).optional(),
+  amount: requiredNonNegativeMoneySchema.optional(),
   expenseDate: z.coerce.date().optional(),
 });
 

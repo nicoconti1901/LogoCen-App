@@ -6,37 +6,52 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import { enrichAppointment } from "../utils/datetime.js";
 import { parseFixedAppointmentId } from "../utils/fixedAppointmentOccurrences.js";
 import { parseDateOnlyISO } from "../utils/appointmentTime.js";
-
-const timeSchema = z
-  .string()
-  .regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Use HH:mm (24 h)");
+import {
+  MEDICAL_RECORD_MAX,
+  REASON_MAX,
+  dateOnlyStringSchema,
+  optionalDateOnlyStringSchema,
+  optionalLongTextSchema,
+  optionalMoneySchema,
+  timeSchema,
+} from "../utils/fieldValidation.js";
 
 const createSchema = z.object({
   patientId: z.string().uuid(),
   specialistId: z.string().uuid(),
   consultorio: z.string().min(1),
-  date: z.string().min(1),
+  date: dateOnlyStringSchema,
   startTime: timeSchema,
   displayDurationMinutes: z.number().int().min(15).max(240).optional(),
-  effectiveUntil: z.string().optional().nullable(),
-  reasonForVisit: z.string().optional().nullable(),
+  effectiveUntil: optionalDateOnlyStringSchema,
+  reasonForVisit: optionalLongTextSchema(REASON_MAX),
 });
 
 const skipSchema = z.object({
-  date: z.string().min(1),
+  date: dateOnlyStringSchema,
 });
 
-const occurrenceUpdateSchema = z.object({
-  date: z.string().min(1),
-  status: z.nativeEnum(AppointmentStatus).optional(),
-  paymentMethod: z.nativeEnum(AppointmentPaymentMethod).optional().nullable(),
-  paymentCompleted: z.boolean().optional(),
-  paymentDate: z.string().optional().nullable(),
-  specialistSettledAt: z.coerce.date().optional().nullable(),
-  medicalRecord: z.string().optional().nullable(),
-  reasonForVisit: z.string().optional().nullable(),
-  reservationDepositAmount: z.union([z.string(), z.number()]).optional().nullable(),
-});
+const occurrenceUpdateSchema = z
+  .object({
+    date: dateOnlyStringSchema,
+    status: z.nativeEnum(AppointmentStatus).optional(),
+    paymentMethod: z.nativeEnum(AppointmentPaymentMethod).optional().nullable(),
+    paymentCompleted: z.boolean().optional(),
+    paymentDate: optionalDateOnlyStringSchema,
+    specialistSettledAt: z.coerce.date().optional().nullable(),
+    medicalRecord: optionalLongTextSchema(MEDICAL_RECORD_MAX),
+    reasonForVisit: optionalLongTextSchema(REASON_MAX),
+    reservationDepositAmount: optionalMoneySchema,
+  })
+  .superRefine((body, ctx) => {
+    if (body.paymentCompleted && !body.paymentDate) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Indique la fecha de pago",
+        path: ["paymentDate"],
+      });
+    }
+  });
 
 function enrichFixedRow(a: Awaited<ReturnType<typeof fixedAppointmentSeriesService.upsertFixedAppointmentOccurrence>>) {
   const base = enrichAppointment(a);

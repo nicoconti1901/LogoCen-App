@@ -2,6 +2,8 @@ import axios from "axios";
 import { FormEvent, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
+import { FormFieldError, invalidFieldClass } from "../components/FormFieldError";
+import { validateLoginForm } from "../lib/validation";
 import iconoImg from "../assets/icono.png";
 
 export function LoginPage() {
@@ -9,6 +11,7 @@ export function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
   const [pending, setPending] = useState(false);
   const [showResetHelp, setShowResetHelp] = useState(false);
 
@@ -19,9 +22,15 @@ export function LoginPage() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    const validation = validateLoginForm({ email, password });
+    if (!validation.ok) {
+      setFieldErrors(validation.fields);
+      return;
+    }
+    setFieldErrors({});
     setPending(true);
     try {
-      await login(email, password);
+      await login(email.trim(), password);
     } catch (err: unknown) {
       let msg: string | null = null;
       if (axios.isAxiosError(err)) {
@@ -57,10 +66,14 @@ export function LoginPage() {
               type="email"
               autoComplete="username"
               required
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-200"
+              className={invalidFieldClass(Boolean(fieldErrors.email), "mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-200")}
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                if (fieldErrors.email) setFieldErrors((prev) => ({ ...prev, email: undefined }));
+              }}
             />
+            <FormFieldError message={fieldErrors.email} />
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700" htmlFor="password">
@@ -71,10 +84,14 @@ export function LoginPage() {
               type="password"
               autoComplete="current-password"
               required
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-200"
+              className={invalidFieldClass(Boolean(fieldErrors.password), "mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-200")}
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                if (fieldErrors.password) setFieldErrors((prev) => ({ ...prev, password: undefined }));
+              }}
             />
+            <FormFieldError message={fieldErrors.password} />
           </div>
           {error && (
             <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">

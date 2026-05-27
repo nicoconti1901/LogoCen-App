@@ -15,7 +15,9 @@
     "db:seed-appointments": "tsx prisma/scripts/seed-week-appointments.ts",
     "db:seed-appointments:cleanup": "tsx prisma/scripts/cleanup-load-appointments.ts",
     "db:seed-appointments:status": "tsx prisma/scripts/check-load-count.ts",
-    "whatsapp:reminders": "tsx scripts/run-whatsapp-reminders.ts"
+    "whatsapp:reminders": "tsx scripts/run-whatsapp-reminders.ts",
+    "whatsapp:errors": "tsx scripts/show-reminder-errors.ts",
+    "whatsapp:check-webhook": "tsx scripts/check-waba-webhook.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.5.0",
@@ -25,7 +27,6 @@
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.1.1",
-    "nodemailer": "^6.9.16",
     "zod": "^3.24.2"
   },
   "prisma": {
@@ -38,7 +39,6 @@
     "@types/jsonwebtoken": "^9.0.9",
     "@types/multer": "^2.1.0",
     "@types/node": "^22.13.10",
-    "@types/nodemailer": "^6.4.17",
     "prisma": "^6.5.0",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2"

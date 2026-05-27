@@ -102,6 +102,13 @@ curl -X POST https://api.tudominio.com/api/internal/whatsapp/reminders/run \
   -H "X-Cron-Secret: tu-secreto"
 ```
 
+Diagnóstico local:
+
+```bash
+cd backend && npm run whatsapp:errors          # últimos fallos de envío
+cd backend && npm run whatsapp:check-webhook   # token + phone number ID
+```
+
 ## Archivos principales
 
 | Ruta | Rol |

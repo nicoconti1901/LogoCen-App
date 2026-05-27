@@ -1,7 +1,10 @@
 import crypto from "node:crypto";
 import { whatsappConfig } from "../config/whatsapp.js";
-import { parseConfirmButtonId } from "../whatsapp/messageBuilder.js";
-import { confirmAppointmentFromWhatsapp } from "./whatsappReminder.service.js";
+import { parseConfirmButtonId, isWhatsappConfirmText } from "../whatsapp/messageBuilder.js";
+import {
+  confirmAppointmentFromWhatsapp,
+  confirmAppointmentFromWhatsappTextReply,
+} from "./whatsappReminder.service.js";
 
 type MetaWebhookPayload = {
   object?: string;
@@ -11,6 +14,7 @@ type MetaWebhookPayload = {
         messages?: Array<{
           type?: string;
           from?: string;
+          text?: { body?: string };
           interactive?: {
             type?: string;
             button_reply?: { id?: string };
@@ -39,6 +43,16 @@ export async function handleMetaWebhookPayload(payload: MetaWebhookPayload): Pro
   for (const entry of payload.entry ?? []) {
     for (const change of entry.changes ?? []) {
       for (const message of change.value?.messages ?? []) {
+        if (message.type === "text") {
+          const body = message.text?.body;
+          const from = message.from;
+          if (from && body && isWhatsappConfirmText(body)) {
+            const ok = await confirmAppointmentFromWhatsappTextReply(from, body);
+            console.info("[whatsapp] texto confirmación", { from, body, ok });
+          }
+          continue;
+        }
+
         if (message.type !== "interactive") continue;
         if (message.interactive?.type !== "button_reply") continue;
         const buttonId = message.interactive.button_reply?.id;
@@ -47,7 +61,8 @@ export async function handleMetaWebhookPayload(payload: MetaWebhookPayload): Pro
         const appointmentRef = parseConfirmButtonId(buttonId);
         if (!appointmentRef) continue;
 
-        await confirmAppointmentFromWhatsapp(appointmentRef);
+        const ok = await confirmAppointmentFromWhatsapp(appointmentRef);
+        console.info("[whatsapp] botón confirmación", { from: message.from, buttonId, ok });
       }
     }
   }

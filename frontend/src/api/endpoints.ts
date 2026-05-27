@@ -4,11 +4,9 @@ import type {
   AuthUser,
   LoginResponse,
   Patient,
-  Payment,
   Specialist,
   SpecialistDocument,
   ClinicalHistoryEntry,
-  FinanceConfig,
   FinanceExpense,
   FinanceExpenseType,
   ConsultorioRentMonthsResponse,
@@ -211,11 +209,6 @@ function appointmentResourcePath(id: string): string {
   return `/appointments/${encodeURIComponent(id)}`;
 }
 
-export async function fetchAppointment(id: string): Promise<Appointment> {
-  const { data } = await api.get<Appointment>(appointmentResourcePath(id));
-  return data;
-}
-
 export async function createAppointment(body: {
   patientId: string;
   specialistId: string;
@@ -311,49 +304,6 @@ export async function fetchPatientFixedSeries(
   const { data } = await api.get<FixedAppointmentSeries[]>("/appointments/fixed-series/by-patient", {
     params: { patientId, ...(specialistId ? { specialistId } : {}) },
   });
-  return data;
-}
-
-export async function fetchPayments(params?: { appointmentId?: string; status?: string }): Promise<Payment[]> {
-  const { data } = await api.get<Payment[]>("/payments", { params });
-  return data;
-}
-
-export async function createPayment(body: {
-  appointmentId: string;
-  amount: string | number;
-  currency?: string;
-  status?: string;
-  method?: string | null;
-  paidAt?: string | null;
-  notes?: string | null;
-}): Promise<Payment> {
-  const { data } = await api.post<Payment>("/payments", body);
-  return data;
-}
-
-export async function updatePayment(
-  id: string,
-  body: Partial<{
-    amount: string | number;
-    currency: string;
-    status: string;
-    method: string | null;
-    paidAt: string | null;
-    notes: string | null;
-  }>
-): Promise<Payment> {
-  const { data } = await api.patch<Payment>(`/payments/${id}`, body);
-  return data;
-}
-
-export async function fetchFinanceConfig(): Promise<FinanceConfig> {
-  const { data } = await api.get<FinanceConfig>("/finance-config");
-  return data;
-}
-
-export async function updateFinanceConfig(body: { monthlyFixedExpense: string | number }): Promise<FinanceConfig> {
-  const { data } = await api.patch<FinanceConfig>("/finance-config", body);
   return data;
 }
 

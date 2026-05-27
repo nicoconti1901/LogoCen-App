@@ -54,11 +54,12 @@ function buildAvailabilityBackgroundEvents(
   routeSpecialistId: string | undefined
 ): EventInput[] {
   if (!routeSpecialistId || !specialist?.availabilities?.length || !range) return [];
-  const viewStart = new Date(range.from);
-  const viewEnd = new Date(range.to);
+  const viewStart = new Date(`${range.from.slice(0, 10)}T12:00:00`);
+  const viewEndExclusive = new Date(`${range.to.slice(0, 10)}T12:00:00`);
+  viewEndExclusive.setDate(viewEndExclusive.getDate() + 1);
   const out: EventInput[] = [];
   const d = new Date(viewStart.getFullYear(), viewStart.getMonth(), viewStart.getDate());
-  const lastExclusive = new Date(viewEnd.getFullYear(), viewEnd.getMonth(), viewEnd.getDate());
+  const lastExclusive = viewEndExclusive;
   while (d < lastExclusive) {
     const intervals = availabilityIntervalsForCalendarDay(specialist, d);
     for (const iv of intervals) {
@@ -317,12 +318,6 @@ function dateToIsoLocal(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function addDaysToIso(iso: string, days: number): string {
-  const d = new Date(`${iso}T12:00:00`);
-  d.setDate(d.getDate() + days);
-  return dateToIsoLocal(d);
-}
-
 function hhmmToMinutes(hhmm: string): number {
   const [h, m] = hhmm.split(":").map(Number);
   return h * 60 + m;
@@ -360,7 +355,7 @@ export function AgendaPage() {
   const qc = useQueryClient();
   const shouldOpenQuickSlots = searchParams.get("new") === "1";
   const effectiveSpecialistId = routeSpecialistId ?? (user?.role === "SPECIALIST" ? user.specialistId ?? undefined : undefined);
-  /** Agenda /agenda sin especialista: panel “hoy” arriba + semana en calendario sin repetir el mismo día. */
+  /** Agenda /agenda sin especialista: panel “hoy” arriba + semana en calendario (incluye hoy). */
   const isAdmin = user?.role === "ADMIN";
   const isAdminGeneralAgenda = isAdmin && !effectiveSpecialistId;
   /** Panel “Agenda del día”: oculto en vista Día del calendario (ahí ya se listan los turnos). */
@@ -389,18 +384,6 @@ export function AgendaPage() {
   );
   const todayIso = todayStr();
 
-  const pendingConfirmationsQ = useQuery({
-    queryKey: ["appointment-confirmations-banner", todayIso, effectiveSpecialistId],
-    queryFn: () =>
-      fetchAppointments({
-        from: todayIso,
-        to: addDaysToIso(todayIso, 13),
-        confirmation: "pending",
-        ...(effectiveSpecialistId ? { specialistId: effectiveSpecialistId } : {}),
-      }),
-    enabled: isAdmin,
-  });
-
   const dayCellClassNames = useCallback(
     (arg: { date: Date }) => {
       if (!effectiveSpecialistId || !specialistQ.data) return [];
@@ -412,22 +395,14 @@ export function AgendaPage() {
 
   const onDatesSet = useCallback((arg: DatesSetArg) => {
     setCalendarView(arg.view.type);
+    const from = dateToIsoLocal(arg.start);
+    const endInclusive = new Date(arg.end);
+    endInclusive.setMilliseconds(endInclusive.getMilliseconds() - 1);
     setRange({
-      from: arg.start.toISOString(),
-      to: arg.end.toISOString(),
+      from,
+      to: dateToIsoLocal(endInclusive),
     });
   }, []);
-
-  /** Semana admin: 6 días desde mañana (hoy solo en el panel superior). */
-  useEffect(() => {
-    if (!isAdminGeneralAgenda) return;
-    const api = calendarRef.current?.getApi();
-    if (!api || api.view.type !== "listUpcoming") return;
-    const rangeStartIso = dateToIsoLocal(api.view.currentStart);
-    if (rangeStartIso <= todayIso) {
-      api.gotoDate(addDaysToIso(todayIso, 1));
-    }
-  }, [isAdminGeneralAgenda, todayIso, calendarView]);
 
   const eventClassNames = useCallback(
     (arg: { event: { display: string; start: Date | null } }) => {
@@ -870,25 +845,6 @@ export function AgendaPage() {
           )}
         </div>
         )}
-        {isAdmin && (pendingConfirmationsQ.data?.length ?? 0) > 0 && (
-          <div className="mb-4 flex flex-col gap-3 rounded-xl border border-amber-300 bg-amber-50/95 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-semibold text-amber-950">
-                {pendingConfirmationsQ.data!.length} turno
-                {pendingConfirmationsQ.data!.length === 1 ? "" : "s"} en estado Agendado (próximos 14 días)
-              </p>
-              <p className="mt-0.5 text-xs text-amber-900">
-                El paciente recibe WhatsApp 24 h antes (o al instante si el turno es en menos de 24 h) con un botón para confirmar.
-              </p>
-            </div>
-            <Link
-              to="/confirmaciones"
-              className="inline-flex shrink-0 items-center justify-center rounded-full bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700"
-            >
-              Ver confirmaciones
-            </Link>
-          </div>
-        )}
         <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
           {(Object.keys(statusLabel) as Appointment["status"][]).map((s) => (
             <span key={s} className={`agenda-pill status-${s.toLowerCase()}`}>
@@ -917,7 +873,7 @@ export function AgendaPage() {
             ref={calendarRef}
             plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin, listPlugin]}
             initialView={isAdminGeneralAgenda ? "listUpcoming" : "listWeek"}
-            initialDate={todayIso}
+            initialDate={new Date(`${todayIso}T12:00:00`)}
             headerToolbar={{
               left: "prev,next today",
               center: "title",
@@ -928,7 +884,7 @@ export function AgendaPage() {
             views={{
               listUpcoming: {
                 type: "list",
-                duration: { days: 6 },
+                duration: { days: 7 },
                 buttonText: "Semana",
               },
               listWeek: {

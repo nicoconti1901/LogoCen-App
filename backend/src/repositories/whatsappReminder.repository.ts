@@ -93,11 +93,20 @@ export const whatsappReminderRepository = {
     });
   },
 
-  findLatestByAppointmentRef(appointmentRef: string): Promise<WhatsappReminder | null> {
-    return prisma.whatsappReminder.findFirst({
-      where: { appointmentRef },
-      orderBy: { scheduledSendAt: "desc" },
-    });
+  findRecentSent(limit = 20): Promise<Array<WhatsappReminder & { patientPhone: string | null }>> {
+    return prisma.whatsappReminder
+      .findMany({
+        where: { status: WhatsappReminderStatus.SENT },
+        orderBy: { sentAt: "desc" },
+        take: limit,
+        include: { patient: { select: { phone: true } } },
+      })
+      .then((rows) =>
+        rows.map(({ patient, ...row }) => ({
+          ...row,
+          patientPhone: patient.phone,
+        }))
+      );
   },
 };
 
