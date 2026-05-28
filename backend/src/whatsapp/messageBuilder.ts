@@ -61,15 +61,25 @@ export function buildConfirmButtonId(appointmentRef: string): string {
 }
 
 /**
- * Componentes para plantilla Meta `recordatorio_turno` (crear en WhatsApp Manager):
+ * Plantilla Meta recomendada: `recordatorio_turno_v2` (Utilidad, es_AR, variables posicionales).
  *
- * Cuerpo:
+ * Cuerpo en WhatsApp Manager (Meta rechaza líneas que son SOLO una variable; no repetir {{2}}):
+ *
  * Hola {{1}}, recordatorio de turno en {{2}}.
- * Fecha: {{3}} · Horario: {{4}}
- * Profesional: {{5}} · Consultorio: {{6}}
+ *
+ * 📍 Dirección: {{7}}
+ *
+ * 📅 Fecha: {{3}}
+ * 🕐 Horario: {{4}}
+ * Profesional: {{5}}
+ * Consultorio: {{6}}
+ *
  * Confirmá con el botón.
  *
- * Botón: respuesta rápida «Si, confirmo» (payload dinámico al enviar).
+ * Botón: respuesta rápida «Sí, confirmo» (payload dinámico al enviar).
+ *
+ * Mapeo: 1=nombre, 2=centro, 3=fecha, 4=horario, 5=profesional, 6=consultorio, 7=dirección.
+ * Ejemplos al enviar a revisión: Juan | LogoCen | martes 20 de mayo | 10:00 a 11:00 hs | Pérez, Juan | Consultorio 2 | Calle 520 N°11323
  */
 export function buildReminderTemplateComponents(
   ctx: ReminderMessageContext,
@@ -79,18 +89,26 @@ export function buildReminderTemplateComponents(
   const horario = formatTimeRange(ctx.startTime, ctx.endTime);
   const nombre = ctx.patientFirstName.trim() || "paciente";
   const sala = ctx.consultorio.trim() || "consultorio asignado";
+  const direccion = whatsappConfig.clinicAddress.trim() || "Consultá la dirección con el centro";
+
+  const bodyParameters = [
+    { type: "text", text: nombre },
+    { type: "text", text: whatsappConfig.clinicName },
+    { type: "text", text: fecha },
+    { type: "text", text: horario },
+    { type: "text", text: ctx.specialistName },
+    { type: "text", text: sala },
+  ];
+
+  /** `recordatorio_turno_v2` incluye {{7}} dirección; la v1 solo usa {{1}}–{{6}}. */
+  if (whatsappConfig.reminderTemplateName === "recordatorio_turno_v2") {
+    bodyParameters.push({ type: "text", text: direccion });
+  }
 
   return [
     {
       type: "body",
-      parameters: [
-        { type: "text", text: nombre },
-        { type: "text", text: whatsappConfig.clinicName },
-        { type: "text", text: fecha },
-        { type: "text", text: horario },
-        { type: "text", text: ctx.specialistName },
-        { type: "text", text: sala },
-      ],
+      parameters: bodyParameters,
     },
     {
       type: "button",

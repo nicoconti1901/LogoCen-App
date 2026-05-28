@@ -15,6 +15,7 @@ type MetaWebhookPayload = {
           type?: string;
           from?: string;
           text?: { body?: string };
+          button?: { payload?: string; text?: string };
           interactive?: {
             type?: string;
             button_reply?: { id?: string };
@@ -24,6 +25,17 @@ type MetaWebhookPayload = {
     }>;
   }>;
 };
+
+async function confirmFromButtonPayload(from: string | undefined, payload: string | undefined): Promise<void> {
+  if (!payload) return;
+  const appointmentRef = parseConfirmButtonId(payload);
+  if (!appointmentRef) {
+    console.warn("[whatsapp] botón con payload no reconocido", { from, payload });
+    return;
+  }
+  const ok = await confirmAppointmentFromWhatsapp(appointmentRef);
+  console.info("[whatsapp] botón confirmación", { from, payload, appointmentRef, ok });
+}
 
 export function verifyMetaWebhookSignature(rawBody: Buffer, signatureHeader: string | undefined): boolean {
   if (!whatsappConfig.appSecret) return false;
@@ -53,16 +65,23 @@ export async function handleMetaWebhookPayload(payload: MetaWebhookPayload): Pro
           continue;
         }
 
+        /** Plantilla Meta: botón quick_reply llega como type "button", no "interactive". */
+        if (message.type === "button") {
+          const payload = message.button?.payload;
+          const text = message.button?.text;
+          if (payload) {
+            await confirmFromButtonPayload(message.from, payload);
+          } else if (message.from && text && isWhatsappConfirmText(text)) {
+            const ok = await confirmAppointmentFromWhatsappTextReply(message.from, text);
+            console.info("[whatsapp] texto confirmación (botón plantilla)", { from: message.from, text, ok });
+          }
+          continue;
+        }
+
         if (message.type !== "interactive") continue;
         if (message.interactive?.type !== "button_reply") continue;
         const buttonId = message.interactive.button_reply?.id;
-        if (!buttonId) continue;
-
-        const appointmentRef = parseConfirmButtonId(buttonId);
-        if (!appointmentRef) continue;
-
-        const ok = await confirmAppointmentFromWhatsapp(appointmentRef);
-        console.info("[whatsapp] botón confirmación", { from: message.from, buttonId, ok });
+        await confirmFromButtonPayload(message.from, buttonId);
       }
     }
   }

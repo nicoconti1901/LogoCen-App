@@ -89,6 +89,64 @@ sequenceDiagram
 
 Variables en `backend/.env` (ver `.env.example`).
 
+## Plantillas Meta
+
+| Nombre | Uso |
+|--------|-----|
+| `recordatorio_turno` | Versión simple (sin iconos), 6 variables |
+| `recordatorio_turno_v2` | **Recomendada** — con iconos y dirección, 7 variables |
+
+### Crear `recordatorio_turno_v2` (con iconos)
+
+En **WhatsApp Manager → Plantillas → Crear**:
+
+- **Nombre:** `recordatorio_turno_v2`
+- **Categoría:** Utilidad
+- **Idioma:** Español (Argentina) `es_AR`
+- **Tipo de variable:** Posicional
+- **Título:** vacío (no usar `{{}}`)
+
+**Cuerpo** (copiar tal cual — formato validado por Meta):
+
+```
+Hola {{1}}, recordatorio de turno en {{2}}.
+
+📍 Dirección: {{7}}
+
+📅 Fecha: {{3}}
+🕐 Horario: {{4}}
+Profesional: {{5}}
+Consultorio: {{6}}
+
+Confirmá con el botón.
+```
+
+**Ejemplos** (al pedir revisión, uno por variable):
+
+| Var | Ejemplo |
+|-----|---------|
+| {{1}} | Juan |
+| {{2}} | LogoCen |
+| {{3}} | martes 20 de mayo de 2026 |
+| {{4}} | 10:00 a 11:00 hs |
+| {{5}} | Pérez, Juan |
+| {{6}} | Consultorio 2 |
+| {{7}} | Calle 520 N°11323 |
+
+**Errores frecuentes en Meta:** línea que es solo `{{7}}`; repetir `{{2}}` en otra línea; emojis compuestos (👨‍⚕️); título con `{{}}`; variables tipo «Nombre» en lugar de **Posicional**.
+
+**Botón:** Respuesta rápida — texto **Sí, confirmo**
+
+Cuando esté **Activa**, en `.env`:
+
+```env
+WHATSAPP_REMINDER_TEMPLATE_NAME=recordatorio_turno_v2
+WHATSAPP_REMINDER_TEMPLATE_LANGUAGE=es_AR
+CLINIC_ADDRESS="Calle 520 N°11323"
+```
+
+Reiniciar backend. El código envía automáticamente la variable `{{7}}` desde `CLINIC_ADDRESS`.
+
 ## Ejecución del cron
 
 Cada **5–10 minutos** (recomendado):
@@ -125,10 +183,26 @@ cd backend && npm run whatsapp:check-webhook   # token + phone number ID
 
 La estructura soporta IDs `fixed:{seriesId}:{fecha}` en recordatorios y en la respuesta del botón. La programación automática al crear series fijas puede agregarse en una siguiente iteración (hoy: turnos puntuales al crear/editar cita).
 
-## Próximos pasos sugeridos
+## Próximos pasos (roadmap)
 
-1. Cargar dirección real en `CLINIC_ADDRESS`.
-2. Validar teléfonos al alta/edición de pacientes (formato AR).
-3. Panel admin: estado del recordatorio (enviado / fallido).
-4. Plantilla aprobada por Meta si se requiere mensaje iniciado fuera de ventana 24 h (políticas de conversación).
-5. Segundo canal opcional: aviso al admin si no confirma X h antes del turno.
+### Ya listo en test
+- Envío con plantilla + confirmación por botón / CONFIRMO
+- Agenda con estado Confirmado
+
+### Ahora (mejorar mensaje)
+1. Crear plantilla **`recordatorio_turno_v2`** con iconos (ver arriba)
+2. Esperar aprobación Meta → cambiar `WHATSAPP_REMINDER_TEMPLATE_NAME`
+3. Verificar dirección real en `CLINIC_ADDRESS`
+
+### Antes de producción real
+1. **App Meta en modo Live** (revisión de app si Meta la pide)
+2. **Número WhatsApp real** de LogoCen (no el de prueba +1 555…)
+3. **Token permanente** (usuario del sistema en Business Manager)
+4. **Webhook en URL fija** (dominio producción, sin ngrok)
+5. **Cron en servidor** cada 5–10 min (`whatsapp:reminders` o endpoint interno)
+6. Pacientes con teléfono válido (validación ya en formularios)
+
+### Opcional después
+- Recordatorios para turnos fijos
+- Panel admin: estado del recordatorio (enviado / fallido)
+- Aviso al admin si no confirma X h antes del turno
