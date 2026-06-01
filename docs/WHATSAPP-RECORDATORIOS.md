@@ -89,6 +89,242 @@ sequenceDiagram
 
 Variables en `backend/.env` (ver `.env.example`).
 
+## Plantillas Meta
+
+| Nombre | Uso |
+|--------|-----|
+| **`recordatorio_turno_v3`** | **SHORT_NOTICE** — turno &lt;24 h al agendar, 6 variables |
+| **`recordatorio_turno_24h`** | **STANDARD_24H** — aviso 24 h antes, 6 variables (mismo mapeo que v3) |
+| `recordatorio_turno` | Versión simple (legacy), 6 variables |
+| `recordatorio_turno_v2` | Con dirección en {{7}} (7 variables) |
+
+**`.env` recomendado (producción con ambas plantillas):**
+
+```env
+WHATSAPP_REMINDER_TEMPLATE_NAME=recordatorio_turno_v3
+WHATSAPP_REMINDER_TEMPLATE_24H_NAME=recordatorio_turno_24h
+WHATSAPP_REMINDER_TEMPLATE_LANGUAGE=es_AR
+CLINIC_NAME="LogoCen"
+CLINIC_ADDRESS="Calle 520 N°11323"
+```
+
+Si `WHATSAPP_REMINDER_TEMPLATE_24H_NAME` está vacío, los turnos **STANDARD_24H** usan mensaje **interactivo** (funciona en prueba, no ideal en producción).
+
+### `recordatorio_turno_v3` (aprobada)
+
+**Cuerpo en Meta:**
+
+```
+Hola {{1}}, tu turno en *{{2}}* es en menos de 24hs. Necesitamos que nos confirmes si vas a asistir.
+
+📅 {{3}}
+🕐 {{4}}
+🧑‍⚕️ {{5}}
+📍 {{6}}
+
+Confirmá con el botón.
+```
+
+**Footer:** `Muchas Gracias` (fijo en la plantilla, no se envía desde el código)
+
+**Botón:** respuesta rápida **Sí, confirmo**
+
+**Mapeo en LogoCen:**
+
+| Var | Contenido |
+|-----|-----------|
+| {{1}} | Nombre del paciente |
+| {{2}} | `CLINIC_NAME` |
+| {{3}} | Fecha (es-AR) |
+| {{4}} | Hora de inicio (`startTime`, ej. `10:00`) |
+| {{5}} | Profesional |
+| {{6}} | Solo `CLINIC_ADDRESS` |
+
+**`.env`:**
+
+```env
+WHATSAPP_REMINDER_TEMPLATE_NAME=recordatorio_turno_v3
+WHATSAPP_REMINDER_TEMPLATE_LANGUAGE=es_AR
+CLINIC_NAME="LogoCen"
+CLINIC_ADDRESS="Calle 520 N°11323"
+```
+
+**Nota:** v3 solo se usa en **SHORT_NOTICE**. Para **STANDARD_24H** configurá `WHATSAPP_REMINDER_TEMPLATE_24H_NAME=recordatorio_turno_24h` (ver abajo).
+
+### `recordatorio_turno_24h` (crear en Meta)
+
+Plantilla para turnos agendados con **≥24 h** de anticipación (recordatorio 24 h antes). **No** incluir «menos de 24 hs».
+
+**Cuerpo en Meta:**
+
+```
+Hola {{1}}, te recordamos tu turno en *{{2}}*.
+
+📅 {{3}}
+🕐 {{4}}
+🧑‍⚕️ {{5}}
+📍 {{6}}
+
+Confirmá con el botón.
+```
+
+**Footer:** `Muchas Gracias`
+
+**Botón:** respuesta rápida **Sí, confirmo**
+
+**Mapeo:** igual que v3 (nombre, centro, fecha, hora inicio, profesional, `CLINIC_ADDRESS`).
+
+**Ejemplos al enviar a revisión:**
+
+| Var | Ejemplo |
+|-----|---------|
+| {{1}} | María |
+| {{2}} | LogoCen |
+| {{3}} | martes 20 de mayo de 2026 |
+| {{4}} | 10:00 |
+| {{5}} | Pérez, Juan |
+| {{6}} | Calle 520 N°11323 |
+
+Cuando esté **Activa**:
+
+```env
+WHATSAPP_REMINDER_TEMPLATE_24H_NAME=recordatorio_turno_24h
+```
+
+### Plantillas anteriores (referencia)
+
+En **WhatsApp Manager → Plantillas → Crear**:
+
+- **Nombre:** `recordatorio_turno_v2`
+- **Categoría:** Utilidad
+- **Idioma:** Español (Argentina) `es_AR`
+- **Tipo de variable:** Posicional
+- **Título:** vacío (no usar `{{}}`)
+
+**Cuerpo** (copiar tal cual — formato validado por Meta):
+
+```
+Hola {{1}}, recordatorio de turno en {{2}}.
+
+📍 Dirección: {{7}}
+
+📅 Fecha: {{3}}
+🕐 Horario: {{4}}
+Profesional: {{5}}
+Consultorio: {{6}}
+
+Confirmá con el botón.
+```
+
+**Ejemplos** (al pedir revisión, uno por variable):
+
+| Var | Ejemplo |
+|-----|---------|
+| {{1}} | Juan |
+| {{2}} | LogoCen |
+| {{3}} | martes 20 de mayo de 2026 |
+| {{4}} | 10:00 a 11:00 hs |
+| {{5}} | Pérez, Juan |
+| {{6}} | Consultorio 2 |
+| {{7}} | Calle 520 N°11323 |
+
+**Errores frecuentes en Meta:** línea que es solo `{{7}}`; repetir `{{2}}` en otra línea; emojis compuestos (👨‍⚕️); título con `{{}}`; variables tipo «Nombre» en lugar de **Posicional**.
+
+**Botón:** Respuesta rápida — texto **Sí, confirmo**
+
+Cuando esté **Activa**, en `.env`:
+
+```env
+WHATSAPP_REMINDER_TEMPLATE_NAME=recordatorio_turno_v2
+WHATSAPP_REMINDER_TEMPLATE_LANGUAGE=es_AR
+CLINIC_ADDRESS="Calle 520 N°11323"
+```
+
+Reiniciar backend. El código envía automáticamente la variable `{{7}}` desde `CLINIC_ADDRESS`.
+
+## Producción (checklist)
+
+Pasos en **Meta Business** y en el servidor de LogoCen antes de dejar de usar el modo prueba.
+
+### 1. App Meta en modo Live
+
+1. [developers.facebook.com](https://developers.facebook.com) → tu app → **App mode: Live**.
+2. Si Meta pide revisión de la app, completá permisos `whatsapp_business_messaging` y datos de la clínica.
+3. Verificá que el **WhatsApp Business Account** esté vinculado al número real de LogoCen.
+
+### 2. Número y token permanentes
+
+| Variable | Dónde obtenerla |
+|----------|-------------------|
+| `WHATSAPP_PHONE_NUMBER_ID` | WhatsApp → API Setup → Phone number ID (del número **real**, no +1 555…) |
+| `WHATSAPP_ACCESS_TOKEN` | **Usuario del sistema** en Business Manager → token permanente (no el temporal de 24 h de API Setup) |
+| `WHATSAPP_APP_SECRET` | App → Settings → Basic → App Secret |
+| `WHATSAPP_VERIFY_TOKEN` | Valor que elijas; debe coincidir con el webhook en Meta |
+
+Regenerá el token temporal solo para pruebas locales. En producción usá system user + permisos `whatsapp_business_messaging` y `whatsapp_business_management`.
+
+### 3. Webhook en URL fija
+
+En **WhatsApp → Configuration → Webhook**:
+
+| Campo | Valor |
+|-------|--------|
+| Callback URL | `https://api.tudominio.com/webhooks/whatsapp` (HTTPS, sin ngrok) |
+| Verify token | Mismo que `WHATSAPP_VERIFY_TOKEN` |
+| Campos | `messages` |
+
+Verificación:
+
+```bash
+cd backend && npm run whatsapp:check-webhook
+```
+
+El backend debe estar accesible desde internet en el puerto/host que use el reverse proxy (nginx, Railway, etc.).
+
+### 4. Plantillas activas
+
+- `recordatorio_turno_v3` → `WHATSAPP_REMINDER_TEMPLATE_NAME`
+- `recordatorio_turno_24h` → `WHATSAPP_REMINDER_TEMPLATE_24H_NAME` (crear y aprobar en WhatsApp Manager)
+
+Ambas en categoría **Utilidad**, idioma **es_AR**, variables **posicionales**.
+
+### 5. Variables `.env` de producción
+
+```env
+WHATSAPP_ENABLED=true
+WHATSAPP_PHONE_NUMBER_ID=<id del número real>
+WHATSAPP_ACCESS_TOKEN=<token permanente>
+WHATSAPP_VERIFY_TOKEN=<secreto webhook>
+WHATSAPP_APP_SECRET=<app secret>
+WHATSAPP_REMINDER_TEMPLATE_NAME=recordatorio_turno_v3
+WHATSAPP_REMINDER_TEMPLATE_24H_NAME=recordatorio_turno_24h
+WHATSAPP_REMINDER_TEMPLATE_LANGUAGE=es_AR
+CLINIC_NAME="LogoCen"
+CLINIC_ADDRESS="Calle 520 N°11323"
+CRON_SECRET=<secreto largo aleatorio>
+```
+
+### 6. Cron en servidor
+
+Cada **5–10 minutos** (systemd, cron, GitHub Actions, etc.):
+
+```bash
+cd backend && npm run whatsapp:reminders
+```
+
+O vía HTTP (recomendado si el backend ya está desplegado):
+
+```bash
+curl -X POST https://api.tudominio.com/api/internal/whatsapp/reminders/run \
+  -H "X-Cron-Secret: tu-secreto"
+```
+
+### 7. Prueba en producción
+
+1. Crear turno **Agendado** con teléfono válido (formato AR, ej. `54291154021589`).
+2. Turno &lt;24 h → debe llegar plantilla v3; tocar **Sí, confirmo** → agenda **CONFIRMADO**.
+3. Turno ≥24 h → debe programarse STANDARD_24H; al ejecutar cron ~24 h antes, plantilla `recordatorio_turno_24h` (o interactivo si aún no está aprobada).
+
 ## Ejecución del cron
 
 Cada **5–10 minutos** (recomendado):
@@ -125,10 +361,13 @@ cd backend && npm run whatsapp:check-webhook   # token + phone number ID
 
 La estructura soporta IDs `fixed:{seriesId}:{fecha}` en recordatorios y en la respuesta del botón. La programación automática al crear series fijas puede agregarse en una siguiente iteración (hoy: turnos puntuales al crear/editar cita).
 
-## Próximos pasos sugeridos
+## Roadmap
 
-1. Cargar dirección real en `CLINIC_ADDRESS`.
-2. Validar teléfonos al alta/edición de pacientes (formato AR).
-3. Panel admin: estado del recordatorio (enviado / fallido).
-4. Plantilla aprobada por Meta si se requiere mensaje iniciado fuera de ventana 24 h (políticas de conversación).
-5. Segundo canal opcional: aviso al admin si no confirma X h antes del turno.
+| Estado | Ítem |
+|--------|------|
+| Listo | Plantilla v3 + confirmación botón / CONFIRMO |
+| Listo | Agenda con chips AGENDADO / CONFIRMADO |
+| Listo | Código y docs para plantilla `recordatorio_turno_24h` |
+| Pendiente Meta | Crear y aprobar `recordatorio_turno_24h` en WhatsApp Manager |
+| Pendiente infra | App Live, número real, token permanente, webhook fijo, cron servidor |
+| Opcional | Recordatorios turnos fijos; panel admin estado recordatorio |

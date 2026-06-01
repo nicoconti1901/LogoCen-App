@@ -21,8 +21,10 @@ const envSchema = z.object({
   WHATSAPP_APP_SECRET: z.string().optional(),
   WHATSAPP_API_VERSION: z.string().default("v21.0"),
   WHATSAPP_SHORT_NOTICE_DELAY_MINUTES: z.coerce.number().int().min(1).max(120).default(5),
-  /** Plantilla aprobada en Meta (producción). Vacío = mensaje interactivo de sesión (pruebas). */
+  /** Plantilla SHORT_NOTICE (&lt;24 h al agendar), ej. recordatorio_turno_v3. Vacío = interactivo. */
   WHATSAPP_REMINDER_TEMPLATE_NAME: z.string().optional(),
+  /** Plantilla STANDARD_24H (24 h antes del turno), ej. recordatorio_turno_24h. Vacío = interactivo. */
+  WHATSAPP_REMINDER_TEMPLATE_24H_NAME: z.string().optional(),
   WHATSAPP_REMINDER_TEMPLATE_LANGUAGE: z.string().default("es_AR"),
   CLINIC_NAME: z.string().default("LogoCen"),
   CLINIC_ADDRESS: z
