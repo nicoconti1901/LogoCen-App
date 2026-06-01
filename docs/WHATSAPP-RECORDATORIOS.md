@@ -93,10 +93,52 @@ Variables en `backend/.env` (ver `.env.example`).
 
 | Nombre | Uso |
 |--------|-----|
-| `recordatorio_turno` | Versión simple (sin iconos), 6 variables |
-| `recordatorio_turno_v2` | **Recomendada** — con iconos y dirección, 7 variables |
+| **`recordatorio_turno_v3`** | **Activa en LogoCen** — iconos, turno &lt;24 h, 6 variables |
+| `recordatorio_turno` | Versión simple (legacy), 6 variables |
+| `recordatorio_turno_v2` | Con dirección en {{7}} (7 variables) |
 
-### Crear `recordatorio_turno_v2` (con iconos)
+### `recordatorio_turno_v3` (aprobada)
+
+**Cuerpo en Meta:**
+
+```
+Hola {{1}}, tu turno en *{{2}}* es en menos de 24hs. Necesitamos que nos confirmes si vas a asistir.
+
+📅 {{3}}
+🕐 {{4}}
+🧑‍⚕️ {{5}}
+📍 {{6}}
+
+Confirmá con el botón.
+```
+
+**Footer:** `Muchas Gracias` (fijo en la plantilla, no se envía desde el código)
+
+**Botón:** respuesta rápida **Sí, confirmo**
+
+**Mapeo en LogoCen:**
+
+| Var | Contenido |
+|-----|-----------|
+| {{1}} | Nombre del paciente |
+| {{2}} | `CLINIC_NAME` |
+| {{3}} | Fecha (es-AR) |
+| {{4}} | Hora de inicio (`startTime`, ej. `10:00`) |
+| {{5}} | Profesional |
+| {{6}} | Solo `CLINIC_ADDRESS` |
+
+**`.env`:**
+
+```env
+WHATSAPP_REMINDER_TEMPLATE_NAME=recordatorio_turno_v3
+WHATSAPP_REMINDER_TEMPLATE_LANGUAGE=es_AR
+CLINIC_NAME="LogoCen"
+CLINIC_ADDRESS="Calle 520 N°11323"
+```
+
+**Nota:** el texto «menos de 24 hs» encaja con recordatorios **SHORT_NOTICE** (&lt;24 h al agendar). Turnos con aviso **24 h antes** (`STANDARD_24H`) siguen usando **mensaje interactivo** (sin plantilla v3) hasta tener otra plantilla para ese caso.
+
+### Plantillas anteriores (referencia)
 
 En **WhatsApp Manager → Plantillas → Crear**:
 

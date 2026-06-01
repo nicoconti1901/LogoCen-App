@@ -60,26 +60,21 @@ export function buildConfirmButtonId(appointmentRef: string): string {
   return `${whatsappConfig.confirmButtonIdPrefix}_${safe}`;
 }
 
+/** Dirección para 📍 {{6}} en plantilla v3 (`CLINIC_ADDRESS`). */
+function formatTemplateAddressOnly(): string {
+  return whatsappConfig.clinicAddress.trim() || "Consultá la dirección con el centro";
+}
+
 /**
- * Plantilla Meta recomendada: `recordatorio_turno_v2` (Utilidad, es_AR, variables posicionales).
+ * Plantillas Meta (Utilidad, es_AR, variables posicionales).
  *
- * Cuerpo en WhatsApp Manager (Meta rechaza líneas que son SOLO una variable; no repetir {{2}}):
+ * `recordatorio_turno_v3` (aprobada):
+ * Hola {{1}}, tu turno en *{{2}}* es en menos de 24hs...
+ * 📅 {{3}} · 🕐 {{4}} · 🧑‍⚕️ {{5}} · 📍 {{6}}
+ * Footer fijo en Meta: «Muchas Gracias»
+ * 1=nombre, 2=centro, 3=fecha, 4=hora inicio, 5=profesional, 6=dirección (`CLINIC_ADDRESS`)
  *
- * Hola {{1}}, recordatorio de turno en {{2}}.
- *
- * 📍 Dirección: {{7}}
- *
- * 📅 Fecha: {{3}}
- * 🕐 Horario: {{4}}
- * Profesional: {{5}}
- * Consultorio: {{6}}
- *
- * Confirmá con el botón.
- *
- * Botón: respuesta rápida «Sí, confirmo» (payload dinámico al enviar).
- *
- * Mapeo: 1=nombre, 2=centro, 3=fecha, 4=horario, 5=profesional, 6=consultorio, 7=dirección.
- * Ejemplos al enviar a revisión: Juan | LogoCen | martes 20 de mayo | 10:00 a 11:00 hs | Pérez, Juan | Consultorio 2 | Calle 520 N°11323
+ * Solo aplica a turnos SHORT_NOTICE (<24 h); STANDARD_24H usa mensaje interactivo si v3 está configurada.
  */
 export function buildReminderTemplateComponents(
   ctx: ReminderMessageContext,
@@ -90,19 +85,38 @@ export function buildReminderTemplateComponents(
   const nombre = ctx.patientFirstName.trim() || "paciente";
   const sala = ctx.consultorio.trim() || "consultorio asignado";
   const direccion = whatsappConfig.clinicAddress.trim() || "Consultá la dirección con el centro";
+  const templateName = whatsappConfig.reminderTemplateName;
 
-  const bodyParameters = [
-    { type: "text", text: nombre },
-    { type: "text", text: whatsappConfig.clinicName },
-    { type: "text", text: fecha },
-    { type: "text", text: horario },
-    { type: "text", text: ctx.specialistName },
-    { type: "text", text: sala },
-  ];
+  let bodyParameters: Array<{ type: "text"; text: string }>;
 
-  /** `recordatorio_turno_v2` incluye {{7}} dirección; la v1 solo usa {{1}}–{{6}}. */
-  if (whatsappConfig.reminderTemplateName === "recordatorio_turno_v2") {
-    bodyParameters.push({ type: "text", text: direccion });
+  if (templateName === "recordatorio_turno_v3") {
+    bodyParameters = [
+      { type: "text", text: nombre },
+      { type: "text", text: whatsappConfig.clinicName },
+      { type: "text", text: fecha },
+      { type: "text", text: ctx.startTime },
+      { type: "text", text: ctx.specialistName },
+      { type: "text", text: formatTemplateAddressOnly() },
+    ];
+  } else if (templateName === "recordatorio_turno_v2") {
+    bodyParameters = [
+      { type: "text", text: nombre },
+      { type: "text", text: whatsappConfig.clinicName },
+      { type: "text", text: fecha },
+      { type: "text", text: horario },
+      { type: "text", text: ctx.specialistName },
+      { type: "text", text: sala },
+      { type: "text", text: direccion },
+    ];
+  } else {
+    bodyParameters = [
+      { type: "text", text: nombre },
+      { type: "text", text: whatsappConfig.clinicName },
+      { type: "text", text: fecha },
+      { type: "text", text: horario },
+      { type: "text", text: ctx.specialistName },
+      { type: "text", text: sala },
+    ];
   }
 
   return [

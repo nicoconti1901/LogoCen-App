@@ -1,3 +1,4 @@
+import { WhatsappReminderKind } from "@prisma/client";
 import { whatsappConfig, isWhatsappConfigured } from "../config/whatsapp.js";
 import {
   CONFIRM_BUTTON_TITLE,
@@ -28,7 +29,14 @@ export async function sendConfirmationReminderMessage(
 
   const url = `https://graph.facebook.com/${whatsappConfig.apiVersion}/${whatsappConfig.phoneNumberId}/messages`;
 
-  const useTemplate = Boolean(whatsappConfig.reminderTemplateName && templateContext);
+  /** v3 dice «menos de 24 hs»; solo plantilla en SHORT_NOTICE. Resto: interactivo o otra plantilla. */
+  const templateName = whatsappConfig.reminderTemplateName;
+  const useTemplate =
+    Boolean(templateName && templateContext) &&
+    !(
+      templateName === "recordatorio_turno_v3" &&
+      templateContext!.kind !== WhatsappReminderKind.SHORT_NOTICE
+    );
 
   const payload = useTemplate
     ? {
