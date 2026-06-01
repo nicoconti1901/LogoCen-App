@@ -8,6 +8,24 @@ import {
 } from "./messageBuilder.js";
 import { formatPhoneForMetaWhatsapp } from "./phone.js";
 
+/** v3 = SHORT_NOTICE; recordatorio_turno_24h = STANDARD_24H; legacy v1/v2 aplican a ambos si no hay 24h. */
+export function resolveReminderTemplateName(kind: WhatsappReminderKind): string | null {
+  if (kind === WhatsappReminderKind.SHORT_NOTICE) {
+    return whatsappConfig.reminderTemplateName;
+  }
+
+  if (whatsappConfig.reminderTemplate24hName) {
+    return whatsappConfig.reminderTemplate24hName;
+  }
+
+  const primary = whatsappConfig.reminderTemplateName;
+  if (primary && primary !== "recordatorio_turno_v3") {
+    return primary;
+  }
+
+  return null;
+}
+
 export type SendInteractiveResult =
   | { ok: true; messageId: string }
   | { ok: false; error: string };
@@ -29,14 +47,10 @@ export async function sendConfirmationReminderMessage(
 
   const url = `https://graph.facebook.com/${whatsappConfig.apiVersion}/${whatsappConfig.phoneNumberId}/messages`;
 
-  /** v3 dice «menos de 24 hs»; solo plantilla en SHORT_NOTICE. Resto: interactivo o otra plantilla. */
-  const templateName = whatsappConfig.reminderTemplateName;
-  const useTemplate =
-    Boolean(templateName && templateContext) &&
-    !(
-      templateName === "recordatorio_turno_v3" &&
-      templateContext!.kind !== WhatsappReminderKind.SHORT_NOTICE
-    );
+  const templateName = templateContext
+    ? resolveReminderTemplateName(templateContext.kind)
+    : null;
+  const useTemplate = Boolean(templateName && templateContext);
 
   const payload = useTemplate
     ? {
@@ -45,9 +59,13 @@ export async function sendConfirmationReminderMessage(
         to,
         type: "template",
         template: {
-          name: whatsappConfig.reminderTemplateName,
+          name: templateName,
           language: { code: whatsappConfig.reminderTemplateLanguage },
-          components: buildReminderTemplateComponents(templateContext!, appointmentRef),
+          components: buildReminderTemplateComponents(
+            templateContext!,
+            appointmentRef,
+            templateName!
+          ),
         },
       }
     : {

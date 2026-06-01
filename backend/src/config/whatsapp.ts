@@ -11,8 +11,10 @@ export const whatsappConfig = {
   clinicAddress: env.CLINIC_ADDRESS,
   /** Minutos de espera tras agendar un turno corto antes de enviar la solicitud de confirmación. */
   shortNoticeDelayMinutes: env.WHATSAPP_SHORT_NOTICE_DELAY_MINUTES,
-  /** Plantilla Meta aprobada (UTILITY). Si está vacía, se usa mensaje interactivo (solo dev / ventana 24 h). */
+  /** Plantilla Meta para SHORT_NOTICE (&lt;24 h al agendar). */
   reminderTemplateName: env.WHATSAPP_REMINDER_TEMPLATE_NAME?.trim() || null,
+  /** Plantilla Meta para STANDARD_24H (24 h antes). */
+  reminderTemplate24hName: env.WHATSAPP_REMINDER_TEMPLATE_24H_NAME?.trim() || null,
   reminderTemplateLanguage: env.WHATSAPP_REMINDER_TEMPLATE_LANGUAGE,
   /** ID del botón de confirmación (máx. 256 caracteres en Meta). */
   confirmButtonIdPrefix: "cfm",

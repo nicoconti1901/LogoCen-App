@@ -60,44 +60,48 @@ export function buildConfirmButtonId(appointmentRef: string): string {
   return `${whatsappConfig.confirmButtonIdPrefix}_${safe}`;
 }
 
-/** Dirección para 📍 {{6}} en plantilla v3 (`CLINIC_ADDRESS`). */
+/** Dirección para 📍 {{6}} en plantillas v3 / 24h (`CLINIC_ADDRESS`). */
 function formatTemplateAddressOnly(): string {
   return whatsappConfig.clinicAddress.trim() || "Consultá la dirección con el centro";
+}
+
+function buildSixVarIconReminderParameters(
+  ctx: ReminderMessageContext,
+  fecha: string,
+  nombre: string
+): Array<{ type: "text"; text: string }> {
+  return [
+    { type: "text", text: nombre },
+    { type: "text", text: whatsappConfig.clinicName },
+    { type: "text", text: fecha },
+    { type: "text", text: ctx.startTime },
+    { type: "text", text: ctx.specialistName },
+    { type: "text", text: formatTemplateAddressOnly() },
+  ];
 }
 
 /**
  * Plantillas Meta (Utilidad, es_AR, variables posicionales).
  *
- * `recordatorio_turno_v3` (aprobada):
- * Hola {{1}}, tu turno en *{{2}}* es en menos de 24hs...
- * 📅 {{3}} · 🕐 {{4}} · 🧑‍⚕️ {{5}} · 📍 {{6}}
- * Footer fijo en Meta: «Muchas Gracias»
+ * `recordatorio_turno_v3` (SHORT_NOTICE): «menos de 24hs» — 6 vars, footer fijo en Meta.
+ * `recordatorio_turno_24h` (STANDARD_24H): recordatorio 24 h antes — mismas 6 vars.
  * 1=nombre, 2=centro, 3=fecha, 4=hora inicio, 5=profesional, 6=dirección (`CLINIC_ADDRESS`)
- *
- * Solo aplica a turnos SHORT_NOTICE (<24 h); STANDARD_24H usa mensaje interactivo si v3 está configurada.
  */
 export function buildReminderTemplateComponents(
   ctx: ReminderMessageContext,
-  appointmentRef: string
+  appointmentRef: string,
+  templateName: string
 ): Array<Record<string, unknown>> {
   const fecha = formatDateEs(ctx.appointmentDate);
   const horario = formatTimeRange(ctx.startTime, ctx.endTime);
   const nombre = ctx.patientFirstName.trim() || "paciente";
   const sala = ctx.consultorio.trim() || "consultorio asignado";
   const direccion = whatsappConfig.clinicAddress.trim() || "Consultá la dirección con el centro";
-  const templateName = whatsappConfig.reminderTemplateName;
 
   let bodyParameters: Array<{ type: "text"; text: string }>;
 
-  if (templateName === "recordatorio_turno_v3") {
-    bodyParameters = [
-      { type: "text", text: nombre },
-      { type: "text", text: whatsappConfig.clinicName },
-      { type: "text", text: fecha },
-      { type: "text", text: ctx.startTime },
-      { type: "text", text: ctx.specialistName },
-      { type: "text", text: formatTemplateAddressOnly() },
-    ];
+  if (templateName === "recordatorio_turno_v3" || templateName === "recordatorio_turno_24h") {
+    bodyParameters = buildSixVarIconReminderParameters(ctx, fecha, nombre);
   } else if (templateName === "recordatorio_turno_v2") {
     bodyParameters = [
       { type: "text", text: nombre },
