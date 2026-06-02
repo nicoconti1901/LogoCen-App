@@ -30,6 +30,8 @@ const envSchema = z.object({
   CLINIC_ADDRESS: z
     .string()
     .default("Av. Corrientes 1234, CABA (dirección provisoria — actualizar en configuración)"),
+  /** WhatsApp/teléfono del centro para consultas (no el número de la API). Se envía como enlace wa.me en la plantilla 24 h. */
+  CLINIC_CONTACT_PHONE: z.string().optional(),
 });
 
 export const env = envSchema.parse(process.env);

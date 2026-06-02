@@ -91,7 +91,7 @@ Variables en `backend/.env` (ver `.env.example`).
 
 | Nombre | Uso |
 |--------|-----|
-| **`recordatorio_turno_24h`** | **Única en uso** — aviso 24 h antes del turno, 6 variables |
+| **`recordatorio_turno_24h`** | **Única en uso** — aviso 24 h antes, 7 variables (incluye enlace al WhatsApp del centro) |
 | `recordatorio_turno_v3` | Legacy (corto plazo); ya no se programa desde LogoCen |
 | `recordatorio_turno` | Versión simple (legacy), 6 variables |
 | `recordatorio_turno_v2` | Con dirección en {{7}} (7 variables) |
@@ -104,7 +104,10 @@ WHATSAPP_REMINDER_TEMPLATE_24H_NAME=recordatorio_turno_24h
 WHATSAPP_REMINDER_TEMPLATE_LANGUAGE=es_AR
 CLINIC_NAME="LogoCen"
 CLINIC_ADDRESS="Calle 520 N°11323"
+CLINIC_CONTACT_PHONE="11 4154-0215"
 ```
+
+`CLINIC_CONTACT_PHONE` es el **WhatsApp o teléfono actual del cliente** (atención humana). El número de la API solo envía recordatorios; los pacientes usan el enlace `wa.me` de esta variable para consultas.
 
 Si `WHATSAPP_REMINDER_TEMPLATE_24H_NAME` está vacío, los turnos **STANDARD_24H** usan mensaje **interactivo** (funciona en prueba, no ideal en producción).
 
@@ -149,11 +152,23 @@ CLINIC_ADDRESS="Calle 520 N°11323"
 
 **Nota:** v3 solo se usa en **SHORT_NOTICE**. Para **STANDARD_24H** configurá `WHATSAPP_REMINDER_TEMPLATE_24H_NAME=recordatorio_turno_24h` (ver abajo).
 
-### `recordatorio_turno_24h` (crear en Meta)
+### `recordatorio_turno_24h` (crear en la cuenta nueva de Meta)
 
-Plantilla para turnos agendados con **≥24 h** de anticipación (recordatorio 24 h antes). **No** incluir «menos de 24 hs».
+Recordatorio **24 h antes** del turno (turnos agendados con ≥48 h de anticipación en LogoCen). **No** incluir «menos de 24 hs».
 
-**Cuerpo en Meta:**
+El número de la **API** es solo para recordatorios automáticos. En la plantilla incluí el **WhatsApp del centro** (`CLINIC_CONTACT_PHONE`) para que el paciente pueda escribir al lugar.
+
+**Configuración en WhatsApp Manager:**
+
+| Campo | Valor |
+|--------|--------|
+| Nombre | `recordatorio_turno_24h` |
+| Categoría | Utilidad |
+| Idioma | Español (Argentina) `es_AR` |
+| Variables | Posicional |
+| Encabezado | Ninguno |
+
+**Cuerpo** (copiar tal cual; 7 variables):
 
 ```
 Hola {{1}}, te recordamos tu turno en *{{2}}*.
@@ -163,16 +178,30 @@ Hola {{1}}, te recordamos tu turno en *{{2}}*.
 🧑‍⚕️ {{5}}
 📍 {{6}}
 
-Confirmá con el botón.
+Este chat es solo para recordatorios automáticos. Para consultas, escribinos acá: {{7}}
+
+Confirmá tu asistencia con el botón de abajo.
 ```
 
 **Footer:** `Muchas Gracias`
 
-**Botón:** respuesta rápida **Sí, confirmo**
+**Botón 1:** Respuesta rápida — **Sí, confirmo** (confirmación del turno en LogoCen)
 
-**Mapeo:** igual que v3 (nombre, centro, fecha, hora inicio, profesional, `CLINIC_ADDRESS`).
+**Botón 2 (opcional en Meta):** Tipo **Llamar por teléfono** — número fijo del centro (el mismo que `CLINIC_CONTACT_PHONE`, con código país, ej. `+54911141540215`). Útil si preferís un botón de llamada además del enlace `wa.me` en {{7}}.
 
-**Ejemplos al enviar a revisión:**
+**Mapeo en LogoCen:**
+
+| Var | Contenido |
+|-----|-----------|
+| {{1}} | Nombre del paciente |
+| {{2}} | `CLINIC_NAME` |
+| {{3}} | Fecha (es-AR) |
+| {{4}} | Hora de inicio |
+| {{5}} | Profesional |
+| {{6}} | `CLINIC_ADDRESS` |
+| {{7}} | Enlace `https://wa.me/549...` generado desde `CLINIC_CONTACT_PHONE` |
+
+**Ejemplos al enviar a revisión (Meta exige uno por variable):**
 
 | Var | Ejemplo |
 |-----|---------|
@@ -182,12 +211,16 @@ Confirmá con el botón.
 | {{4}} | 10:00 |
 | {{5}} | Pérez, Juan |
 | {{6}} | Calle 520 N°11323 |
+| {{7}} | `https://wa.me/54911141540215` |
 
-Cuando esté **Activa**:
+**`.env` cuando esté Activa:**
 
 ```env
 WHATSAPP_REMINDER_TEMPLATE_24H_NAME=recordatorio_turno_24h
+CLINIC_CONTACT_PHONE="11 4154-0215"
 ```
+
+**Errores frecuentes en Meta:** una línea que sea solo `{{7}}`; URL de ejemplo distinta al formato real; emojis compuestos raros en el cuerpo.
 
 ### Plantillas anteriores (referencia)
 
