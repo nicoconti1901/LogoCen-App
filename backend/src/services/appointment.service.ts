@@ -354,7 +354,7 @@ export async function createAppointment(
     status: created.status,
   }).catch(() => undefined);
 
-  return created;
+  return (await appointmentRepository.findById(created.id)) ?? created;
 }
 
 export async function updateAppointment(
@@ -522,7 +522,7 @@ export async function updateAppointment(
     status: updated.status,
   }).catch(() => undefined);
 
-  return updated;
+  return (await appointmentRepository.findById(updated.id)) ?? updated;
 }
 
 export async function deleteAppointment(id: string, role: Role, userSpecialistId: string | null) {

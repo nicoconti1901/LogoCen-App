@@ -4,7 +4,7 @@ import {
   Role,
   WhatsappReminderKind,
 } from "@prisma/client";
-import { isWhatsappConfigured, whatsappConfig } from "../config/whatsapp.js";
+import { isWhatsappConfigured } from "../config/whatsapp.js";
 import { appointmentRepository } from "../repositories/appointment.repository.js";
 import { fixedAppointmentOccurrenceRepository } from "../repositories/fixedAppointmentOccurrence.repository.js";
 import { fixedAppointmentSeriesRepository } from "../repositories/fixedAppointmentSeries.repository.js";
@@ -16,7 +16,11 @@ import { parseFixedAppointmentId } from "../utils/fixedAppointmentOccurrences.js
 import { buildReminderBody, isWhatsappConfirmText } from "../whatsapp/messageBuilder.js";
 import { sendConfirmationReminderMessage } from "../whatsapp/metaClient.js";
 import { normalizePhoneToE164, whatsappPhonesMatch } from "../whatsapp/phone.js";
-import { appointmentStartInstant, planWhatsappReminder } from "../whatsapp/reminderSchedule.js";
+import {
+  appointmentStartInstant,
+  planWhatsappReminder,
+  shouldAutoConfirmWithoutWhatsapp,
+} from "../whatsapp/reminderSchedule.js";
 import { upsertFixedAppointmentOccurrence } from "./fixedAppointmentSeries.service.js";
 
 export type AppointmentReminderTarget = {
@@ -30,7 +34,7 @@ export type AppointmentReminderTarget = {
   status: AppointmentStatus;
 };
 
-/** Programa o reprograma el recordatorio según fecha/hora del turno. */
+/** Programa recordatorio 24 h antes, o confirma sin WhatsApp si el turno es en menos de 48 h. */
 export async function syncWhatsappReminderForAppointment(
   target: AppointmentReminderTarget
 ): Promise<void> {
@@ -38,15 +42,17 @@ export async function syncWhatsappReminderForAppointment(
 
   if (target.status !== AppointmentStatus.RESERVED) return;
 
+  const now = new Date();
+
+  if (shouldAutoConfirmWithoutWhatsapp(target.appointmentDate, target.startTime, now)) {
+    await autoConfirmAppointmentWithoutWhatsapp(target);
+    return;
+  }
+
   const patient = await patientRepository.findById(target.patientId);
   if (!patient?.phone?.trim()) return;
 
-  const plan = planWhatsappReminder(
-    target.appointmentDate,
-    target.startTime,
-    new Date(),
-    whatsappConfig.shortNoticeDelayMinutes
-  );
+  const plan = planWhatsappReminder(target.appointmentDate, target.startTime, now);
   if (!plan) return;
 
   await whatsappReminderRepository.upsertScheduled({
@@ -54,6 +60,53 @@ export async function syncWhatsappReminderForAppointment(
     patientId: target.patientId,
     kind: plan.kind,
     scheduledSendAt: plan.scheduledSendAt,
+  });
+}
+
+/** Menos de 48 h al turno: sin mensaje; pasa a CONFIRMADO (origen manual / carga en recepción). */
+async function autoConfirmAppointmentWithoutWhatsapp(
+  target: AppointmentReminderTarget
+): Promise<void> {
+  const fixed = parseFixedAppointmentId(target.appointmentRef);
+  if (fixed) {
+    const occurrenceDate = parseDateOnlyISO(fixed.dateIso);
+    const existing = await fixedAppointmentOccurrenceRepository.findBySeriesAndDate(
+      fixed.seriesId,
+      occurrenceDate
+    );
+    if ((existing?.status ?? AppointmentStatus.RESERVED) !== AppointmentStatus.RESERVED) return;
+
+    const patch = syncPatientConfirmationForStatusChange(
+      AppointmentStatus.CONFIRMADO,
+      existing?.status ?? AppointmentStatus.RESERVED,
+      existing?.patientConfirmedAt ?? null,
+      existing?.patientConfirmationSource ?? null,
+      PatientConfirmationSource.MANUAL
+    );
+    await upsertFixedAppointmentOccurrence(
+      fixed.seriesId,
+      fixed.dateIso,
+      { status: AppointmentStatus.CONFIRMADO, ...patch },
+      Role.ADMIN,
+      null
+    );
+    return;
+  }
+
+  const appt = await appointmentRepository.findById(target.appointmentRef);
+  if (!appt || appt.status !== AppointmentStatus.RESERVED) return;
+
+  const patch = syncPatientConfirmationForStatusChange(
+    AppointmentStatus.CONFIRMADO,
+    appt.status,
+    appt.patientConfirmedAt,
+    appt.patientConfirmationSource,
+    PatientConfirmationSource.MANUAL
+  );
+
+  await appointmentRepository.update(target.appointmentRef, {
+    status: AppointmentStatus.CONFIRMADO,
+    ...patch,
   });
 }
 

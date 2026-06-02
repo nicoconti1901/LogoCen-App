@@ -8,9 +8,9 @@ Enviar recordatorios automáticos a pacientes con turno en estado **Agendado** (
 
 | Situación | Comportamiento |
 |-----------|----------------|
-| Turno a **≥ 24 h** | Mensaje programado para **24 h antes** del inicio (`STANDARD_24H`). |
-| Turno a **< 24 h** | **Confirmación inmediata** (`SHORT_NOTICE`): se envía unos minutos después de agendar (por defecto 5 min, configurable). Texto aclara que el turno es pronto y pide confirmar asistencia. |
-| Sin teléfono del paciente | No se programa envío. |
+| Turno a **≥ 48 h** del inicio | WhatsApp programado para **24 h antes** del turno (`STANDARD_24H`). El paciente confirma con el botón. |
+| Turno a **< 48 h** del inicio | **Sin WhatsApp.** Al crear o editar, el turno pasa directo a **Confirmado** (`CONFIRMADO`, origen manual). |
+| Sin teléfono del paciente (≥ 48 h) | No se programa envío; el turno sigue **Agendado** hasta confirmación manual. |
 | Turno ya pasó o en curso | No se programa / se omite al procesar. |
 | Estado distinto de Agendado | Se cancelan recordatorios pendientes. |
 
@@ -45,13 +45,7 @@ Tocá el botón para confirmar tu asistencia.
 [ Sí, confirmo ]
 ```
 
-Ejemplo (turno con menos de 24 h):
-
-```
-Hola María, tu turno en *LogoCen* es en menos de 24 horas.
-Necesitamos que confirmes si vas a asistir.
-...
-```
+Los turnos con **menos de 48 h** de anticipación **no reciben** este mensaje; quedan confirmados en la agenda sin pasar por WhatsApp.
 
 ## Flujo técnico
 
@@ -65,7 +59,11 @@ sequenceDiagram
   participant Paciente
 
   Admin->>API: Crear/editar turno (RESERVED)
-  API->>DB: WhatsappReminder (SCHEDULED)
+  alt Menos de 48 h al turno
+    API->>DB: status CONFIRMADO (sin WhatsApp)
+  else 48 h o más
+    API->>DB: WhatsappReminder (SCHEDULED, envío 24 h antes)
+  end
 
   Cron->>API: processDueReminders / script
   API->>Meta: POST mensaje interactivo
@@ -93,8 +91,8 @@ Variables en `backend/.env` (ver `.env.example`).
 
 | Nombre | Uso |
 |--------|-----|
-| **`recordatorio_turno_v3`** | **SHORT_NOTICE** — turno &lt;24 h al agendar, 6 variables |
-| **`recordatorio_turno_24h`** | **STANDARD_24H** — aviso 24 h antes, 6 variables (mismo mapeo que v3) |
+| **`recordatorio_turno_24h`** | **Única en uso** — aviso 24 h antes del turno, 6 variables |
+| `recordatorio_turno_v3` | Legacy (corto plazo); ya no se programa desde LogoCen |
 | `recordatorio_turno` | Versión simple (legacy), 6 variables |
 | `recordatorio_turno_v2` | Con dirección en {{7}} (7 variables) |
 
@@ -350,7 +348,7 @@ cd backend && npm run whatsapp:check-webhook   # token + phone number ID
 | Ruta | Rol |
 |------|-----|
 | `backend/prisma/schema.prisma` | Modelo `WhatsappReminder` |
-| `backend/src/whatsapp/reminderSchedule.ts` | Lógica 24 h vs corto plazo |
+| `backend/src/whatsapp/reminderSchedule.ts` | ≥48 h → envío 24 h antes; &lt;48 h → sin WhatsApp |
 | `backend/src/whatsapp/messageBuilder.ts` | Texto y ID del botón |
 | `backend/src/whatsapp/metaClient.ts` | Envío a Graph API |
 | `backend/src/services/whatsappReminder.service.ts` | Programar, enviar, confirmar |

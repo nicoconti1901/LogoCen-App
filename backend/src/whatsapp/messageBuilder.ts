@@ -33,10 +33,7 @@ export function buildReminderBody(ctx: ReminderMessageContext): string {
   const especialista = ctx.specialistName;
   const sala = ctx.consultorio.trim() || "consultorio asignado";
 
-  const intro =
-    ctx.kind === WhatsappReminderKind.SHORT_NOTICE
-      ? `Hola ${nombre}, tu turno en *${lugar}* es en menos de 24 horas. Necesitamos que confirmes si vas a asistir.`
-      : `Hola ${nombre}, te recordamos tu turno en *${lugar}*:`;
+  const intro = `Hola ${nombre}, te recordamos tu turno en *${lugar}*:`;
 
   return [
     intro,
