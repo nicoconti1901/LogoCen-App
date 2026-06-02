@@ -1,5 +1,6 @@
 import { WhatsappReminderKind } from "@prisma/client";
 import { whatsappConfig } from "../config/whatsapp.js";
+import { buildClinicWaMeLink, formatClinicContactDisplay } from "./phone.js";
 
 export type ReminderMessageContext = {
   patientFirstName: string;
@@ -46,9 +47,25 @@ export function buildReminderBody(ctx: ReminderMessageContext): string {
     `👨‍⚕️ ${especialista}`,
     `🏥 ${sala}`,
     "",
+    contactLineForReminder(),
+    "",
     "Tocá el botón para confirmar tu asistencia.",
     "Si no ves el botón, respondé *CONFIRMO* a este chat.",
-  ].join("\n");
+  ]
+    .filter((line) => line !== "")
+    .join("\n");
+}
+
+function contactLineForReminder(): string {
+  const link = buildClinicWaMeLink(whatsappConfig.clinicContactPhone);
+  if (link) {
+    return `Este chat es solo para recordatorios. Consultas: ${link}`;
+  }
+  const display = formatClinicContactDisplay(whatsappConfig.clinicContactPhone);
+  if (display) {
+    return `Este chat es solo para recordatorios. Consultas: ${display}`;
+  }
+  return "";
 }
 
 /** ID del botón interactivo (Meta, máx. 256 caracteres). */
@@ -60,6 +77,23 @@ export function buildConfirmButtonId(appointmentRef: string): string {
 /** Dirección para 📍 {{6}} en plantillas v3 / 24h (`CLINIC_ADDRESS`). */
 function formatTemplateAddressOnly(): string {
   return whatsappConfig.clinicAddress.trim() || "Consultá la dirección con el centro";
+}
+
+/** {{7}} en plantilla 24 h: enlace wa.me al WhatsApp del centro (`CLINIC_CONTACT_PHONE`). */
+export function formatTemplateClinicContactLink(): string {
+  const link = buildClinicWaMeLink(whatsappConfig.clinicContactPhone);
+  if (link) return link;
+  const display = formatClinicContactDisplay(whatsappConfig.clinicContactPhone);
+  if (display) return display;
+  return "Consultá el teléfono del centro en la recepción";
+}
+
+function buildSevenVar24hReminderParameters(
+  ctx: ReminderMessageContext,
+  fecha: string,
+  nombre: string
+): Array<{ type: "text"; text: string }> {
+  return [...buildSixVarIconReminderParameters(ctx, fecha, nombre), { type: "text", text: formatTemplateClinicContactLink() }];
 }
 
 function buildSixVarIconReminderParameters(
@@ -81,8 +115,8 @@ function buildSixVarIconReminderParameters(
  * Plantillas Meta (Utilidad, es_AR, variables posicionales).
  *
  * `recordatorio_turno_v3` (SHORT_NOTICE): «menos de 24hs» — 6 vars, footer fijo en Meta.
- * `recordatorio_turno_24h` (STANDARD_24H): recordatorio 24 h antes — mismas 6 vars.
- * 1=nombre, 2=centro, 3=fecha, 4=hora inicio, 5=profesional, 6=dirección (`CLINIC_ADDRESS`)
+ * `recordatorio_turno_24h` (STANDARD_24H): 7 vars; {{7}} = enlace wa.me (`CLINIC_CONTACT_PHONE`).
+ * 1=nombre, 2=centro, 3=fecha, 4=hora inicio, 5=profesional, 6=dirección, 7=contacto centro
  */
 export function buildReminderTemplateComponents(
   ctx: ReminderMessageContext,
@@ -97,7 +131,9 @@ export function buildReminderTemplateComponents(
 
   let bodyParameters: Array<{ type: "text"; text: string }>;
 
-  if (templateName === "recordatorio_turno_v3" || templateName === "recordatorio_turno_24h") {
+  if (templateName === "recordatorio_turno_24h") {
+    bodyParameters = buildSevenVar24hReminderParameters(ctx, fecha, nombre);
+  } else if (templateName === "recordatorio_turno_v3") {
     bodyParameters = buildSixVarIconReminderParameters(ctx, fecha, nombre);
   } else if (templateName === "recordatorio_turno_v2") {
     bodyParameters = [

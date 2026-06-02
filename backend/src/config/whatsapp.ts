@@ -9,6 +9,8 @@ export const whatsappConfig = {
   apiVersion: env.WHATSAPP_API_VERSION,
   clinicName: env.CLINIC_NAME,
   clinicAddress: env.CLINIC_ADDRESS,
+  /** Teléfono/WhatsApp humano del centro (consultas); distinto del número API de recordatorios. */
+  clinicContactPhone: env.CLINIC_CONTACT_PHONE?.trim() || null,
   /** Minutos de espera tras agendar un turno corto antes de enviar la solicitud de confirmación. */
   shortNoticeDelayMinutes: env.WHATSAPP_SHORT_NOTICE_DELAY_MINUTES,
   /** Plantilla Meta para SHORT_NOTICE (&lt;24 h al agendar). */

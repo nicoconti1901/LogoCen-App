@@ -96,3 +96,26 @@ export function whatsappPhonesMatch(
   }
   return false;
 }
+
+/** Enlace wa.me al WhatsApp del centro (consultas), sin el +. */
+export function buildClinicWaMeLink(raw: string | null | undefined): string | null {
+  const e164 = normalizePhoneToE164(raw);
+  if (!e164) return null;
+  const digits = e164.replace(/\D/g, "");
+  if (!digits) return null;
+  return `https://wa.me/${digits}`;
+}
+
+/** Texto visible del contacto del centro para mensajes y plantillas. */
+export function formatClinicContactDisplay(raw: string | null | undefined): string | null {
+  const e164 = normalizePhoneToE164(raw);
+  if (!e164) return raw?.trim() || null;
+  const digits = e164.replace(/\D/g, "");
+  if (digits.startsWith("549") && digits.length >= 12) {
+    const local = digits.slice(3);
+    const area = local.slice(0, 2);
+    const rest = local.slice(2);
+    return `+54 9 ${area} ${rest.slice(0, 4)}-${rest.slice(4)}`;
+  }
+  return e164;
+}
