@@ -111,12 +111,17 @@ function buildSixVarIconReminderParameters(
   ];
 }
 
+/** Plantilla 24 h aprobada (6 variables, sin contacto). */
+export const TEMPLATE_REMINDER_24H = "recordatorio_turno_24h";
+
+/** Plantilla futura con enlace wa.me del centro (7 variables). Crear en Meta cuando aprueben. */
+export const TEMPLATE_REMINDER_24H_CONTACT = "recordatorio_turno_24h_contact";
+
 /**
  * Plantillas Meta (Utilidad, es_AR, variables posicionales).
  *
- * `recordatorio_turno_v3` (SHORT_NOTICE): «menos de 24hs» — 6 vars, footer fijo en Meta.
- * `recordatorio_turno_24h` (STANDARD_24H): 7 vars; {{7}} = enlace wa.me (`CLINIC_CONTACT_PHONE`).
- * 1=nombre, 2=centro, 3=fecha, 4=hora inicio, 5=profesional, 6=dirección, 7=contacto centro
+ * `recordatorio_turno_24h`: 6 vars (nombre, centro, fecha, hora, profesional, dirección).
+ * `recordatorio_turno_24h_contact`: 7 vars; {{7}} = wa.me (`CLINIC_CONTACT_PHONE`).
  */
 export function buildReminderTemplateComponents(
   ctx: ReminderMessageContext,
@@ -131,9 +136,12 @@ export function buildReminderTemplateComponents(
 
   let bodyParameters: Array<{ type: "text"; text: string }>;
 
-  if (templateName === "recordatorio_turno_24h") {
+  if (templateName === TEMPLATE_REMINDER_24H_CONTACT) {
     bodyParameters = buildSevenVar24hReminderParameters(ctx, fecha, nombre);
-  } else if (templateName === "recordatorio_turno_v3") {
+  } else if (
+    templateName === TEMPLATE_REMINDER_24H ||
+    templateName === "recordatorio_turno_v3"
+  ) {
     bodyParameters = buildSixVarIconReminderParameters(ctx, fecha, nombre);
   } else if (templateName === "recordatorio_turno_v2") {
     bodyParameters = [
