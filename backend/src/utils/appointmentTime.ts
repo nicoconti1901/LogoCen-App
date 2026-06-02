@@ -59,6 +59,16 @@ export function parseDateOnlyISO(s: string): Date {
   return toDateOnly(d);
 }
 
+/** Fecha legible en es-AR para columnas `@db.Date` (evita desfase UTC−1 día). */
+export function formatStoredDateEs(d: Date): string {
+  return parseDateOnlyISO(formatStoredDateOnlyISO(d)).toLocaleDateString("es-AR", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
 export function currentTimeHHmm(): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   const now = new Date();

@@ -1,5 +1,6 @@
 import { WhatsappReminderKind } from "@prisma/client";
 import { whatsappConfig } from "../config/whatsapp.js";
+import { formatStoredDateEs } from "../utils/appointmentTime.js";
 import { buildClinicWaMeLink, formatClinicContactDisplay } from "./phone.js";
 
 export type ReminderMessageContext = {
@@ -12,15 +13,6 @@ export type ReminderMessageContext = {
   kind: WhatsappReminderKind;
 };
 
-function formatDateEs(d: Date): string {
-  return d.toLocaleDateString("es-AR", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
-}
-
 function formatTimeRange(start: string, end: string): string {
   return `${start} a ${end} hs`;
 }
@@ -29,7 +21,7 @@ export function buildReminderBody(ctx: ReminderMessageContext): string {
   const lugar = whatsappConfig.clinicName;
   const direccion = whatsappConfig.clinicAddress;
   const nombre = ctx.patientFirstName.trim() || "paciente";
-  const fecha = formatDateEs(ctx.appointmentDate);
+  const fecha = formatStoredDateEs(ctx.appointmentDate);
   const horario = formatTimeRange(ctx.startTime, ctx.endTime);
   const especialista = ctx.specialistName;
   const sala = ctx.consultorio.trim() || "consultorio asignado";
@@ -128,7 +120,7 @@ export function buildReminderTemplateComponents(
   appointmentRef: string,
   templateName: string
 ): Array<Record<string, unknown>> {
-  const fecha = formatDateEs(ctx.appointmentDate);
+  const fecha = formatStoredDateEs(ctx.appointmentDate);
   const horario = formatTimeRange(ctx.startTime, ctx.endTime);
   const nombre = ctx.patientFirstName.trim() || "paciente";
   const sala = ctx.consultorio.trim() || "consultorio asignado";
