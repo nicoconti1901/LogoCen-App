@@ -97,13 +97,19 @@ export function whatsappPhonesMatch(
   return false;
 }
 
-/** Enlace wa.me al WhatsApp del centro (consultas), sin el +. */
-export function buildClinicWaMeLink(raw: string | null | undefined): string | null {
+/** Dígitos E.164 sin «+» para sufijo de URL `https://wa.me/...` (botón de plantilla). */
+export function clinicWaMeUrlSuffix(raw: string | null | undefined): string | null {
   const e164 = normalizePhoneToE164(raw);
   if (!e164) return null;
   const digits = e164.replace(/\D/g, "");
-  if (!digits) return null;
-  return `https://wa.me/${digits}`;
+  return digits || null;
+}
+
+/** Enlace wa.me al WhatsApp del centro (consultas), sin el +. */
+export function buildClinicWaMeLink(raw: string | null | undefined): string | null {
+  const suffix = clinicWaMeUrlSuffix(raw);
+  if (!suffix) return null;
+  return `https://wa.me/${suffix}`;
 }
 
 /** Texto visible del contacto del centro para mensajes y plantillas. */

@@ -20,6 +20,7 @@ import { getFixedOccurrenceDate, getFixedSeriesId, isFixedSeriesAppointment } fr
 import { getAppointmentDateStr, toCalendarEnd, toCalendarStart } from "../lib/appointmentDisplay";
 import { formatPersonDisplayLastFirst, formatPersonDisplayLastFirstUpper } from "../lib/personName";
 import { AppointmentModal } from "../components/AppointmentModal";
+import { AppointmentEventActionDialog } from "../components/AppointmentEventActionDialog";
 import { PatientPaymentHistoryModal } from "../components/PatientPaymentHistoryModal";
 import { useAuth } from "../contexts/AuthContext";
 import type { Appointment, AppointmentPaymentMethod, Specialist } from "../types";
@@ -956,125 +957,65 @@ export function AgendaPage() {
           }}
         />
 
-        {eventActionOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-3 sm:p-4">
-            <div
-              className="w-full max-w-lg overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-xl ring-1 ring-slate-900/5"
-              role="dialog"
-              aria-labelledby="event-action-title"
-              aria-describedby="event-action-desc"
-            >
-              <div className="border-b border-slate-100 bg-gradient-to-b from-slate-50 to-white px-5 pb-4 pt-5 sm:px-6">
-                <h3 id="event-action-title" className="text-base font-semibold tracking-tight text-slate-900 sm:text-lg">
-                  Acción sobre este turno
-                </h3>
-                <p id="event-action-desc" className="mt-2 text-sm leading-relaxed text-slate-600">
-{clickedIsFixed
-                    ? "Turno fijo semanal: registrá pago y estado, cancelá solo este día o da de baja toda la serie."
-                    : user?.role === "ADMIN"
-                      ? "Editá el turno, creá uno nuevo en el mismo horario o eliminá el turno si corresponde."
-                      : "Podés agendar una nueva cita en este horario o eliminar el turno. Para modificar una cita ya cargada, contactá a administración."}
-                </p>
-              </div>
-              <div className="space-y-4 px-5 py-5 sm:px-6">
-                <div className="flex flex-col gap-2.5 sm:flex-row sm:flex-wrap">
-                {user?.role === "ADMIN" && clickedAppointment && (
-                  <button
-                    type="button"
-                    className="inline-flex min-h-12 flex-1 items-center justify-center rounded-lg bg-brand-700 px-4 py-2.5 text-sm font-bold tracking-tight text-white shadow-md ring-1 ring-brand-900/20 transition hover:bg-brand-800 active:translate-y-px active:bg-brand-900 active:shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 sm:flex-none sm:min-w-[11rem]"
-                    onClick={() => {
-                      if (!clickedAppointment) return;
-                      setEventActionOpen(false);
-                      setClickedAppointment(null);
-                      setClickedSlot(null);
-                      setSelected(clickedAppointment);
-                      setSlot(null);
-                      setModalOpen(true);
-                    }}
-                  >
-                      {clickedIsFixed ? "Pago y estado" : "Editar turno"}
-                  </button>
-                )}
-                {!clickedIsFixed && (
-                <button
-                  type="button"
-                  className="inline-flex min-h-12 flex-1 items-center justify-center rounded-lg border-2 border-slate-300 bg-white px-4 py-2.5 text-sm font-bold tracking-tight text-slate-900 shadow-sm transition hover:border-slate-400 hover:bg-slate-50 active:translate-y-px active:border-slate-500 active:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 sm:flex-none sm:min-w-[12.5rem]"
-                  onClick={() => {
-                    if (!clickedSlot) return;
-                    if (effectiveSpecialistId && specialistQ.data) {
-                      if (!isSelectionWithinSpecialistAvailability(clickedSlot.start, clickedSlot.end, specialistQ.data)) {
-                        setEventActionOpen(false);
-                        setClickedAppointment(null);
-                        setClickedSlot(null);
-                        setUnavailableOpen(true);
-                        return;
-                      }
-                    }
-                    setEventActionOpen(false);
-                    setClickedAppointment(null);
-                    setClickedSlot(null);
-                    setSelected(null);
-                    setSlot(clickedSlot);
-                    setModalOpen(true);
-                  }}
-                >
-                  Nueva cita en este horario
-                </button>
-                )}
-                {canManageFixedClicked && (
-                  <>
-                    <button
-                      type="button"
-                      className="inline-flex min-h-12 flex-1 items-center justify-center rounded-lg border-2 border-violet-400 bg-violet-50 px-4 py-2.5 text-sm font-bold tracking-tight text-violet-950 shadow-sm transition hover:bg-violet-100 sm:flex-none sm:min-w-[12.5rem]"
-                      onClick={() => {
-                        setEventActionOpen(false);
-                        setFixedCancelMode("occurrence");
-                      }}
-                    >
-                      Cancelar solo este día
-                    </button>
-                    <button
-                      type="button"
-                      className="inline-flex min-h-12 flex-1 items-center justify-center rounded-lg border-2 border-rose-500 bg-rose-50 px-4 py-2.5 text-sm font-bold tracking-tight text-rose-950 shadow-sm transition hover:bg-rose-100 sm:flex-none sm:min-w-[12.5rem]"
-                      onClick={() => {
-                        setEventActionOpen(false);
-                        setFixedCancelMode("series");
-                      }}
-                    >
-                      Cancelar turno fijo (serie)
-                    </button>
-                  </>
-                )}
-                {canDeleteClickedAppointment && (
-                  <button
-                    type="button"
-                    className="inline-flex min-h-12 flex-1 items-center justify-center rounded-lg border-2 border-rose-400 bg-rose-50 px-4 py-2.5 text-sm font-bold tracking-tight text-rose-900 shadow-sm ring-1 ring-rose-900/10 transition hover:border-rose-500 hover:bg-rose-100 active:translate-y-px active:bg-rose-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-600 sm:flex-none sm:min-w-[11rem]"
-                    onClick={() => {
-                      if (!clickedAppointment) return;
-                      setDeleteTargetAppointmentId(clickedAppointment.id);
-                      setEventActionOpen(false);
-                    }}
-                  >
-                    Eliminar turno
-                  </button>
-                )}
-                </div>
-                <div className="flex justify-center border-t border-slate-100 pt-4 sm:justify-end">
-                  <button
-                    type="button"
-                    className="inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-300 bg-slate-50 px-5 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-100 hover:text-slate-900 active:translate-y-px active:bg-slate-200"
-                    onClick={() => {
-                      setEventActionOpen(false);
-                      setClickedAppointment(null);
-                      setClickedSlot(null);
-                    }}
-                  >
-                    Cancelar
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
+        {eventActionOpen && clickedAppointment && (
+          <AppointmentEventActionDialog
+            open={eventActionOpen}
+            appointment={clickedAppointment}
+            isAdmin={user?.role === "ADMIN"}
+            showEdit={user?.role === "ADMIN"}
+            showNewSlot={!clickedIsFixed}
+            showDelete={canDeleteClickedAppointment}
+            showFixedCancel={canManageFixedClicked}
+            onClose={() => {
+              setEventActionOpen(false);
+              setClickedAppointment(null);
+              setClickedSlot(null);
+            }}
+            onEdit={() => {
+              setEventActionOpen(false);
+              setClickedAppointment(null);
+              setClickedSlot(null);
+              setSelected(clickedAppointment);
+              setSlot(null);
+              setModalOpen(true);
+            }}
+            onNewSlot={() => {
+              if (!clickedSlot) return;
+              if (effectiveSpecialistId && specialistQ.data) {
+                if (
+                  !isSelectionWithinSpecialistAvailability(
+                    clickedSlot.start,
+                    clickedSlot.end,
+                    specialistQ.data
+                  )
+                ) {
+                  setEventActionOpen(false);
+                  setClickedAppointment(null);
+                  setClickedSlot(null);
+                  setUnavailableOpen(true);
+                  return;
+                }
+              }
+              setEventActionOpen(false);
+              setClickedAppointment(null);
+              setClickedSlot(null);
+              setSelected(null);
+              setSlot(clickedSlot);
+              setModalOpen(true);
+            }}
+            onDelete={() => {
+              setDeleteTargetAppointmentId(clickedAppointment.id);
+              setEventActionOpen(false);
+            }}
+            onCancelOccurrence={() => {
+              setEventActionOpen(false);
+              setFixedCancelMode("occurrence");
+            }}
+            onCancelSeries={() => {
+              setEventActionOpen(false);
+              setFixedCancelMode("series");
+            }}
+          />
         )}
         {fixedCancelMode && clickedAppointment && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-3 sm:p-4">

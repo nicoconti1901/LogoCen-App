@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from "react";
-import { Navigate, useParams } from "react-router-dom";
+import { Link, Navigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   fetchAppointments,
@@ -16,6 +16,7 @@ import {
   appointmentHasDebt,
   appointmentImputadoPagadoArs,
 } from "../../lib/appointmentDebt";
+import { isPendingSpecialistSettlement, summarizeAppointments } from "./renditionStats";
 import { formatPersonDisplayLastFirst } from "../../lib/personName";
 import type { Appointment, AppointmentPaymentMethod } from "../../types";
 import {
@@ -44,14 +45,6 @@ type RenditionPreset = "day" | "week" | "month";
 
 function getRenditionRange(preset: RenditionPreset, anchorDate: string): { from: string; to: string } {
   return getRangeFromPreset(preset, anchorDate, anchorDate, anchorDate);
-}
-
-function isPendingSpecialistSettlement(a: Appointment): boolean {
-  return (
-    a.paymentCompleted &&
-    a.paymentMethod === "TRANSFER_TO_SPECIALIST" &&
-    (a.specialistSettledAt == null || a.specialistSettledAt === "")
-  );
 }
 
 async function markSpecialistSettled(a: Appointment, settledAt: string): Promise<void> {
@@ -142,6 +135,7 @@ export function SpecialistRenditionPage() {
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["appointments"] });
       await qc.invalidateQueries({ queryKey: ["balance-rendition"] });
+      await qc.invalidateQueries({ queryKey: ["balance-rendition-list"] });
     },
     onError: (err: unknown) => {
       const msg =
@@ -168,19 +162,11 @@ export function SpecialistRenditionPage() {
 
   const stats = useMemo(() => {
     const list = appointmentsQ.data ?? [];
-    const attended = list.filter((a) => a.status === "ATTENDED");
-    const uniquePatients = new Set(attended.map((a) => a.patientId)).size;
-    let honorariosCobrados = 0;
-    let deudasTotal = 0;
-    let conDeuda = 0;
+    const base = summarizeAppointments(list);
     const byMethod: Record<string, number> = {};
     const pendingSettlement: Appointment[] = [];
 
     for (const a of list) {
-      honorariosCobrados += appointmentImputadoPagadoArs(a);
-      const d = appointmentDebtAmountArs(a);
-      if (d > 0) deudasTotal += d;
-      if (appointmentHasDebt(a)) conDeuda += 1;
       if (a.paymentCompleted && a.paymentMethod) {
         byMethod[a.paymentMethod] = (byMethod[a.paymentMethod] ?? 0) + parseMoney(a.specialist.consultationFee);
       }
@@ -194,17 +180,7 @@ export function SpecialistRenditionPage() {
       0
     );
 
-    return {
-      totalTurnos: list.length,
-      attendedCount: attended.length,
-      uniquePatientsAttended: uniquePatients,
-      honorariosCobrados,
-      deudasTotal,
-      conDeuda,
-      byMethod,
-      pendingSettlement,
-      pendingAmount,
-    };
+    return { ...base, byMethod, pendingSettlement, pendingAmount };
   }, [appointmentsQ.data]);
 
   const specialistName = specialistQ.data
@@ -215,14 +191,21 @@ export function SpecialistRenditionPage() {
 
   return (
     <div className="space-y-5">
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-5 shadow-sm">
+        {isAdmin && (
+          <Link
+            to="/balance/especialistas"
+            className="mb-2 inline-block text-sm font-medium text-brand-700 hover:text-brand-900"
+          >
+            ← Volver a especialistas
+          </Link>
+        )}
         <h2 className="text-lg font-semibold text-slate-900">
           {isAdmin ? `Rendición — ${specialistName}` : "Mi rendición"}
         </h2>
-        <p className="mt-1 text-sm text-slate-600">
-          Resumen del período: pacientes atendidos (turnos finalizados), montos registrados y deudas pendientes de
-          pacientes.
-        </p>
+        {specialistQ.data && (
+          <p className="mt-0.5 text-sm font-medium text-brand-800">{specialistQ.data.specialty}</p>
+        )}
         <div className="mt-4 flex flex-wrap gap-2">
           {(["day", "week", "month"] as const).map((p) => (
             <button
@@ -394,40 +377,58 @@ export function SpecialistRenditionPage() {
         <h3 className="text-base font-semibold text-slate-900">Detalle de turnos</h3>
         {appointmentsQ.isLoading ? (
           <p className="mt-3 text-sm text-slate-500">Cargando turnos…</p>
-        ) : (appointmentsQ.data ?? []).length === 0 ? (
-          <p className="mt-3 text-sm text-slate-500">No hay turnos en este período.</p>
-        ) : (
-          <div className="mt-3 overflow-x-auto">
+        ) : (appointmentsQ.data ?? []).length === 0 ? null : (
+          <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200">
             <table className="min-w-full text-left text-sm">
               <thead>
-                <tr className="border-b border-slate-200 text-xs uppercase text-slate-500">
-                  <th className="py-2 pr-3">Fecha</th>
-                  <th className="py-2 pr-3">Paciente</th>
-                  <th className="py-2 pr-3">Estado</th>
-                  <th className="py-2 pr-3">Honorario</th>
-                  <th className="py-2 pr-3">Abonado</th>
-                  <th className="py-2 pr-3">Deuda</th>
-                  <th className="py-2">Pago</th>
+                <tr className="bg-slate-100 text-xs uppercase tracking-wide text-slate-600">
+                  <th className="px-3 py-2.5">Fecha</th>
+                  <th className="px-3 py-2.5">Paciente</th>
+                  <th className="px-3 py-2.5">Estado</th>
+                  <th className="px-3 py-2.5">Honorario</th>
+                  <th className="px-3 py-2.5">Abonado</th>
+                  <th className="px-3 py-2.5">Deuda</th>
+                  <th className="px-3 py-2.5">Pago</th>
                 </tr>
               </thead>
               <tbody>
-                {(appointmentsQ.data ?? []).map((a) => {
+                {(appointmentsQ.data ?? []).map((a, i) => {
                   const patient = formatPersonDisplayLastFirst(a.patient.lastName, a.patient.firstName);
                   const fee = parseMoney(a.specialist.consultationFee);
                   const paid = appointmentImputadoPagadoArs(a);
                   const debt = appointmentDebtAmountArs(a);
+                  const hasDebt = appointmentHasDebt(a);
                   return (
-                    <tr key={a.id} className="border-b border-slate-100">
-                      <td className="py-2 pr-3 whitespace-nowrap">{a.appointmentDate.slice(0, 10)}</td>
-                      <td className="py-2 pr-3">{patient}</td>
-                      <td className="py-2 pr-3">{statusLabel[a.status]}</td>
-                      <td className="py-2 pr-3">{formatMoney(fee)}</td>
-                      <td className="py-2 pr-3">{formatMoney(paid)}</td>
-                      <td className="py-2 pr-3">{debt > 0 ? formatMoney(debt) : "—"}</td>
-                      <td className="py-2">
-                        {a.paymentCompleted ? "Sí" : "No"}
+                    <tr
+                      key={a.id}
+                      className={`border-t border-slate-100 ${i % 2 === 0 ? "bg-white" : "bg-slate-50/70"}`}
+                    >
+                      <td className="whitespace-nowrap px-3 py-2.5 font-medium text-slate-800">
+                        {a.appointmentDate.slice(0, 10)}
+                      </td>
+                      <td className="px-3 py-2.5 text-slate-900">{patient}</td>
+                      <td className="px-3 py-2.5">
+                        <StatusBadge status={a.status} />
+                      </td>
+                      <td className="px-3 py-2.5">{formatMoney(fee)}</td>
+                      <td className="px-3 py-2.5 text-emerald-800">{paid > 0 ? formatMoney(paid) : "—"}</td>
+                      <td className={`px-3 py-2.5 ${hasDebt ? "font-semibold text-amber-800" : "text-slate-400"}`}>
+                        {debt > 0 ? formatMoney(debt) : "—"}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <span
+                          className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
+                            a.paymentCompleted
+                              ? "bg-emerald-100 text-emerald-900"
+                              : "bg-slate-200 text-slate-700"
+                          }`}
+                        >
+                          {a.paymentCompleted ? "Pagado" : "Pendiente"}
+                        </span>
                         {a.paymentMethod ? (
-                          <span className="block text-xs text-slate-500">{paymentMethodLabel[a.paymentMethod]}</span>
+                          <span className="mt-0.5 block text-[11px] text-slate-500">
+                            {paymentMethodLabel[a.paymentMethod]}
+                          </span>
                         ) : null}
                       </td>
                     </tr>
@@ -439,5 +440,22 @@ export function SpecialistRenditionPage() {
         )}
       </section>
     </div>
+  );
+}
+
+const statusTone: Record<Appointment["status"], string> = {
+  RESERVED: "bg-slate-200 text-slate-800",
+  CONFIRMADO: "bg-blue-100 text-blue-900",
+  RESERVADO: "bg-indigo-100 text-indigo-900",
+  ATTENDED: "bg-emerald-100 text-emerald-900",
+  AUSENTE_CON_AVISO: "bg-amber-100 text-amber-900",
+  AUSENTE_SIN_AVISO: "bg-rose-100 text-rose-900",
+};
+
+function StatusBadge({ status }: { status: Appointment["status"] }) {
+  return (
+    <span className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ${statusTone[status]}`}>
+      {statusLabel[status]}
+    </span>
   );
 }

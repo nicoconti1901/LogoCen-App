@@ -71,7 +71,10 @@ function formatTemplateAddressOnly(): string {
   return whatsappConfig.clinicAddress.trim() || "Consultá la dirección con el centro";
 }
 
-/** {{7}} en plantilla 24 h: enlace wa.me al WhatsApp del centro (`CLINIC_CONTACT_PHONE`). */
+/**
+ * {{7}} en plantilla 24 h: URL `https://wa.me/...` (WhatsApp la muestra como hipervínculo).
+ * No usar solo el número en texto plano.
+ */
 export function formatTemplateClinicContactLink(): string {
   const link = buildClinicWaMeLink(whatsappConfig.clinicContactPhone);
   if (link) return link;

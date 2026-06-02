@@ -15,9 +15,11 @@ import {
 } from "../../api/endpoints";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { FormFieldError, invalidFieldClass } from "../../components/FormFieldError";
+import { PatientAppointmentHistoryModal } from "../../components/PatientAppointmentHistoryModal";
+import { PatientDirectoryList, PatientDirectoryToolbar } from "../../components/PatientDirectoryList";
 import { PatientPaymentHistoryModal } from "../../components/PatientPaymentHistoryModal";
 import { useAuth } from "../../contexts/AuthContext";
-import type { AppointmentStatus, ClinicalHistoryEntry, Patient, Specialist } from "../../types";
+import type { ClinicalHistoryEntry, Patient, Specialist } from "../../types";
 import { appointmentDebtAmountArs, appointmentHasDebt } from "../../lib/appointmentDebt";
 import { formatPersonDisplayLastFirst, formatPersonDisplayLastFirstUpper } from "../../lib/personName";
 import {
@@ -43,19 +45,6 @@ function fullName(s: Pick<Specialist, "firstName" | "lastName">) {
   return formatPersonDisplayLastFirst(s.lastName, s.firstName);
 }
 
-function formatMoney(amount: number): string {
-  return `$${new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 }).format(amount)}`;
-}
-
-const appointmentStatusLabel: Record<AppointmentStatus, string> = {
-  RESERVED: "Agendado",
-  CONFIRMADO: "Confirmado",
-  RESERVADO: "Reservado",
-  ATTENDED: "FINALIZADO",
-  AUSENTE_CON_AVISO: "Ausente c/ aviso",
-  AUSENTE_SIN_AVISO: "Ausente s/ aviso",
-};
-
 export function AdminPatientsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
@@ -66,6 +55,7 @@ export function AdminPatientsPage() {
   const [debtFilter, setDebtFilter] = useState<"all" | "debt" | "no_debt">("all");
   const [showForm, setShowForm] = useState(false);
   const [historyPatient, setHistoryPatient] = useState<Patient | null>(null);
+  const [historyShowAll, setHistoryShowAll] = useState(false);
   const [clinicalHistoryPatient, setClinicalHistoryPatient] = useState<Patient | null>(null);
   const [clinicalDate, setClinicalDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [clinicalDiagnosis, setClinicalDiagnosis] = useState("");
@@ -130,21 +120,22 @@ export function AdminPatientsPage() {
   const [form, setForm] = useState(emptyForm);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors<PatientFormFields>>({});
   const [clinicalFieldErrors, setClinicalFieldErrors] = useState<FieldErrors<ClinicalHistoryFields>>({});
-  const { data: appointmentHistory = [], isLoading: isLoadingHistory } = useQuery({
+  const { data: appointmentHistoryAll = [], isLoading: isLoadingHistory } = useQuery({
     queryKey: ["appointments", "patient-history", historyPatient?.id],
     queryFn: async () => {
       const appointments = await fetchAppointments({ patientId: historyPatient!.id });
-      return appointments
-        .slice()
-        .sort((a, b) => {
-          const aKey = `${a.appointmentDate} ${a.startTime}`;
-          const bKey = `${b.appointmentDate} ${b.startTime}`;
-          return bKey.localeCompare(aKey);
-        })
-        .slice(0, 6);
+      return appointments.slice().sort((a, b) => {
+        const aKey = `${a.appointmentDate} ${a.startTime}`;
+        const bKey = `${b.appointmentDate} ${b.startTime}`;
+        return bKey.localeCompare(aKey);
+      });
     },
     enabled: Boolean(historyPatient),
   });
+  const appointmentHistory = useMemo(() => {
+    if (historyShowAll) return appointmentHistoryAll;
+    return appointmentHistoryAll.slice(0, 6);
+  }, [appointmentHistoryAll, historyShowAll]);
   const { data: clinicalHistory = [], isLoading: isLoadingClinicalHistory } = useQuery({
     queryKey: ["patients", "clinical-history", clinicalHistoryPatient?.id],
     queryFn: () => fetchPatientClinicalHistory(clinicalHistoryPatient!.id),
@@ -265,174 +256,45 @@ export function AdminPatientsPage() {
   }, [searchParams, data, isLoading, setSearchParams]);
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Pacientes</h1>
-        <p className="text-slate-600">Los pacientes no tienen cuenta; solo datos de contacto.</p>
-      </div>
+    <div className="space-y-4">
+      <PatientDirectoryToolbar
+        search={search}
+        onSearchChange={setSearch}
+        specialistFilter={specialistFilter}
+        onSpecialistFilterChange={setSpecialistFilter}
+        debtFilter={debtFilter}
+        onDebtFilterChange={setDebtFilter}
+        specialists={specialists}
+        isAdmin={isAdmin}
+        isLoadingDebtIndex={isLoadingDebtIndex}
+        patientCount={data.length}
+        filteredCount={filteredPatients.length}
+        onAddPatient={() => {
+          setEditing(null);
+          setForm(emptyForm);
+          setShowForm(true);
+        }}
+      />
 
-      <div className="flex flex-wrap gap-2">
-        <input
-          placeholder="Buscar…"
-          className="max-w-md flex-1 rounded-lg border border-slate-300 px-3 py-2"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        {isAdmin && (
-          <select
-            className="min-w-64 rounded-lg border border-slate-300 px-3 py-2"
-            value={specialistFilter}
-            onChange={(e) => setSpecialistFilter(e.target.value)}
-          >
-            <option value="">Todos los especialistas</option>
-            {specialists.map((s) => (
-              <option key={s.id} value={s.id}>
-                {fullName(s)} - {s.specialty}
-              </option>
-            ))}
-          </select>
-        )}
-        <select
-          className="min-w-52 rounded-lg border border-slate-300 px-3 py-2"
-          value={debtFilter}
-          onChange={(e) => setDebtFilter(e.target.value as "all" | "debt" | "no_debt")}
-        >
-          <option value="all">Todos</option>
-          <option value="debt">Solo con pagos pendientes</option>
-          <option value="no_debt">Solo sin pagos pendientes</option>
-        </select>
-        <button
-          type="button"
-          className="rounded-lg bg-brand-600 px-4 py-2 text-white hover:bg-brand-700"
-          onClick={() => {
-            setEditing(null);
-            setForm(emptyForm);
-            setShowForm(true);
-          }}
-        >
-          Agregar paciente
-        </button>
-      </div>
-      {isLoadingDebtIndex && (
-        <p className="text-xs text-slate-500">Actualizando estado de pagos de pacientes…</p>
-      )}
-
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-        <table className="min-w-full text-left text-sm">
-          <thead className="bg-sky-100 text-slate-700">
-            <tr>
-              <th className="px-4 py-3">Paciente</th>
-              <th className="px-4 py-3">Correo</th>
-              <th className="px-4 py-3">Teléfono</th>
-              <th className="px-4 py-3">Especialista asignado</th>
-              <th className="px-4 py-3">Deuda</th>
-              <th className="px-4 py-3">Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading && (
-              <tr>
-                <td colSpan={6} className="px-4 py-6 text-center">
-                  Cargando…
-                </td>
-              </tr>
-            )}
-            {!isLoading &&
-              filteredPatients.map((p) => (
-                <tr key={p.id} className="border-t border-slate-100">
-                  <td className="px-4 py-3">
-                    {formatPersonDisplayLastFirstUpper(p.lastName, p.firstName)}
-                  </td>
-                  <td className="px-4 py-3">{p.email}</td>
-                  <td className="px-4 py-3">{p.phone ?? "—"}</td>
-                  <td className="px-4 py-3">
-                    {p.specialist ? formatPersonDisplayLastFirst(p.specialist.lastName, p.specialist.firstName) : "Sin asignar"}
-                  </td>
-                  <td className="px-4 py-3">
-                    {debtPatientIds.has(p.id) ? (
-                      <div className="flex flex-col gap-1">
-                        <span className="w-fit rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
-                          Con deuda
-                        </span>
-                        <span className="text-xs font-semibold text-amber-900">
-                          {formatMoney(debtAmountByPatientId.get(p.id) ?? 0)}
-                        </span>
-                      </div>
-                    ) : (
-                      <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                        Sin deuda
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-100"
-                        onClick={() => setHistoryPatient(p)}
-                        title="Ver historial de turnos"
-                      >
-                        <span aria-hidden>🕘</span>
-                        Turnos
-                      </button>
-                      <button
-                        type="button"
-                        className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 transition hover:border-amber-300 hover:bg-amber-100"
-                        onClick={() => {
-                          const next = new URLSearchParams(searchParams);
-                          next.set("paymentPatientId", p.id);
-                          setSearchParams(next, { replace: true });
-                        }}
-                        title="Ver estado de pagos"
-                      >
-                        <span aria-hidden>💳</span>
-                        Pagos
-                      </button>
-                      <button
-                        type="button"
-                        className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-100"
-                        onClick={() => setClinicalHistoryPatient(p)}
-                        title="Ver historia clínica"
-                      >
-                        <span aria-hidden>🩺</span>
-                        Historia clínica
-                      </button>
-                      {isAdmin && (
-                        <>
-                          <button
-                            type="button"
-                            className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 transition hover:border-blue-300 hover:bg-blue-100"
-                            onClick={() => startEdit(p)}
-                            title="Editar paciente"
-                          >
-                            <span aria-hidden>✏️</span>
-                            Editar
-                          </button>
-                          <button
-                            type="button"
-                            className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 transition hover:border-red-300 hover:bg-red-100"
-                            onClick={() => setPendingDeletePatientId(p.id)}
-                            title="Eliminar paciente"
-                          >
-                            <span aria-hidden>🗑️</span>
-                            Eliminar
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            {!isLoading && filteredPatients.length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-slate-500">
-                  No hay pacientes para el filtro seleccionado.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <PatientDirectoryList
+        patients={filteredPatients}
+        isLoading={isLoading}
+        isAdmin={isAdmin}
+        debtPatientIds={debtPatientIds}
+        debtAmountByPatientId={debtAmountByPatientId}
+        onOpenAppointments={(p) => {
+          setHistoryShowAll(false);
+          setHistoryPatient(p);
+        }}
+        onOpenPayments={(p) => {
+          const next = new URLSearchParams(searchParams);
+          next.set("paymentPatientId", p.id);
+          setSearchParams(next, { replace: true });
+        }}
+        onOpenClinicalHistory={setClinicalHistoryPatient}
+        onEdit={isAdmin ? startEdit : undefined}
+        onDelete={isAdmin ? setPendingDeletePatientId : undefined}
+      />
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-3 sm:p-4">
@@ -583,54 +445,18 @@ export function AdminPatientsPage() {
         </div>
       )}
 
-      {historyPatient && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-3 sm:p-4">
-          <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl border border-slate-200/80 bg-white p-4 shadow-xl ring-1 ring-slate-900/5 sm:p-5">
-            <div className="mb-4 flex items-center justify-between gap-3 border-b border-slate-100 pb-4">
-              <h2 className="text-base font-semibold tracking-tight text-slate-900 sm:text-lg">
-                Historial de turnos: {formatPersonDisplayLastFirstUpper(historyPatient.lastName, historyPatient.firstName)}
-              </h2>
-              <button
-                type="button"
-                className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-100 active:translate-y-px"
-                onClick={() => setHistoryPatient(null)}
-              >
-                Cerrar
-              </button>
-            </div>
-            {isLoadingHistory && <p className="text-sm text-slate-600">Cargando historial…</p>}
-            {!isLoadingHistory && appointmentHistory.length === 0 && (
-              <p className="text-sm text-slate-600">Este paciente todavía no tiene turnos.</p>
-            )}
-            {!isLoadingHistory && appointmentHistory.length > 0 && (
-              <div className="overflow-x-auto rounded-lg border border-slate-200">
-                <table className="min-w-full text-left text-sm">
-                  <thead className="bg-sky-100 text-slate-700">
-                    <tr>
-                      <th className="px-3 py-2">Fecha</th>
-                      <th className="px-3 py-2">Hora</th>
-                      <th className="px-3 py-2">Especialista</th>
-                      <th className="px-3 py-2">Estado</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {appointmentHistory.map((a) => (
-                      <tr key={a.id} className="border-t border-slate-100">
-                        <td className="px-3 py-2">{a.appointmentDate.slice(0, 10)}</td>
-                        <td className="px-3 py-2">
-                          {a.startTime} - {a.endTime}
-                        </td>
-                        <td className="px-3 py-2">{formatPersonDisplayLastFirst(a.specialist.lastName, a.specialist.firstName)}</td>
-                        <td className="px-3 py-2">{appointmentStatusLabel[a.status]}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      <PatientAppointmentHistoryModal
+        patient={historyPatient}
+        appointments={appointmentHistory}
+        totalCount={appointmentHistoryAll.length}
+        showAll={historyShowAll}
+        onShowAllChange={setHistoryShowAll}
+        isLoading={isLoadingHistory}
+        onClose={() => {
+          setHistoryPatient(null);
+          setHistoryShowAll(false);
+        }}
+      />
       <PatientPaymentHistoryModal
         patientId={paymentPatientId}
         patientHint={paymentPatientHint}

@@ -176,16 +176,52 @@ Confirmá con el botón.
 WHATSAPP_REMINDER_TEMPLATE_24H_NAME=recordatorio_turno_24h
 ```
 
-### `recordatorio_turno_24h_contact` (futura, con WhatsApp del centro)
+### `recordatorio_turno_24h_contact` (7 variables + hipervínculo)
 
-Cuando Meta apruebe esta versión, cambiá en `.env`:
+Recordatorio 24 h con contacto del centro en {{7}} (`https://wa.me/...` desde `CLINIC_CONTACT_PHONE`).
+
+**Cuerpo en Meta** (versión enviada a revisión):
+
+```
+Hola {{1}}, tu turno en *{{2}}* es en menos de 24 horas. Necesitamos que nos confirmes asistencia.
+
+📍 *{{2}}* {{6}}
+📅 {{3}}
+🕐 {{4}}
+🧑‍⚕️ {{5}}
+
+Este chat es solo para recordatorios.
+Para consultas escribinos al: *{{7}}*
+
+Confirmá con el botón.
+```
+
+**Mapeo LogoCen → variables:**
+
+| Var | Envía el backend |
+|-----|------------------|
+| {{1}} | Nombre del paciente |
+| {{2}} | `CLINIC_NAME` (aparece 2 veces en el texto; Meta a veces rechaza la misma variable repetida) |
+| {{3}} | Fecha (es-AR) |
+| {{4}} | Hora inicio (`startTime`, ej. `10:00`) |
+| {{5}} | Profesional |
+| {{6}} | `CLINIC_ADDRESS` (solo dirección; en la línea 📍 va después del nombre del centro) |
+| {{7}} | `https://wa.me/549...` (hipervínculo; no solo el número) |
+
+**Ejemplo {{7}} para la revisión de Meta:** `https://wa.me/54911141540215` (no `11 4154-0215` suelto). Eso es el hipervínculo; **no hace falta** un segundo botón URL.
+
+**Botón (solo uno):** respuesta rápida **`Sí, confirmo`**.
+
+Opcional más adelante: podés crear otra plantilla con botón «Visitar sitio web» `https://wa.me/{{1}}`; LogoCen hoy no lo envía (solo cuerpo + confirmar).
+
+Cuando esté **Activa**, en `.env`:
 
 ```env
 WHATSAPP_REMINDER_TEMPLATE_24H_NAME=recordatorio_turno_24h_contact
 CLINIC_CONTACT_PHONE="+54911141540215"
 ```
 
-**Cuerpo** (7 variables; ver ejemplos completos en commit `adaa37b` o recrear desde la sección anterior del doc). {{7}} = `https://wa.me/549...` desde `CLINIC_CONTACT_PHONE`.
+Reiniciar backend.
 
 ### Plantillas anteriores (referencia)
 
