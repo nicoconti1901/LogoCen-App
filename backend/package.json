@@ -16,6 +16,7 @@
     "db:seed-appointments:cleanup": "tsx prisma/scripts/cleanup-load-appointments.ts",
     "db:seed-appointments:status": "tsx prisma/scripts/check-load-count.ts",
     "whatsapp:reminders": "tsx scripts/run-whatsapp-reminders.ts",
+    "whatsapp:force-send-24h": "tsx scripts/force-send-24h-reminder.ts",
     "whatsapp:errors": "tsx scripts/show-reminder-errors.ts",
     "whatsapp:check-webhook": "tsx scripts/check-waba-webhook.ts"
   },
