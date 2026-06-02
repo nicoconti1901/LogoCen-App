@@ -15,9 +15,28 @@ function getMonthRange(month: string) {
   return { start, end };
 }
 
-export function listByMonth(month: string, type?: FinanceExpenseType) {
+/** Primer día del mes UTC (vigencia de gastos fijos). */
+function firstDayOfMonthUtc(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+}
+
+export async function listByMonth(month: string, type?: FinanceExpenseType) {
   const { start, end } = getMonthRange(month);
-  return financeExpenseRepository.findManyByMonth(start, end, type);
+
+  if (type === "MONTHLY_VARIABLE") {
+    return financeExpenseRepository.findVariableByMonth(start, end);
+  }
+
+  if (type === "FIXED_MONTHLY") {
+    return financeExpenseRepository.findFixedMonthlyActiveAsOf(end);
+  }
+
+  const [fixed, variable] = await Promise.all([
+    financeExpenseRepository.findFixedMonthlyActiveAsOf(end),
+    financeExpenseRepository.findVariableByMonth(start, end),
+  ]);
+
+  return [...fixed, ...variable];
 }
 
 export function createExpense(data: {
@@ -26,11 +45,14 @@ export function createExpense(data: {
   amount: string | number;
   expenseDate: Date;
 }) {
+  const expenseDate =
+    data.type === "FIXED_MONTHLY" ? firstDayOfMonthUtc(data.expenseDate) : data.expenseDate;
+
   return financeExpenseRepository.create({
     type: data.type,
     description: data.description.trim(),
     amount: data.amount,
-    expenseDate: data.expenseDate,
+    expenseDate,
   });
 }
 
@@ -45,11 +67,19 @@ export async function updateExpense(
 ) {
   const existing = await financeExpenseRepository.findById(id);
   if (!existing) throw new AppError(404, "Gasto no encontrado");
+  const nextType = data.type ?? existing.type;
+  const nextExpenseDate =
+    data.expenseDate !== undefined
+      ? nextType === "FIXED_MONTHLY"
+        ? firstDayOfMonthUtc(data.expenseDate)
+        : data.expenseDate
+      : undefined;
+
   return financeExpenseRepository.update(id, {
     ...(data.type !== undefined ? { type: data.type } : {}),
     ...(data.description !== undefined ? { description: data.description.trim() } : {}),
     ...(data.amount !== undefined ? { amount: data.amount } : {}),
-    ...(data.expenseDate !== undefined ? { expenseDate: data.expenseDate } : {}),
+    ...(nextExpenseDate !== undefined ? { expenseDate: nextExpenseDate } : {}),
   });
 }
 

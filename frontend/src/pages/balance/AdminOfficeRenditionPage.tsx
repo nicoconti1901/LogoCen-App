@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { Navigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, Navigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createFinanceExpense,
@@ -9,7 +9,7 @@ import {
   updateFinanceExpense,
 } from "../../api/endpoints";
 import { useAuth } from "../../contexts/AuthContext";
-import type { FinanceExpense, FinanceExpenseType } from "../../types";
+import type { FinanceExpense, FinanceExpenseType, SpecialistConsultorioRentMonthRow } from "../../types";
 import { FormFieldError, invalidFieldClass } from "../../components/FormFieldError";
 import { formatPersonDisplayLastFirst } from "../../lib/personName";
 import { type ExpenseFormFields, type FieldErrors, validateExpenseForm } from "../../lib/validation";
@@ -41,6 +41,12 @@ export function AdminOfficeRenditionPage() {
     expenseDate: today,
   });
   const [fieldErrors, setFieldErrors] = useState<FieldErrors<ExpenseFormFields>>({});
+
+  useEffect(() => {
+    if (!expenseDraft.id && expenseDraft.type === "FIXED_MONTHLY") {
+      setExpenseDraft((prev) => ({ ...prev, expenseDate: `${anchorMonth}-01` }));
+    }
+  }, [anchorMonth, expenseDraft.type, expenseDraft.id]);
 
   if (user?.role !== "ADMIN") return <Navigate to="/agenda" replace />;
 
@@ -132,7 +138,7 @@ export function AdminOfficeRenditionPage() {
         <h2 className="text-lg font-semibold text-slate-900">Rendición LogoCen</h2>
         <p className="mt-1 text-sm text-slate-600">
           Ingresos: alquiler de consultorio por mes (se genera automático: cada mes toma el monto del mes anterior o el
-          valor base del especialista). Gastos fijos y no fijos del mes.
+          valor base del especialista). Los gastos fijos vigentes se suman en cada mes; los no fijos solo en el mes del comprobante.
         </p>
         <label className="mt-4 block max-w-xs text-sm">
           <span className="font-medium text-slate-600">Mes</span>
@@ -144,7 +150,8 @@ export function AdminOfficeRenditionPage() {
           />
         </label>
         <p className="mt-2 text-xs text-slate-500">
-          Los gastos cargados se filtran por mes calendario; el rango de fechas del mes es {monthStart} — {monthEnd}.
+          Mes {monthStart} — {monthEnd}: incluye todos los gastos fijos dados de alta hasta este mes (se repiten). Los
+          gastos no fijos solo los de este mes.
         </p>
       </section>
 
@@ -164,7 +171,9 @@ export function AdminOfficeRenditionPage() {
         >
           <p className="text-xs uppercase tracking-wide text-rose-700">Gasto mensual fijo</p>
           <p className="mt-1 text-2xl font-bold text-rose-900">{formatMoney(stats.fixedMonthlyExpense)}</p>
-          <p className="mt-1 text-xs text-rose-700">Ver detalle ({stats.fixedExpenses.length})</p>
+          <p className="mt-1 text-xs text-rose-700">
+            Suma mensual recurrente · Ver detalle ({stats.fixedExpenses.length})
+          </p>
         </button>
         <button
           type="button"
@@ -182,29 +191,18 @@ export function AdminOfficeRenditionPage() {
         </article>
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h3 className="text-base font-semibold text-slate-900">Alquiler por especialista (mes {anchorMonth})</h3>
-        {rentMonthsQ.isLoading ? (
-          <p className="mt-2 text-sm text-slate-500">Cargando…</p>
-        ) : (rentMonthsQ.data?.rows ?? []).length === 0 ? (
-          <p className="mt-2 text-sm text-slate-500">No hay especialistas.</p>
-        ) : (
-          <ul className="mt-3 divide-y divide-slate-100 text-sm">
-            {(rentMonthsQ.data?.rows ?? []).map((r) => (
-              <li key={r.id} className="flex justify-between gap-2 py-2">
-                <span>
-                  {formatPersonDisplayLastFirst(r.specialist.lastName, r.specialist.firstName)}
-                </span>
-                <span className="font-semibold">{formatMoney(parseMoney(r.amount))}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <ConsultorioRentList
+        month={anchorMonth}
+        rows={rentMonthsQ.data?.rows ?? []}
+        total={rentIncomeTotal}
+        isLoading={rentMonthsQ.isLoading}
+      />
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <h3 className="text-base font-semibold text-slate-900">Gestión de gastos mensuales</h3>
-        <p className="mt-1 text-sm text-slate-600">Los gastos se asocian al mes según la fecha del comprobante.</p>
+        <p className="mt-1 text-sm text-slate-600">
+          Gasto fijo: se repite cada mes desde la fecha de vigencia. Gasto no fijo: solo el mes del comprobante.
+        </p>
         <form
           className="mt-4 grid gap-3 md:grid-cols-2"
           onSubmit={(e) => {
@@ -266,7 +264,9 @@ export function AdminOfficeRenditionPage() {
             <FormFieldError message={fieldErrors.amount} />
           </label>
           <label className="space-y-1">
-            <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Fecha</span>
+            <span className="text-xs font-medium uppercase tracking-wide text-slate-500">
+              {expenseDraft.type === "FIXED_MONTHLY" ? "Vigente desde" : "Fecha del comprobante"}
+            </span>
             <input
               type="date"
               className={invalidFieldClass(Boolean(fieldErrors.expenseDate), "w-full rounded-lg border border-slate-300 px-3 py-2")}
@@ -278,6 +278,11 @@ export function AdminOfficeRenditionPage() {
               required
               disabled={saveExpenseMut.isPending}
             />
+            {expenseDraft.type === "FIXED_MONTHLY" && !expenseDraft.id ? (
+              <p className="text-xs text-slate-500">
+                Se incluirá en este mes y en todos los meses siguientes.
+              </p>
+            ) : null}
             <FormFieldError message={fieldErrors.expenseDate} />
           </label>
           <div className="md:col-span-2 flex flex-wrap items-center gap-2">
@@ -333,7 +338,11 @@ export function AdminOfficeRenditionPage() {
                   >
                     <div>
                       <p className="text-sm font-semibold text-slate-900">{x.description}</p>
-                      <p className="text-xs text-slate-600">{x.expenseDate.slice(0, 10)}</p>
+                      <p className="text-xs text-slate-600">
+                        {x.type === "FIXED_MONTHLY"
+                          ? `Fijo · vigente desde ${x.expenseDate.slice(0, 7)}`
+                          : x.expenseDate.slice(0, 10)}
+                      </p>
                     </div>
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-bold text-slate-900">{formatMoney(parseMoney(x.amount))}</p>
@@ -370,5 +379,112 @@ export function AdminOfficeRenditionPage() {
         </div>
       )}
     </div>
+  );
+}
+
+function specialistInitials(firstName: string, lastName: string): string {
+  const a = firstName.trim().charAt(0);
+  const b = lastName.trim().charAt(0);
+  const s = `${a}${b}`.toUpperCase();
+  return s || "?";
+}
+
+function ConsultorioRentList({
+  month,
+  rows,
+  total,
+  isLoading,
+}: {
+  month: string;
+  rows: SpecialistConsultorioRentMonthRow[];
+  total: number;
+  isLoading: boolean;
+}) {
+  const sorted = useMemo(
+    () =>
+      [...rows].sort((a, b) =>
+        formatPersonDisplayLastFirst(a.specialist.lastName, a.specialist.firstName).localeCompare(
+          formatPersonDisplayLastFirst(b.specialist.lastName, b.specialist.firstName),
+          "es"
+        )
+      ),
+    [rows]
+  );
+
+  return (
+    <section className="overflow-hidden rounded-2xl border border-emerald-200/90 bg-gradient-to-br from-emerald-50/60 via-white to-slate-50/40 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-4 border-b border-emerald-100/80 bg-emerald-50/40 px-5 py-4">
+        <div>
+          <h3 className="text-base font-semibold text-slate-900">Alquiler por especialista</h3>
+          <p className="mt-0.5 text-sm text-slate-600">
+            Mes <span className="font-medium text-emerald-900">{month}</span> · montos generados automáticamente
+          </p>
+        </div>
+        <div className="rounded-xl border border-emerald-200 bg-white px-4 py-2.5 shadow-sm">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Total del mes</p>
+          <p className="text-xl font-bold tabular-nums text-emerald-950">{formatMoney(total)}</p>
+        </div>
+      </div>
+
+      <div className="p-4 sm:p-5">
+        {isLoading ? (
+          <p className="rounded-xl border border-dashed border-slate-200 bg-white/80 px-4 py-8 text-center text-sm text-slate-500">
+            Cargando alquileres…
+          </p>
+        ) : sorted.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-slate-200 bg-white/80 px-4 py-8 text-center text-sm text-slate-500">
+            No hay especialistas cargados.
+          </p>
+        ) : (
+          <ul className="grid gap-3 sm:grid-cols-2">
+            {sorted.map((r) => {
+              const amount = parseMoney(r.amount);
+              const name = formatPersonDisplayLastFirst(r.specialist.lastName, r.specialist.firstName);
+              const initials = specialistInitials(r.specialist.firstName, r.specialist.lastName);
+              const isZero = amount <= 0;
+
+              return (
+                <li key={r.id}>
+                  <Link
+                    to={`/balance/especialistas/${r.specialistId}`}
+                    className={`group flex items-center gap-3 rounded-xl border px-3.5 py-3 transition hover:shadow-md ${
+                      isZero
+                        ? "border-dashed border-slate-300 bg-slate-50/90 hover:border-slate-400"
+                        : "border-emerald-100 bg-white hover:border-emerald-300 hover:bg-emerald-50/30"
+                    }`}
+                  >
+                    <span
+                      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
+                        isZero
+                          ? "bg-slate-200 text-slate-600"
+                          : "bg-emerald-100 text-emerald-900 ring-2 ring-emerald-200/80"
+                      }`}
+                      aria-hidden
+                    >
+                      {initials}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-semibold text-slate-900 group-hover:text-brand-800">
+                        {name}
+                      </span>
+                      <span className="text-xs text-slate-500 group-hover:text-emerald-800">
+                        Ver rendición del mes →
+                      </span>
+                    </span>
+                    <span
+                      className={`shrink-0 text-right text-lg font-bold tabular-nums leading-none ${
+                        isZero ? "text-slate-400" : "text-emerald-900"
+                      }`}
+                    >
+                      {formatMoney(amount)}
+                    </span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </section>
   );
 }
