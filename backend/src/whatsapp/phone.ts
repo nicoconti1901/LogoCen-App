@@ -40,25 +40,15 @@ export function normalizePhoneToE164(raw: string | null | undefined): string | n
 }
 
 /**
- * Formato `to` para la Cloud API de Meta con móviles argentinos.
- * En modo prueba Meta hace match exacto: 54 + área + 15 + abonado (sin el 9).
- * Ej: +5492914021589 → 54291154021589
+ * Formato `to` para Cloud API de Meta: E.164 sin «+» (ej. `5492914021589`).
+ * En producción hay que enviar el móvil internacional con el 9; el formato
+ * `54{área}15{abonado}` era solo para números de prueba en sandbox y rompe la entrega real.
  */
 export function formatPhoneForMetaWhatsapp(e164: string | null | undefined): string | null {
-  if (!e164) return null;
-  let digits = e164.replace(/\D/g, "");
-  if (!digits) return null;
-
-  if (digits.startsWith("549")) {
-    const local = digits.slice(3);
-    if (local.length >= 10) {
-      const areaLen = local.startsWith("11") ? 2 : 3;
-      const area = local.slice(0, areaLen);
-      const subscriber = local.slice(areaLen);
-      return `54${area}15${subscriber}`;
-    }
-  }
-
+  const normalized = normalizePhoneToE164(e164) ?? (e164?.trim() ? e164 : null);
+  if (!normalized) return null;
+  const digits = normalized.replace(/\D/g, "");
+  if (digits.length < 12 || digits.length > 15) return null;
   return digits;
 }
 

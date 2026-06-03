@@ -18,7 +18,8 @@
     "whatsapp:reminders": "tsx scripts/run-whatsapp-reminders.ts",
     "whatsapp:force-send-24h": "tsx scripts/force-send-24h-reminder.ts",
     "whatsapp:errors": "tsx scripts/show-reminder-errors.ts",
-    "whatsapp:check-webhook": "tsx scripts/check-waba-webhook.ts"
+    "whatsapp:check-webhook": "tsx scripts/check-waba-webhook.ts",
+    "whatsapp:simulate-confirm": "tsx scripts/simulate-whatsapp-confirm.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.5.0",
