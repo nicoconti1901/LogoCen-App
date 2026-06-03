@@ -66,9 +66,33 @@ export function buildConfirmButtonId(appointmentRef: string): string {
   return `${whatsappConfig.confirmButtonIdPrefix}_${safe}`;
 }
 
+/** Nombre del centro en plantillas: todo en mayúsculas ({{2}}). */
+function formatTemplateClinicName(): string {
+  const name = whatsappConfig.clinicName.trim() || "LogoCen";
+  return name.toLocaleUpperCase("es-AR");
+}
+
+/** Primera letra del texto en mayúscula (p. ej. fecha). */
+function capitalizeFirst(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return trimmed;
+  return trimmed.charAt(0).toLocaleUpperCase("es-AR") + trimmed.slice(1);
+}
+
+/** Primera letra en mayúscula por palabra o segmento tras coma. */
+function capitalizeTemplateText(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return trimmed;
+  return trimmed.replace(/(?:^|[\s,]+)(\S)/g, (match, char: string, offset: number) => {
+    const prefix = match.slice(0, match.length - char.length);
+    return prefix + char.toLocaleUpperCase("es-AR");
+  });
+}
+
 /** Dirección para 📍 {{6}} en plantillas v3 / 24h (`CLINIC_ADDRESS`). */
 function formatTemplateAddressOnly(): string {
-  return whatsappConfig.clinicAddress.trim() || "Consultá la dirección con el centro";
+  const raw = whatsappConfig.clinicAddress.trim() || "Consultá la dirección con el centro";
+  return capitalizeTemplateText(raw);
 }
 
 /**
@@ -97,11 +121,11 @@ function buildSixVarIconReminderParameters(
   nombre: string
 ): Array<{ type: "text"; text: string }> {
   return [
-    { type: "text", text: nombre },
-    { type: "text", text: whatsappConfig.clinicName },
-    { type: "text", text: fecha },
+    { type: "text", text: capitalizeTemplateText(nombre) },
+    { type: "text", text: formatTemplateClinicName() },
+    { type: "text", text: capitalizeFirst(fecha) },
     { type: "text", text: ctx.startTime },
-    { type: "text", text: ctx.specialistName },
+    { type: "text", text: capitalizeTemplateText(ctx.specialistName) },
     { type: "text", text: formatTemplateAddressOnly() },
   ];
 }
@@ -109,8 +133,17 @@ function buildSixVarIconReminderParameters(
 /** Plantilla 24 h aprobada (6 variables, sin contacto). */
 export const TEMPLATE_REMINDER_24H = "recordatorio_turno_24h";
 
-/** Plantilla futura con enlace wa.me del centro (7 variables). Crear en Meta cuando aprueben. */
-export const TEMPLATE_REMINDER_24H_CONTACT = "recordatorio_turno_24h_contact";
+/** Plantilla 24 h con enlace wa.me del centro (7 variables). */
+export const TEMPLATE_REMINDER_24H_CONTACT = "recordatorio_turno_24hs_contacto";
+
+const TEMPLATE_24H_CONTACT_ALIASES = new Set([
+  TEMPLATE_REMINDER_24H_CONTACT,
+  "recordatorio_turno_24h_contact",
+]);
+
+export function is24hContactTemplate(templateName: string): boolean {
+  return TEMPLATE_24H_CONTACT_ALIASES.has(templateName);
+}
 
 /**
  * Plantillas Meta (Utilidad, es_AR, variables posicionales).
@@ -131,7 +164,7 @@ export function buildReminderTemplateComponents(
 
   let bodyParameters: Array<{ type: "text"; text: string }>;
 
-  if (templateName === TEMPLATE_REMINDER_24H_CONTACT) {
+  if (is24hContactTemplate(templateName)) {
     bodyParameters = buildSevenVar24hReminderParameters(ctx, fecha, nombre);
   } else if (
     templateName === TEMPLATE_REMINDER_24H ||
@@ -140,22 +173,22 @@ export function buildReminderTemplateComponents(
     bodyParameters = buildSixVarIconReminderParameters(ctx, fecha, nombre);
   } else if (templateName === "recordatorio_turno_v2") {
     bodyParameters = [
-      { type: "text", text: nombre },
-      { type: "text", text: whatsappConfig.clinicName },
-      { type: "text", text: fecha },
+      { type: "text", text: capitalizeTemplateText(nombre) },
+      { type: "text", text: formatTemplateClinicName() },
+      { type: "text", text: capitalizeFirst(fecha) },
       { type: "text", text: horario },
-      { type: "text", text: ctx.specialistName },
-      { type: "text", text: sala },
-      { type: "text", text: direccion },
+      { type: "text", text: capitalizeTemplateText(ctx.specialistName) },
+      { type: "text", text: capitalizeTemplateText(sala) },
+      { type: "text", text: capitalizeTemplateText(direccion) },
     ];
   } else {
     bodyParameters = [
-      { type: "text", text: nombre },
-      { type: "text", text: whatsappConfig.clinicName },
-      { type: "text", text: fecha },
+      { type: "text", text: capitalizeTemplateText(nombre) },
+      { type: "text", text: formatTemplateClinicName() },
+      { type: "text", text: capitalizeFirst(fecha) },
       { type: "text", text: horario },
-      { type: "text", text: ctx.specialistName },
-      { type: "text", text: sala },
+      { type: "text", text: capitalizeTemplateText(ctx.specialistName) },
+      { type: "text", text: capitalizeTemplateText(sala) },
     ];
   }
 
