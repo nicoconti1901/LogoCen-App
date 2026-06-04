@@ -208,6 +208,8 @@ Confirmá con el botón.
 | {{6}} | `CLINIC_ADDRESS` (solo dirección; en la línea 📍 va después del nombre del centro) |
 | {{7}} | `https://wa.me/549...` (hipervínculo; no solo el número) |
 
+**Orden al enviar a Meta (crítico):** los parámetros del API van por **primera aparición** en el cuerpo, no por el número `{{N}}`. En esta plantilla: `{{1}}`, `{{2}}`, `{{6}}`, `{{3}}`, `{{4}}`, `{{5}}`, `{{7}}`. Si cambiás el texto en Meta, hay que actualizar `APPEARANCE_ORDER_24H_CONTACT` en `messageBuilder.ts`.
+
 **Ejemplo {{7}} para la revisión de Meta:** `https://wa.me/54911141540215` (no `11 4154-0215` suelto). Eso es el hipervínculo; **no hace falta** un segundo botón URL.
 
 **Botón (solo uno):** respuesta rápida **`Sí, confirmo`**.
