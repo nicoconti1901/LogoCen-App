@@ -23,7 +23,7 @@ import { AppointmentModal } from "../components/AppointmentModal";
 import { AppointmentEventActionDialog } from "../components/AppointmentEventActionDialog";
 import { PatientPaymentHistoryModal } from "../components/PatientPaymentHistoryModal";
 import { useAuth } from "../contexts/AuthContext";
-import type { Appointment, AppointmentPaymentMethod, Specialist } from "../types";
+import type { Appointment, Specialist } from "../types";
 import { appointmentHasDebt, appointmentDebtAmountArs, reservadoHonorarioRemainder } from "../lib/appointmentDebt";
 import { appointmentBlocksScheduleSlot } from "../lib/appointmentScheduling";
 import { formatAppointmentPaymentLabel } from "../lib/paymentMethodDisplay";

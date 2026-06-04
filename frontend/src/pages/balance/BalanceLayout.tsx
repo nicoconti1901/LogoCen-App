@@ -1,3 +1,4 @@
+import type { ComponentType } from "react";
 import { NavLink, Outlet, Navigate } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 
@@ -12,7 +13,7 @@ const sections: {
   activeBg: string;
   iconBg: string;
   iconColor: string;
-  Icon: () => JSX.Element;
+  Icon: ComponentType<{ className?: string }>;
 }[] = [
   {
     id: "especialistas",

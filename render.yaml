@@ -1,0 +1,49 @@
+# Render Blueprint (opcional): importá en Render → New → Blueprint
+# Ajustá CORS_ORIGIN y dominios antes de aplicar.
+
+services:
+  - type: web
+    name: logocen-api
+    runtime: node
+    rootDir: backend
+    plan: starter
+    buildCommand: npm install && npm run build && npx prisma generate
+    startCommand: npm run start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 365d
+      - key: CORS_ORIGIN
+        sync: false
+      - key: TZ
+        value: America/Argentina/Buenos_Aires
+      - key: CRON_SECRET
+        generateValue: true
+      - key: WHATSAPP_ENABLED
+        value: "true"
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: WHATSAPP_ACCESS_TOKEN
+        sync: false
+      - key: WHATSAPP_VERIFY_TOKEN
+        sync: false
+      - key: WHATSAPP_APP_SECRET
+        sync: false
+      - key: WHATSAPP_REMINDER_TEMPLATE_24H_NAME
+        value: recordatorio_turno_24hs_contacto
+      - key: WHATSAPP_REMINDER_TEMPLATE_LANGUAGE
+        value: es_AR
+      - key: CLINIC_NAME
+        value: LogoCen
+      - key: CLINIC_ADDRESS
+        sync: false
+      - key: CLINIC_CONTACT_PHONE
+        sync: false
