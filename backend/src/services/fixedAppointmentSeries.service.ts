@@ -12,6 +12,11 @@ import { patientRepository } from "../repositories/patient.repository.js";
 import { specialistRepository } from "../repositories/specialist.repository.js";
 import { AppError } from "../middleware/errorHandler.js";
 import { reservationDepositForStatus } from "./appointmentPayment.utils.js";
+import {
+  normalizeAppointmentPaymentFields,
+  parseStoredPaymentSplits,
+  type PaymentSplitInput,
+} from "../utils/appointmentPaymentSplits.js";
 import { syncPatientConfirmationForStatusChange } from "../utils/appointmentConfirmation.js";
 import {
   assertValidTime,
@@ -289,6 +294,7 @@ export async function upsertFixedAppointmentOccurrence(
   data: Partial<{
     status: AppointmentStatus;
     paymentMethod: AppointmentPaymentMethod | null;
+    paymentSplits?: PaymentSplitInput[] | null;
     paymentCompleted: boolean;
     paymentDate: Date | null;
     specialistSettledAt: Date | null;
@@ -354,11 +360,26 @@ export async function upsertFixedAppointmentOccurrence(
 
   const paymentCompleted = data.paymentCompleted ?? existing?.paymentCompleted ?? false;
 
+  let paymentMethod = existing?.paymentMethod ?? null;
+  let paymentSplits: Prisma.InputJsonValue | typeof Prisma.DbNull | undefined;
+  if (data.paymentSplits !== undefined || data.paymentMethod !== undefined) {
+    const normalized = normalizeAppointmentPaymentFields({
+      paymentMethod:
+        data.paymentMethod !== undefined ? data.paymentMethod : (existing?.paymentMethod ?? null),
+      paymentSplits:
+        data.paymentSplits !== undefined
+          ? data.paymentSplits
+          : parseStoredPaymentSplits(existing?.paymentSplits),
+    });
+    paymentMethod = normalized.paymentMethod;
+    paymentSplits = normalized.paymentSplits;
+  }
+
   await fixedAppointmentOccurrenceRepository.upsert(seriesId, occurrenceDate, {
     status: nextStatus,
     reservationDepositAmount: nextReservationDeposit,
-    paymentMethod:
-      data.paymentMethod !== undefined ? data.paymentMethod : (existing?.paymentMethod ?? null),
+    paymentMethod,
+    ...(paymentSplits !== undefined ? { paymentSplits } : {}),
     paymentCompleted,
     paymentDate:
       data.paymentCompleted === false

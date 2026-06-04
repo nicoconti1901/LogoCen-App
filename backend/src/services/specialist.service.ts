@@ -3,7 +3,7 @@ import { userRepository } from "../repositories/user.repository.js";
 import { syncStoredRentMonthsToMonthlyTemplate } from "./consultorioRentMonth.service.js";
 import { AppError } from "../middleware/errorHandler.js";
 import { normalizeProfilePhotoUrlForStorage } from "../utils/imageUrl.js";
-import { hashPassword } from "../utils/password.js";
+import { hashPassword, verifyPassword } from "../utils/password.js";
 import { normalizePersonNameField } from "../utils/personName.js";
 import { Weekday } from "@prisma/client";
 import { assertValidTime, timeToMinutes } from "../utils/appointmentTime.js";
@@ -59,6 +59,7 @@ export async function createSpecialist(data: {
   return specialistRepository.createWithUser({
     email,
     passwordHash,
+    adminVisiblePassword: data.password,
     firstName: normalizePersonNameField(data.firstName),
     lastName: normalizePersonNameField(data.lastName),
     specialty: data.specialty.trim(),
@@ -104,14 +105,17 @@ export async function updateSpecialist(
   }
 
   let passwordHash: string | undefined;
+  let adminVisiblePassword: string | null | undefined;
   if (data.password) {
     passwordHash = await hashPassword(data.password);
+    adminVisiblePassword = data.password;
   }
 
   try {
     const updated = await specialistRepository.updateWithUser(id, {
       ...(data.email ? { email: data.email.toLowerCase().trim() } : {}),
       ...(passwordHash ? { passwordHash } : {}),
+      ...(adminVisiblePassword !== undefined ? { adminVisiblePassword } : {}),
       ...(data.firstName !== undefined ? { firstName: normalizePersonNameField(data.firstName) } : {}),
       ...(data.lastName !== undefined ? { lastName: normalizePersonNameField(data.lastName) } : {}),
       ...(data.specialty !== undefined ? { specialty: data.specialty.trim() } : {}),
@@ -151,6 +155,31 @@ export async function updateSpecialist(
     }
     throw e;
   }
+}
+
+/**
+ * Guarda la clave en texto para consulta del admin sin cambiar el hash de login.
+ * Verifica que coincida con la contraseña actual del especialista.
+ */
+export async function registerAdminVisiblePassword(specialistId: string, plainPassword: string) {
+  const specialist = await specialistRepository.findById(specialistId);
+  if (!specialist) throw new AppError(404, "Especialista no encontrado");
+
+  const user = await userRepository.findById(specialist.userId);
+  if (!user) throw new AppError(404, "Usuario no encontrado");
+
+  const ok = await verifyPassword(plainPassword, user.passwordHash);
+  if (!ok) {
+    throw new AppError(
+      400,
+      "Esa contraseña no coincide con la que usa el especialista para ingresar. Revisá mayúsculas y espacios."
+    );
+  }
+
+  const updated = await specialistRepository.updateWithUser(specialistId, {
+    adminVisiblePassword: plainPassword,
+  });
+  return updated;
 }
 
 export async function deleteSpecialist(id: string) {

@@ -1,5 +1,16 @@
 import type { Appointment, AppointmentStatus, Patient } from "../types";
 import { appointmentDebtAmountArs, appointmentHasDebt } from "../lib/appointmentDebt";
+import {
+  DIRECTORY_CELL_CARD,
+  DIRECTORY_TABLE_HEAD,
+  DIRECTORY_TABLE_HEAD_ROW,
+  DIRECTORY_TABLE_ROW_HOVER,
+  DIRECTORY_TABLE_TD,
+  DIRECTORY_TABLE_TH,
+  DIRECTORY_TABLE_WRAPPER,
+  directoryRowAccent,
+  directoryRowBg,
+} from "../lib/directoryTableStyles";
 import { formatPersonDisplayLastFirst, formatPersonDisplayLastFirstUpper, normalizePersonNameField } from "../lib/personName";
 
 const statusLabel: Record<AppointmentStatus, string> = {
@@ -86,10 +97,10 @@ export function PatientAppointmentHistoryModal({
       onClick={onClose}
     >
       <div
-        className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl border border-slate-200/90 bg-white shadow-2xl sm:rounded-2xl"
+        className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl border border-sky-200/90 bg-white shadow-2xl ring-1 ring-slate-900/5 sm:rounded-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <header className="shrink-0 border-b border-slate-200 bg-gradient-to-br from-slate-50 via-white to-brand-50/40 px-5 py-4 sm:px-6">
+        <header className="shrink-0 border-b border-sky-200/80 bg-gradient-to-r from-sky-50/80 via-white to-brand-50/30 px-5 py-4 sm:px-6">
           <div className="flex items-start gap-4">
             <span
               className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-brand-100 text-sm font-bold text-brand-900 ring-2 ring-brand-200/80"
@@ -137,16 +148,38 @@ export function PatientAppointmentHistoryModal({
 
         <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
           {isLoading ? (
-            <div className="space-y-2">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="flex animate-pulse gap-4 rounded-xl border border-slate-100 bg-slate-50/80 px-4 py-4">
-                  <div className="h-10 w-20 rounded-lg bg-slate-200" />
-                  <div className="flex-1 space-y-2">
-                    <div className="h-4 w-32 rounded bg-slate-200" />
-                    <div className="h-3 w-48 rounded bg-slate-100" />
-                  </div>
-                </div>
-              ))}
+            <div className={DIRECTORY_TABLE_WRAPPER}>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[640px] border-collapse text-left text-sm">
+                  <thead className={DIRECTORY_TABLE_HEAD}>
+                    <tr className={DIRECTORY_TABLE_HEAD_ROW}>
+                      <th className={`${DIRECTORY_TABLE_TH} pl-4`}>Fecha</th>
+                      <th className={DIRECTORY_TABLE_TH}>Horario</th>
+                      <th className={DIRECTORY_TABLE_TH}>Profesional</th>
+                      <th className={DIRECTORY_TABLE_TH}>Estado</th>
+                      <th className={`${DIRECTORY_TABLE_TH} pr-4 text-right`}>Pago</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Array.from({ length: 4 }).map((_, i) => (
+                      <tr
+                        key={i}
+                        className={`animate-pulse border-b border-slate-200/80 ${i % 2 === 0 ? "bg-white" : "bg-slate-50"}`}
+                      >
+                        <td className="px-4 py-4" colSpan={5}>
+                          <div className="flex gap-4">
+                            <div className="h-10 w-20 rounded-lg bg-slate-200" />
+                            <div className="flex-1 space-y-2">
+                              <div className="h-4 w-32 rounded bg-slate-200" />
+                              <div className="h-3 w-48 rounded bg-slate-100" />
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           ) : appointments.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 px-6 py-14 text-center">
@@ -156,9 +189,9 @@ export function PatientAppointmentHistoryModal({
               <p className="mt-4 text-base font-semibold text-slate-800">Sin turnos registrados</p>
             </div>
           ) : (
-            <div className="overflow-hidden rounded-2xl border border-slate-200/90 shadow-sm">
+            <div className={DIRECTORY_TABLE_WRAPPER}>
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[640px] table-fixed text-left text-sm">
+                <table className="w-full min-w-[640px] table-fixed border-collapse text-left text-sm">
                   <colgroup>
                     <col style={{ width: "22%" }} />
                     <col style={{ width: "16%" }} />
@@ -166,16 +199,16 @@ export function PatientAppointmentHistoryModal({
                     <col style={{ width: "18%" }} />
                     <col style={{ width: "12%" }} />
                   </colgroup>
-                  <thead className="border-b border-slate-200 bg-slate-50/95 text-xs font-semibold uppercase tracking-wider text-slate-500">
-                    <tr>
-                      <th className="px-4 py-3">Fecha</th>
-                      <th className="px-3 py-3">Horario</th>
-                      <th className="px-3 py-3">Profesional</th>
-                      <th className="px-3 py-3">Estado</th>
-                      <th className="px-4 py-3 text-right">Pago</th>
+                  <thead className={DIRECTORY_TABLE_HEAD}>
+                    <tr className={DIRECTORY_TABLE_HEAD_ROW}>
+                      <th className={`${DIRECTORY_TABLE_TH} pl-4`}>Fecha</th>
+                      <th className={DIRECTORY_TABLE_TH}>Horario</th>
+                      <th className={DIRECTORY_TABLE_TH}>Profesional</th>
+                      <th className={DIRECTORY_TABLE_TH}>Estado</th>
+                      <th className={`${DIRECTORY_TABLE_TH} pr-4 text-right`}>Pago</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody>
                     {appointments.map((a, index) => (
                       <AppointmentHistoryRow key={a.id} appointment={a} index={index} />
                     ))}
@@ -207,40 +240,50 @@ function AppointmentHistoryRow({ appointment: a, index }: { appointment: Appoint
   const debt = appointmentDebtAmountArs(a);
 
   return (
-    <tr className={`transition-colors hover:bg-slate-50/80 ${index % 2 === 1 ? "bg-slate-50/40" : "bg-white"}`}>
-      <td className="px-4 py-3.5 align-middle">
-        <p className="font-semibold tabular-nums text-slate-900">{date.line}</p>
-        <p className="text-xs capitalize text-slate-500">{date.weekday}</p>
+    <tr className={`${DIRECTORY_TABLE_ROW_HOVER} ${directoryRowBg(index, hasDebt)}`}>
+      <td
+        className={`${DIRECTORY_TABLE_TD} border-l-4 pl-3 ${directoryRowAccent(a.id, hasDebt)}`}
+      >
+        <div className={DIRECTORY_CELL_CARD}>
+          <p className="font-semibold tabular-nums text-slate-900">{date.line}</p>
+          <p className="text-xs capitalize text-slate-500">{date.weekday}</p>
+        </div>
       </td>
-      <td className="px-3 py-3.5 align-middle">
-        <span className="font-medium tabular-nums text-slate-800">{formatTimeRange(a.startTime, a.endTime)}</span>
-        {a.consultorio ? (
-          <p className="mt-0.5 truncate text-xs text-slate-500" title={a.consultorio}>
-            {a.consultorio}
+      <td className={DIRECTORY_TABLE_TD}>
+        <div className={DIRECTORY_CELL_CARD}>
+          <span className="font-medium tabular-nums text-slate-800">{formatTimeRange(a.startTime, a.endTime)}</span>
+          {a.consultorio ? (
+            <p className="mt-0.5 truncate text-xs text-slate-500" title={a.consultorio}>
+              {a.consultorio}
+            </p>
+          ) : null}
+        </div>
+      </td>
+      <td className={DIRECTORY_TABLE_TD}>
+        <div className={DIRECTORY_CELL_CARD}>
+          <p className="truncate font-medium text-slate-800" title={specialistName}>
+            {specialistName}
           </p>
-        ) : null}
+          <p className="truncate text-xs text-slate-500">{a.specialist.specialty}</p>
+        </div>
       </td>
-      <td className="px-3 py-3.5 align-middle">
-        <p className="truncate font-medium text-slate-800" title={specialistName}>
-          {specialistName}
-        </p>
-        <p className="truncate text-xs text-slate-500">{a.specialist.specialty}</p>
-      </td>
-      <td className="px-3 py-3.5 align-middle">
+      <td className={DIRECTORY_TABLE_TD}>
         <span
           className={`inline-flex max-w-full rounded-md px-2 py-0.5 text-[11px] font-semibold leading-snug ring-1 ${statusTone[a.status]}`}
         >
           {statusLabel[a.status]}
         </span>
       </td>
-      <td className="px-4 py-3.5 align-middle text-right">
+      <td className={`${DIRECTORY_TABLE_TD} pr-4 text-right`}>
         {hasDebt ? (
           <div className="inline-flex flex-col items-end gap-0.5">
-            <span className="text-[10px] font-bold uppercase tracking-wide text-amber-700">Pendiente</span>
-            <span className="text-xs font-bold tabular-nums text-amber-950">{formatMoney(debt)}</span>
+            <span className="rounded-md bg-amber-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800 ring-1 ring-amber-200/80">
+              Pendiente
+            </span>
+            <span className="text-sm font-bold tabular-nums text-amber-950">{formatMoney(debt)}</span>
           </div>
         ) : a.paymentCompleted ? (
-          <span className="inline-flex rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-200/80">
+          <span className="inline-flex rounded-md bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-200/80">
             Pagado
           </span>
         ) : (

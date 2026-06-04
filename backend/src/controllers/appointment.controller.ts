@@ -15,6 +15,7 @@ import {
   optionalMoneySchema,
   timeSchema,
 } from "../utils/fieldValidation.js";
+import { paymentSplitsInputSchema } from "../utils/paymentSplitsSchema.js";
 import type { AppointmentWithRelations } from "../repositories/appointment.repository.js";
 import { enrichAppointment } from "../utils/datetime.js";
 import { FIXED_APPOINTMENT_ID_PREFIX, parseFixedAppointmentId } from "../utils/fixedAppointmentOccurrences.js";
@@ -41,6 +42,7 @@ const createSchema = z
     endTime: timeSchema,
     status: z.nativeEnum(AppointmentStatus).optional(),
     paymentMethod: z.nativeEnum(AppointmentPaymentMethod).optional().nullable(),
+    paymentSplits: paymentSplitsInputSchema,
     paymentCompleted: z.boolean().optional(),
     paymentDate: optionalDateOnlyStringSchema,
     medicalRecord: optionalLongTextSchema(MEDICAL_RECORD_MAX),
@@ -53,6 +55,14 @@ const createSchema = z
         code: z.ZodIssueCode.custom,
         message: "Indique la fecha de pago",
         path: ["paymentDate"],
+      });
+    }
+    const needsConsultorio = body.status !== "AUSENTE_CON_AVISO";
+    if (needsConsultorio && !body.consultorio.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Seleccioná un consultorio",
+        path: ["consultorio"],
       });
     }
   });
@@ -68,6 +78,7 @@ const updateSchema = z
     endTime: timeSchema.optional(),
     status: z.nativeEnum(AppointmentStatus).optional(),
     paymentMethod: z.nativeEnum(AppointmentPaymentMethod).optional().nullable(),
+    paymentSplits: paymentSplitsInputSchema,
     paymentCompleted: z.boolean().optional(),
     paymentDate: optionalDateOnlyStringSchema,
     specialistSettledAt: z.coerce.date().optional().nullable(),
@@ -177,6 +188,7 @@ export const create = asyncHandler(async (req: Request, res: Response) => {
       endTime: body.endTime,
       status: body.status,
       paymentMethod: body.paymentMethod,
+      paymentSplits: body.paymentSplits ?? undefined,
       paymentCompleted: body.paymentCompleted,
       paymentDate: body.paymentDate ? parseDateOnlyISO(body.paymentDate) : null,
       medicalRecord: body.medicalRecord,
@@ -202,6 +214,7 @@ export const update = asyncHandler(async (req: Request, res: Response) => {
       ...(body.endTime !== undefined ? { endTime: body.endTime } : {}),
       ...(body.status !== undefined ? { status: body.status } : {}),
       ...(body.paymentMethod !== undefined ? { paymentMethod: body.paymentMethod } : {}),
+      ...(body.paymentSplits !== undefined ? { paymentSplits: body.paymentSplits } : {}),
       ...(body.paymentCompleted !== undefined ? { paymentCompleted: body.paymentCompleted } : {}),
       ...(body.paymentDate !== undefined
         ? { paymentDate: body.paymentDate ? parseDateOnlyISO(body.paymentDate) : null }

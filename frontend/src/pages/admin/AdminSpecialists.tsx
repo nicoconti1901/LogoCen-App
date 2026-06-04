@@ -5,7 +5,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createSpecialist,
   deleteSpecialist,
+  fetchSpecialist,
   fetchSpecialists,
+  registerSpecialistVisiblePassword,
   uploadSpecialistProfilePhoto,
   updateSpecialist,
 } from "../../api/endpoints";
@@ -289,6 +291,7 @@ type FormModalProps = {
   editing: Specialist | null;
   onClose: () => void;
   canDelete: boolean;
+  isAdmin: boolean;
 };
 
 function parseApiError(err: unknown): string {
@@ -310,17 +313,45 @@ function parseApiError(err: unknown): string {
   return err.message || "No se pudo conectar con el servidor";
 }
 
-function SpecialistFormModal({ open, title, editing, onClose, canDelete }: FormModalProps) {
+function SpecialistFormModal({ open, title, editing, onClose, canDelete, isAdmin }: FormModalProps) {
   const qc = useQueryClient();
   const [form, setForm] = useState(emptyForm);
   const [formError, setFormError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors<SpecialistFormFields>>({});
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showStoredPassword, setShowStoredPassword] = useState(true);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [registerPassword, setRegisterPassword] = useState("");
+  const [showRegisterPassword, setShowRegisterPassword] = useState(false);
+
+  const editingDetailQ = useQuery({
+    queryKey: ["specialist", "admin-edit", editing?.id],
+    queryFn: () => fetchSpecialist(editing!.id),
+    enabled: open && isAdmin && Boolean(editing?.id),
+  });
+
+  const storedPasswordForAdmin =
+    isAdmin && editing
+      ? (editingDetailQ.data?.visiblePassword ?? editing.visiblePassword ?? null)
+      : null;
+
+  const registerVisibleMut = useMutation({
+    mutationFn: () => registerSpecialistVisiblePassword(editing!.id, registerPassword),
+    onSuccess: async () => {
+      setRegisterPassword("");
+      setFormError(null);
+      await qc.invalidateQueries({ queryKey: ["specialists"] });
+      await qc.invalidateQueries({ queryKey: ["specialist", "admin-edit", editing?.id] });
+      setShowStoredPassword(true);
+    },
+    onError: (err) => setFormError(parseApiError(err)),
+  });
 
   useEffect(() => {
     if (!open) return;
     setFormError(null);
     setFieldErrors({});
+    setRegisterPassword("");
     if (!editing) {
       setForm(emptyForm);
       return;
@@ -389,10 +420,14 @@ function SpecialistFormModal({ open, title, editing, onClose, canDelete }: FormM
         considerations: form.considerations.trim() || null,
         availabilities: form.availabilities,
       }),
-    onSuccess: async () => {
+    onSuccess: async (updated) => {
       await qc.invalidateQueries({ queryKey: ["specialists"] });
       await qc.invalidateQueries({ queryKey: ["specialist"] });
+      await qc.invalidateQueries({ queryKey: ["specialist", "admin-edit"] });
       await qc.invalidateQueries({ queryKey: ["consultorio-rent-months"] });
+      if (isAdmin && updated.visiblePassword) {
+        setShowStoredPassword(true);
+      }
       onClose();
     },
     onError: (err) => setFormError(parseApiError(err)),
@@ -431,7 +466,12 @@ function SpecialistFormModal({ open, title, editing, onClose, canDelete }: FormM
     else createMut.mutate();
   }
 
-  const pending = createMut.isPending || updateMut.isPending || deleteMut.isPending || uploadPhotoMut.isPending;
+  const pending =
+    createMut.isPending ||
+    updateMut.isPending ||
+    deleteMut.isPending ||
+    uploadPhotoMut.isPending ||
+    registerVisibleMut.isPending;
   const specialistFieldClass =
     "mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 transition focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20";
   const fieldClassFor = (field: SpecialistFormFields) =>
@@ -528,7 +568,108 @@ function SpecialistFormModal({ open, title, editing, onClose, canDelete }: FormM
             />
             <FormFieldError message={fieldErrors.email} />
           </div>
-          {!editing && (
+          {isAdmin && editing && (
+            <div className="sm:col-span-2 rounded-xl border border-sky-100 bg-sky-50/80 p-3">
+              <label className="text-sm font-medium text-slate-700">Contraseña del especialista</label>
+              {editingDetailQ.isLoading ? (
+                <p className="mt-2 text-sm text-slate-500">Cargando…</p>
+              ) : storedPasswordForAdmin?.trim() ? (
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <code className="rounded-lg border border-sky-200 bg-white px-3 py-2 font-mono text-sm text-slate-900">
+                    {showStoredPassword ? storedPasswordForAdmin : "••••••••••••"}
+                  </code>
+                  <button
+                    type="button"
+                    className="rounded-lg border border-sky-200 bg-white px-3 py-1.5 text-sm font-medium text-sky-800 hover:bg-sky-100"
+                    onClick={() => setShowStoredPassword((v) => !v)}
+                  >
+                    {showStoredPassword ? "Ocultar" : "Mostrar"}
+                  </button>
+                </div>
+              ) : (
+                <div className="mt-2 space-y-2">
+                  <p className="text-sm text-slate-700">
+                    Este profesional ya tenía cuenta antes de guardar claves en ficha. Si conocés su contraseña actual,
+                    registrala acá <strong>sin cambiar el login</strong>:
+                  </p>
+                  <div className="flex flex-wrap items-end gap-2">
+                    <div className="min-w-[12rem] flex-1">
+                      <input
+                        type={showRegisterPassword ? "text" : "password"}
+                        autoComplete="off"
+                        className={`${specialistFieldClass} font-mono text-sm`}
+                        placeholder="Misma clave con la que entra"
+                        value={registerPassword}
+                        onChange={(e) => setRegisterPassword(e.target.value)}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      className="rounded-lg border border-sky-200 bg-white px-3 py-2 text-sm font-medium text-sky-800 hover:bg-sky-100"
+                      onClick={() => setShowRegisterPassword((v) => !v)}
+                    >
+                      {showRegisterPassword ? "Ocultar" : "Ver"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!registerPassword.trim() || registerVisibleMut.isPending}
+                      className="rounded-lg bg-sky-600 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-50"
+                      onClick={() => registerVisibleMut.mutate()}
+                    >
+                      {registerVisibleMut.isPending ? "Guardando…" : "Guardar en ficha"}
+                    </button>
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    O definí una <strong>nueva contraseña</strong> más abajo (eso sí cambia cómo ingresa).
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+          {isAdmin && editing && (
+            <>
+              <div className="sm:col-span-2">
+                <label className="text-sm font-medium text-slate-600">Nueva contraseña (opcional)</label>
+                <div className="mt-1.5 flex gap-2">
+                  <input
+                    type={showNewPassword ? "text" : "password"}
+                    name="specialist-new-password-edit"
+                    autoComplete="new-password"
+                    className={`${fieldClassFor("password")} flex-1`}
+                    value={form.password}
+                    onChange={(e) => {
+                      setForm((f) => ({ ...f, password: e.target.value }));
+                      clearField("password");
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="shrink-0 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
+                    onClick={() => setShowNewPassword((v) => !v)}
+                  >
+                    {showNewPassword ? "Ocultar" : "Ver"}
+                  </button>
+                </div>
+                <FormFieldError message={fieldErrors.password} />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="text-sm font-medium text-slate-600">Confirmar nueva contraseña</label>
+                <input
+                  type={showNewPassword ? "text" : "password"}
+                  name="specialist-confirm-password-edit"
+                  autoComplete="new-password"
+                  className={fieldClassFor("confirmPassword")}
+                  value={form.confirmPassword}
+                  onChange={(e) => {
+                    setForm((f) => ({ ...f, confirmPassword: e.target.value }));
+                    clearField("confirmPassword");
+                  }}
+                />
+                <FormFieldError message={fieldErrors.confirmPassword} />
+              </div>
+            </>
+          )}
+          {isAdmin && !editing && (
             <>
               <div className="sm:col-span-2">
                 <label className="text-sm font-medium text-slate-600">Contraseña</label>
@@ -980,9 +1121,10 @@ export function AdminSpecialistsPage() {
 
       <SpecialistFormModal
         open={modalOpen}
-        title={editing ? "Editar especialista" : "Nuevo especialista"}
+        title={editing ? (isAdmin ? "Editar especialista" : "Mi perfil") : "Nuevo especialista"}
         editing={editing}
         canDelete={isAdmin}
+        isAdmin={isAdmin}
         onClose={closeModal}
       />
 

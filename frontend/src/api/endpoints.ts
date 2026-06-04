@@ -59,6 +59,15 @@ export async function createSpecialist(body: {
   return data;
 }
 
+/** Registra la clave actual en ficha admin (verifica contra login; no cambia el hash). */
+export async function registerSpecialistVisiblePassword(
+  id: string,
+  password: string
+): Promise<Specialist> {
+  const { data } = await api.post<Specialist>(`/specialists/${id}/visible-password`, { password });
+  return data;
+}
+
 export async function updateSpecialist(
   id: string,
   body: Partial<{
@@ -219,6 +228,7 @@ export async function createAppointment(body: {
   status?: string;
   reservationDepositAmount?: string | number | null;
   paymentMethod?: string | null;
+  paymentSplits?: Array<{ method: string; amount: string | number }> | null;
   paymentCompleted?: boolean;
   paymentDate?: string | null;
   medicalRecord?: string | null;
@@ -240,6 +250,7 @@ export async function updateAppointment(
     status: string;
     reservationDepositAmount?: string | number | null;
     paymentMethod: string | null;
+    paymentSplits?: Array<{ method: string; amount: string | number }> | null;
     paymentCompleted: boolean;
     paymentDate: string | null;
     specialistSettledAt: string | null;
@@ -286,6 +297,7 @@ export async function updateFixedAppointmentOccurrence(
     status?: string;
     reservationDepositAmount?: string | number | null;
     paymentMethod?: string | null;
+    paymentSplits?: Array<{ method: string; amount: string | number }> | null;
     paymentCompleted?: boolean;
     paymentDate?: string | null;
     specialistSettledAt?: string | null;

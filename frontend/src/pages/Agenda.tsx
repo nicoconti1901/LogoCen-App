@@ -26,6 +26,7 @@ import { useAuth } from "../contexts/AuthContext";
 import type { Appointment, AppointmentPaymentMethod, Specialist } from "../types";
 import { appointmentHasDebt, appointmentDebtAmountArs, reservadoHonorarioRemainder } from "../lib/appointmentDebt";
 import { appointmentBlocksScheduleSlot } from "../lib/appointmentScheduling";
+import { formatAppointmentPaymentLabel } from "../lib/paymentMethodDisplay";
 
 /** Intervalos de atención (minutos desde medianoche) para un día de calendario, recortados al rango de la grilla. */
 function availabilityIntervalsForCalendarDay(
@@ -127,12 +128,6 @@ const statusLabel: Record<Appointment["status"], string> = {
 const WORKDAY_START = "08:00";
 const WORKDAY_END = "20:00";
 
-const paymentMethodLabel: Record<AppointmentPaymentMethod, string> = {
-  TRANSFER_TO_LOGOCEN: "Transferencia a LogoCen",
-  TRANSFER_TO_SPECIALIST: "Transferencia al especialista",
-  CASH_TO_LOGOCEN: "Efectivo a LogoCen",
-};
-
 /** Monto de referencia del turno (misma base que deuda en Pacientes / ingresos en Balance). */
 function formatConsultationFeeArs(raw: string | null | undefined): string {
   if (raw == null || raw === "") return "Sin honorario cargado";
@@ -185,7 +180,7 @@ function appointmentPaymentCaption(a: Appointment): string {
   } else {
     paid = "Sin pagar";
   }
-  const method = a.paymentMethod ? paymentMethodLabel[a.paymentMethod] : "forma sin definir";
+  const method = formatAppointmentPaymentLabel(a.paymentMethod, a.paymentSplits);
   const amount = formatConsultationFeeArs(a.specialist.consultationFee);
   const base = `${paid} · ${method} · ${amount}`;
   let withAbsent = base;

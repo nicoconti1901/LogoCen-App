@@ -5,20 +5,26 @@ import { getFixedOccurrenceDate, getFixedSeriesId, isFixedSeriesAppointment } fr
 import { useAuth } from "../contexts/AuthContext";
 import type { Appointment, AppointmentStatus, Patient } from "../types";
 import { appointmentHasDebt, appointmentDebtAmountArs, appointmentImputadoPagadoArs, appointmentReferenciaHonorarioArs } from "../lib/appointmentDebt";
+import {
+  formatAppointmentPaymentLabel,
+  formatAppointmentPaymentTableLabel,
+  hasCombinedPayment,
+  PAYMENT_METHOD_TABLE_LABELS,
+} from "../lib/paymentMethodDisplay";
+import {
+  DIRECTORY_ACTIONS_BAR,
+  DIRECTORY_ACTIONS_CELL,
+  DIRECTORY_CELL_CARD,
+  DIRECTORY_TABLE_HEAD,
+  DIRECTORY_TABLE_HEAD_ROW,
+  DIRECTORY_TABLE_ROW_HOVER,
+  DIRECTORY_TABLE_TD,
+  DIRECTORY_TABLE_TH,
+  DIRECTORY_TABLE_WRAPPER,
+  directoryRowAccent,
+  directoryRowBg,
+} from "../lib/directoryTableStyles";
 import { formatPersonDisplayLastFirstUpper } from "../lib/personName";
-
-const paymentMethodLabel: Record<Exclude<Appointment["paymentMethod"], null>, string> = {
-  TRANSFER_TO_LOGOCEN: "Transferencia a LogoCen",
-  TRANSFER_TO_SPECIALIST: "Transferencia al especialista",
-  CASH_TO_LOGOCEN: "Efectivo a LogoCen",
-};
-
-/** Etiquetas cortas para la tabla (menos scroll horizontal). */
-const paymentMethodTableLabel: Record<Exclude<Appointment["paymentMethod"], null>, string> = {
-  TRANSFER_TO_LOGOCEN: "Transf. LogoCen",
-  TRANSFER_TO_SPECIALIST: "Transf. especialista",
-  CASH_TO_LOGOCEN: "Efectivo LogoCen",
-};
 
 function formatMoney(amount: number): string {
   return `$${new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 }).format(amount)}`;
@@ -110,11 +116,11 @@ export function PatientPaymentHistoryModal({ patientId, patientHint, onClose }: 
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 p-3 sm:p-4">
-      <div className="flex max-h-[92vh] w-full max-w-[min(1536px,calc(100vw-0.75rem))] flex-col overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-xl ring-1 ring-slate-900/5 sm:max-w-[min(1536px,calc(100vw-1rem))]">
-        <div className="shrink-0 border-b border-slate-100 px-4 py-4 sm:px-6">
+      <div className="flex max-h-[92vh] w-full max-w-[min(1536px,calc(100vw-0.75rem))] flex-col overflow-hidden rounded-2xl border border-sky-200/90 bg-white shadow-xl ring-1 ring-slate-900/5 sm:max-w-[min(1536px,calc(100vw-1rem))]">
+        <div className="shrink-0 border-b border-sky-200/80 bg-gradient-to-r from-sky-50/80 to-white px-4 py-4 sm:px-6">
           <div className="mb-4 flex flex-col gap-3 sm:mb-0 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0 flex-1">
-              <h2 className="text-lg font-medium text-slate-800">
+              <h2 className="text-lg font-semibold tracking-tight text-slate-900">
                 Pagos:{" "}
                 {patientForTitle ? (
                   formatPersonDisplayLastFirstUpper(patientForTitle.lastName, patientForTitle.firstName)
@@ -130,15 +136,17 @@ export function PatientPaymentHistoryModal({ patientId, patientHint, onClose }: 
             </div>
             <div className="flex shrink-0 flex-wrap items-center gap-2">
               <span
-                className={`whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold ${
-                  paymentHistorySummary.hasDebt ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-700"
+                className={`whitespace-nowrap rounded-md px-3 py-1 text-xs font-semibold ring-1 ${
+                  paymentHistorySummary.hasDebt
+                    ? "bg-amber-50 text-amber-800 ring-amber-200/80"
+                    : "bg-emerald-50 text-emerald-800 ring-emerald-200/80"
                 }`}
               >
                 {paymentHistorySummary.hasDebt ? "Con pagos pendientes" : "Sin pagos pendientes"}
               </span>
               <button
                 type="button"
-                className="whitespace-nowrap rounded-lg border border-slate-200 px-3 py-1.5 text-sm"
+                className="whitespace-nowrap rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50"
                 onClick={onClose}
               >
                 Cerrar
@@ -157,107 +165,133 @@ export function PatientPaymentHistoryModal({ patientId, patientHint, onClose }: 
             <p className="text-sm text-slate-600">Este paciente todavía no tiene turnos.</p>
           )}
           {!isLoadingPaymentHistory && paymentHistory.length > 0 && (
-            <div className="overflow-x-auto rounded-lg border border-slate-200">
-              <table className="w-full border-collapse text-left text-sm table-auto">
-                <thead className="bg-sky-100 text-slate-700">
-                  <tr>
-                    <th className="px-2 py-2.5 text-xs font-semibold uppercase tracking-wide sm:px-3">Fecha</th>
-                    <th className="px-2 py-2.5 text-xs font-semibold uppercase tracking-wide sm:px-3">Hora</th>
-                    <th className="px-2 py-2.5 text-xs font-semibold uppercase tracking-wide sm:px-3">Estado turno</th>
-                    <th className="px-2 py-2.5 text-xs font-semibold uppercase tracking-wide sm:px-3">Forma pago</th>
-                    <th className="px-2 py-2.5 text-xs font-semibold uppercase tracking-wide sm:px-3">Pago hecho</th>
-                    <th className="whitespace-nowrap px-2 py-2.5 text-xs font-semibold uppercase tracking-wide sm:px-3">
-                      Estado pago
-                    </th>
-                    <th className="px-2 py-2.5 text-xs font-semibold uppercase tracking-wide sm:px-3">Honorario</th>
-                    <th className="px-2 py-2.5 text-xs font-semibold uppercase tracking-wide sm:px-3">Abonado</th>
-                    <th className="px-2 py-2.5 text-xs font-semibold uppercase tracking-wide sm:px-3">Pendiente</th>
-                    <th className="whitespace-nowrap px-2 py-2.5 text-xs font-semibold uppercase tracking-wide sm:px-3">
-                      Acción
-                    </th>
-                  </tr>
-                </thead>
-              <tbody>
-                {paymentHistory.map((a) => {
-                  const hasDebt = appointmentHasDebt(a);
-                  const refFee = appointmentReferenciaHonorarioArs(a);
-                  const abonado = appointmentImputadoPagadoArs(a);
-                  const pendiente = appointmentDebtAmountArs(a);
-                  return (
-                    <tr
-                      key={a.id}
-                      className={`border-t border-slate-100 ${hasDebt ? "bg-amber-50" : "bg-white"}`}
-                    >
-                      <td className="truncate px-2 py-2 sm:px-3">{a.appointmentDate.slice(0, 10)}</td>
-                      <td className="whitespace-nowrap px-2 py-2 sm:px-3">
-                        {a.startTime}–{a.endTime}
-                      </td>
-                      <td className="truncate px-2 py-2 sm:px-3" title={appointmentStatusLabel[a.status]}>
-                        {isFixedSeriesAppointment(a) ? `Fijo · ${appointmentStatusLabel[a.status]}` : appointmentStatusLabel[a.status]}
-                      </td>
-                      <td className="truncate px-2 py-2 sm:px-3" title={a.paymentMethod ? paymentMethodLabel[a.paymentMethod] : ""}>
-                        {a.paymentMethod
-                          ? paymentMethodTableLabel[a.paymentMethod]
-                          : "Sin definir"}
-                      </td>
-                      <td className="whitespace-nowrap px-2 py-2 sm:px-3">{a.paymentCompleted ? "Sí" : "No"}</td>
-                      <td className="whitespace-nowrap px-2 py-2 sm:px-3 align-middle">
-                        <span
-                          className={`inline-flex max-w-full whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ${
-                            hasDebt ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-700"
-                          }`}
-                        >
-                          {hasDebt ? "Pago pendiente" : "Pago al día"}
-                        </span>
-                      </td>
-                      <td className="whitespace-nowrap px-2 py-2 text-slate-800 sm:px-3">{refFee > 0 ? formatMoney(refFee) : "—"}</td>
-                      <td className="whitespace-nowrap px-2 py-2 font-semibold text-emerald-800 sm:px-3">
-                        {abonado > 0 ? formatMoney(abonado) : "—"}
-                      </td>
-                      <td className="whitespace-nowrap px-2 py-2 font-semibold text-amber-900 sm:px-3">
-                        {hasDebt ? (pendiente > 0 ? formatMoney(pendiente) : "A definir") : "—"}
-                      </td>
-                      <td className="whitespace-nowrap px-2 py-2 align-middle sm:px-3">
-                        {hasDebt ? (
-                          isAdmin ? (
-                            <div className="inline-flex max-w-none flex-nowrap items-center gap-2">
-                              <select
-                                className="w-[168px] shrink-0 rounded-lg border border-slate-300 px-2 py-1.5 text-xs"
-                                value={paymentMethodByAppointmentId[a.id] ?? a.paymentMethod ?? "CASH_TO_LOGOCEN"}
-                                onChange={(e) =>
-                                  setPaymentMethodByAppointmentId((prev) => ({
-                                    ...prev,
-                                    [a.id]: e.target.value as Exclude<Appointment["paymentMethod"], null>,
-                                  }))
-                                }
-                              >
-                                {Object.entries(paymentMethodTableLabel).map(([method, label]) => (
-                                  <option key={method} value={method}>
-                                    {label}
-                                  </option>
-                                ))}
-                              </select>
-                              <button
-                                type="button"
-                                disabled={markDebtPaidMut.isPending}
-                                className="shrink-0 whitespace-nowrap rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 sm:px-3"
-                                onClick={() => markDebtPaidMut.mutate(a)}
-                              >
-                                Marcar pagado
-                              </button>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-slate-500">Solo administración</span>
-                          )
-                        ) : (
-                          <span className="text-xs text-slate-400">—</span>
-                        )}
-                      </td>
+            <div className={DIRECTORY_TABLE_WRAPPER}>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[1100px] border-collapse text-left text-sm table-auto">
+                  <thead className={DIRECTORY_TABLE_HEAD}>
+                    <tr className={DIRECTORY_TABLE_HEAD_ROW}>
+                      <th className={`${DIRECTORY_TABLE_TH} pl-4`}>Fecha</th>
+                      <th className={DIRECTORY_TABLE_TH}>Hora</th>
+                      <th className={DIRECTORY_TABLE_TH}>Estado turno</th>
+                      <th className={DIRECTORY_TABLE_TH}>Forma pago</th>
+                      <th className={DIRECTORY_TABLE_TH}>Pago hecho</th>
+                      <th className={`${DIRECTORY_TABLE_TH} whitespace-nowrap`}>Estado pago</th>
+                      <th className={`${DIRECTORY_TABLE_TH} text-right`}>Honorario</th>
+                      <th className={`${DIRECTORY_TABLE_TH} text-right`}>Abonado</th>
+                      <th className={`${DIRECTORY_TABLE_TH} text-right`}>Pendiente</th>
+                      <th className={`${DIRECTORY_TABLE_TH} pr-4 text-right`}>Acción</th>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  </thead>
+                  <tbody>
+                    {paymentHistory.map((a, index) => {
+                      const hasDebt = appointmentHasDebt(a);
+                      const refFee = appointmentReferenciaHonorarioArs(a);
+                      const abonado = appointmentImputadoPagadoArs(a);
+                      const pendiente = appointmentDebtAmountArs(a);
+                      const paymentLabel = formatAppointmentPaymentTableLabel(a.paymentMethod, a.paymentSplits);
+                      return (
+                        <tr key={a.id} className={`${DIRECTORY_TABLE_ROW_HOVER} ${directoryRowBg(index, hasDebt)}`}>
+                          <td
+                            className={`${DIRECTORY_TABLE_TD} border-l-4 pl-3 font-medium tabular-nums text-slate-800 ${directoryRowAccent(a.id, hasDebt)}`}
+                          >
+                            {a.appointmentDate.slice(0, 10)}
+                          </td>
+                          <td className={`${DIRECTORY_TABLE_TD} whitespace-nowrap tabular-nums text-slate-700`}>
+                            {a.startTime}–{a.endTime}
+                          </td>
+                          <td className={DIRECTORY_TABLE_TD}>
+                            <div className={DIRECTORY_CELL_CARD}>
+                              <p className="truncate text-sm font-medium text-slate-800" title={appointmentStatusLabel[a.status]}>
+                                {isFixedSeriesAppointment(a)
+                                  ? `Fijo · ${appointmentStatusLabel[a.status]}`
+                                  : appointmentStatusLabel[a.status]}
+                              </p>
+                            </div>
+                          </td>
+                          <td className={`${DIRECTORY_TABLE_TD} max-w-[14rem]`}>
+                            <div className={DIRECTORY_CELL_CARD} title={formatAppointmentPaymentLabel(a.paymentMethod, a.paymentSplits)}>
+                              <p className="truncate text-sm text-slate-800">{paymentLabel}</p>
+                            </div>
+                          </td>
+                          <td className={`${DIRECTORY_TABLE_TD} whitespace-nowrap`}>
+                            <span
+                              className={`inline-flex rounded-md px-2 py-0.5 text-xs font-semibold ring-1 ${
+                                a.paymentCompleted
+                                  ? "bg-emerald-50 text-emerald-800 ring-emerald-200/80"
+                                  : "bg-slate-100 text-slate-600 ring-slate-200/80"
+                              }`}
+                            >
+                              {a.paymentCompleted ? "Sí" : "No"}
+                            </span>
+                          </td>
+                          <td className={DIRECTORY_TABLE_TD}>
+                            <span
+                              className={`inline-flex whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-semibold ring-1 ${
+                                hasDebt
+                                  ? "bg-amber-50 text-amber-800 ring-amber-200/80"
+                                  : "bg-emerald-50 text-emerald-800 ring-emerald-200/80"
+                              }`}
+                            >
+                              {hasDebt ? "Pago pendiente" : "Pago al día"}
+                            </span>
+                          </td>
+                          <td className={`${DIRECTORY_TABLE_TD} text-right tabular-nums text-slate-800`}>
+                            {refFee > 0 ? formatMoney(refFee) : "—"}
+                          </td>
+                          <td className={`${DIRECTORY_TABLE_TD} text-right font-semibold tabular-nums text-emerald-800`}>
+                            {abonado > 0 ? formatMoney(abonado) : "—"}
+                          </td>
+                          <td className={`${DIRECTORY_TABLE_TD} text-right font-semibold tabular-nums text-amber-950`}>
+                            {hasDebt ? (pendiente > 0 ? formatMoney(pendiente) : "A definir") : "—"}
+                          </td>
+                          <td className={`${DIRECTORY_TABLE_TD} ${DIRECTORY_ACTIONS_CELL} pr-4`}>
+                            {hasDebt ? (
+                              isAdmin ? (
+                                <div className={`${DIRECTORY_ACTIONS_BAR} !flex-nowrap`}>
+                                  <select
+                                    className="w-[168px] shrink-0 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs shadow-sm"
+                                    value={
+                                      paymentMethodByAppointmentId[a.id] ??
+                                      a.paymentMethod ??
+                                      (hasCombinedPayment(a.paymentSplits)
+                                        ? a.paymentSplits![0]!.method
+                                        : "CASH_TO_LOGOCEN")
+                                    }
+                                    onChange={(e) =>
+                                      setPaymentMethodByAppointmentId((prev) => ({
+                                        ...prev,
+                                        [a.id]: e.target.value as Exclude<Appointment["paymentMethod"], null>,
+                                      }))
+                                    }
+                                  >
+                                    {Object.entries(PAYMENT_METHOD_TABLE_LABELS).map(([method, label]) => (
+                                      <option key={method} value={method}>
+                                        {label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <button
+                                    type="button"
+                                    disabled={markDebtPaidMut.isPending}
+                                    className="shrink-0 whitespace-nowrap rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm ring-1 ring-emerald-800/20 hover:bg-emerald-700 disabled:opacity-50"
+                                    onClick={() => markDebtPaidMut.mutate(a)}
+                                  >
+                                    Marcar pagado
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className="text-xs font-medium text-slate-500">Solo administración</span>
+                              )
+                            ) : (
+                              <span className="text-xs text-slate-400">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>

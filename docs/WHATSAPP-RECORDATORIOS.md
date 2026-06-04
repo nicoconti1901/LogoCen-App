@@ -138,7 +138,7 @@ Confirmá con el botón.
 | {{1}} | Nombre del paciente |
 | {{2}} | `CLINIC_NAME` |
 | {{3}} | Fecha (es-AR) |
-| {{4}} | Hora de inicio (`startTime`, ej. `10:00`) |
+| {{4}} | Hora de inicio (`startTime`, ej. `10:00 hs`) |
 | {{5}} | Profesional |
 | {{6}} | Solo `CLINIC_ADDRESS` |
 
@@ -203,10 +203,12 @@ Confirmá con el botón.
 | {{1}} | Nombre del paciente |
 | {{2}} | `CLINIC_NAME` (aparece 2 veces en el texto; Meta a veces rechaza la misma variable repetida) |
 | {{3}} | Fecha (es-AR) |
-| {{4}} | Hora inicio (`startTime`, ej. `10:00`) |
+| {{4}} | Hora de inicio (`10:00 hs`; sin hora de fin) |
 | {{5}} | Profesional |
 | {{6}} | `CLINIC_ADDRESS` (solo dirección; en la línea 📍 va después del nombre del centro) |
 | {{7}} | `https://wa.me/549...` (hipervínculo; no solo el número) |
+
+**Orden al enviar a Meta (crítico):** los parámetros del API van por **primera aparición** en el cuerpo, no por el número `{{N}}`. En esta plantilla: `{{1}}`, `{{2}}`, `{{6}}`, `{{3}}`, `{{4}}`, `{{5}}`, `{{7}}`. Si cambiás el texto en Meta, hay que actualizar `APPEARANCE_ORDER_24H_CONTACT` en `messageBuilder.ts`.
 
 **Ejemplo {{7}} para la revisión de Meta:** `https://wa.me/54911141540215` (no `11 4154-0215` suelto). Eso es el hipervínculo; **no hace falta** un segundo botón URL.
 

@@ -1,4 +1,5 @@
 import type { Appointment } from "../types";
+import { hasCombinedPayment } from "./paymentMethodDisplay";
 
 function parseMoney(raw: string | null | undefined): number {
   if (raw == null || raw === "") return 0;
@@ -41,9 +42,9 @@ export function appointmentHasDebt(a: Appointment): boolean {
   if (a.status === "RESERVADO") {
     const remainder = reservadoHonorarioRemainder(a);
     if (remainder != null) return remainder > 0;
-    return a.paymentMethod === null;
+    return a.paymentMethod === null && !hasCombinedPayment(a.paymentSplits);
   }
-  return a.paymentMethod === null;
+  return a.paymentMethod === null && !hasCombinedPayment(a.paymentSplits);
 }
 
 /** Honorario de referencia del especialista en el turno. */

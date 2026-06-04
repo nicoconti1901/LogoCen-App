@@ -29,6 +29,11 @@ import {
   cancelWhatsappRemindersForAppointment,
   syncWhatsappReminderForAppointment,
 } from "./whatsappReminder.service.js";
+import {
+  normalizeAppointmentPaymentFields,
+  parseStoredPaymentSplits,
+  type PaymentSplitInput,
+} from "../utils/appointmentPaymentSplits.js";
 
 function assertCanAccessAppointment(
   role: Role,
@@ -270,6 +275,26 @@ export async function getAppointmentById(id: string, role: Role, userSpecialistI
   return a;
 }
 
+function resolvePaymentFields(
+  data: {
+    paymentMethod?: AppointmentPaymentMethod | null;
+    paymentSplits?: PaymentSplitInput[] | null;
+  },
+  existing?: {
+    paymentMethod: AppointmentPaymentMethod | null;
+    paymentSplits: unknown;
+  }
+) {
+  if (data.paymentSplits === undefined && data.paymentMethod === undefined) return null;
+  const existingSplits = existing ? parseStoredPaymentSplits(existing.paymentSplits) : null;
+  return normalizeAppointmentPaymentFields({
+    paymentMethod:
+      data.paymentMethod !== undefined ? data.paymentMethod : (existing?.paymentMethod ?? null),
+    paymentSplits:
+      data.paymentSplits !== undefined ? data.paymentSplits : existingSplits,
+  });
+}
+
 export async function createAppointment(
   data: {
     patientId: string;
@@ -280,6 +305,7 @@ export async function createAppointment(
     endTime: string;
     status?: AppointmentStatus;
     paymentMethod?: AppointmentPaymentMethod | null;
+    paymentSplits?: PaymentSplitInput[] | null;
     paymentCompleted?: boolean;
     paymentDate?: Date | null;
     medicalRecord?: string | null;
@@ -327,6 +353,8 @@ export async function createAppointment(
     specialist.consultationFee
   );
 
+  const paymentFields = resolvePaymentFields(data);
+
   const created = await appointmentRepository.create({
     patient: { connect: { id: data.patientId } },
     specialist: { connect: { id: data.specialistId } },
@@ -336,7 +364,8 @@ export async function createAppointment(
     endTime,
     status,
     reservationDepositAmount,
-    paymentMethod: data.paymentMethod ?? null,
+    paymentMethod: paymentFields?.paymentMethod ?? data.paymentMethod ?? null,
+    ...(paymentFields ? { paymentSplits: paymentFields.paymentSplits } : {}),
     paymentCompleted: data.paymentCompleted ?? false,
     paymentDate: data.paymentCompleted ? (data.paymentDate ?? null) : null,
     medicalRecord: data.medicalRecord?.trim() || null,
@@ -369,6 +398,7 @@ export async function updateAppointment(
     status: AppointmentStatus;
     patientConfirmationSource?: PatientConfirmationSource | null;
     paymentMethod: AppointmentPaymentMethod | null;
+    paymentSplits?: PaymentSplitInput[] | null;
     paymentCompleted: boolean;
     paymentDate: Date | null;
     specialistSettledAt: Date | null;
@@ -389,6 +419,7 @@ export async function updateAppointment(
       {
         ...(data.status !== undefined ? { status: data.status } : {}),
         ...(data.paymentMethod !== undefined ? { paymentMethod: data.paymentMethod } : {}),
+        ...(data.paymentSplits !== undefined ? { paymentSplits: data.paymentSplits } : {}),
         ...(data.paymentCompleted !== undefined ? { paymentCompleted: data.paymentCompleted } : {}),
         ...(data.paymentDate !== undefined ? { paymentDate: data.paymentDate } : {}),
         ...(data.specialistSettledAt !== undefined ? { specialistSettledAt: data.specialistSettledAt } : {}),
@@ -484,6 +515,8 @@ export async function updateAppointment(
         )
       : {};
 
+  const paymentPatch = resolvePaymentFields(data, existing);
+
   const updated = await appointmentRepository.update(id, {
     ...(data.patientId !== undefined ? { patient: { connect: { id: data.patientId } } } : {}),
     ...(data.specialistId !== undefined ? { specialist: { connect: { id: data.specialistId } } } : {}),
@@ -494,7 +527,9 @@ export async function updateAppointment(
     ...(data.status !== undefined ? { status: data.status } : {}),
     ...confirmationPatch,
     ...(nextReservationDeposit !== undefined ? { reservationDepositAmount: nextReservationDeposit } : {}),
-    ...(data.paymentMethod !== undefined ? { paymentMethod: data.paymentMethod } : {}),
+    ...(paymentPatch
+      ? { paymentMethod: paymentPatch.paymentMethod, paymentSplits: paymentPatch.paymentSplits }
+      : {}),
     ...(data.paymentCompleted !== undefined ? { paymentCompleted: data.paymentCompleted } : {}),
     ...((data.paymentDate !== undefined || data.paymentCompleted === false)
       ? {

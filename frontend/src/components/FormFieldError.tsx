@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 type Props = {
   message?: string | null;
   id?: string;
@@ -8,6 +10,19 @@ export function FormFieldError({ message, id }: Props) {
   return (
     <p id={id} className="mt-1 text-xs text-red-600" role="alert">
       {message}
+    </p>
+  );
+}
+
+type HintProps = {
+  children: ReactNode;
+  id?: string;
+};
+
+export function FormFieldHint({ children, id }: HintProps) {
+  return (
+    <p id={id} className="mt-1 text-xs leading-relaxed text-slate-500">
+      {children}
     </p>
   );
 }

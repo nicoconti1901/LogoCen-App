@@ -14,7 +14,12 @@ export type ReminderMessageContext = {
 };
 
 function formatTimeRange(start: string, end: string): string {
-  return `${start} a ${end} hs`;
+  return `${start.trim()} a ${end.trim()} hs`;
+}
+
+/** {{4}} en plantillas Meta: solo hora de inicio. */
+function formatTemplateStartTime(start: string): string {
+  return `${start.trim()} hs`;
 }
 
 export function buildReminderBody(ctx: ReminderMessageContext): string {
@@ -107,12 +112,62 @@ export function formatTemplateClinicContactLink(): string {
   return "Consultá el teléfono del centro en la recepción";
 }
 
+type TemplateVarValues = {
+  1: string;
+  2: string;
+  3: string;
+  4: string;
+  5: string;
+  6: string;
+  7?: string;
+};
+
+function buildTemplateVarValues(
+  ctx: ReminderMessageContext,
+  fecha: string,
+  nombre: string
+): TemplateVarValues {
+  return {
+    1: capitalizeTemplateText(nombre),
+    2: formatTemplateClinicName(),
+    3: capitalizeFirst(fecha),
+    4: formatTemplateStartTime(ctx.startTime),
+    5: capitalizeTemplateText(ctx.specialistName),
+    6: formatTemplateAddressOnly(),
+    7: formatTemplateClinicContactLink(),
+  };
+}
+
+/** Meta exige parámetros en orden de primera aparición en el cuerpo, no por número {{N}}. */
+function parametersInAppearanceOrder(
+  values: TemplateVarValues,
+  order: readonly number[]
+): Array<{ type: "text"; text: string }> {
+  return order.map((n) => {
+    const text = values[n as keyof TemplateVarValues];
+    if (text == null || text === "") {
+      throw new Error(`Falta valor para variable de plantilla {{${n}}}`);
+    }
+    return { type: "text" as const, text };
+  });
+}
+
+/**
+ * Plantilla 7 vars (revisión Meta): {{1}}, {{2}}, luego {{6}} en 📍 antes de {{3}}-{{5}}, después {{7}}.
+ */
+const APPEARANCE_ORDER_24H_CONTACT = [1, 2, 6, 3, 4, 5, 7] as const;
+
+/**
+ * Plantilla 6 vars estándar: {{1}}…{{6}} en orden del texto (📅 {{3}}, 🕐 {{4}}, 🧑‍⚕️ {{5}}, 📍 {{6}}).
+ */
+const APPEARANCE_ORDER_24H_SIX = [1, 2, 3, 4, 5, 6] as const;
+
 function buildSevenVar24hReminderParameters(
   ctx: ReminderMessageContext,
   fecha: string,
   nombre: string
 ): Array<{ type: "text"; text: string }> {
-  return [...buildSixVarIconReminderParameters(ctx, fecha, nombre), { type: "text", text: formatTemplateClinicContactLink() }];
+  return parametersInAppearanceOrder(buildTemplateVarValues(ctx, fecha, nombre), APPEARANCE_ORDER_24H_CONTACT);
 }
 
 function buildSixVarIconReminderParameters(
@@ -120,14 +175,7 @@ function buildSixVarIconReminderParameters(
   fecha: string,
   nombre: string
 ): Array<{ type: "text"; text: string }> {
-  return [
-    { type: "text", text: capitalizeTemplateText(nombre) },
-    { type: "text", text: formatTemplateClinicName() },
-    { type: "text", text: capitalizeFirst(fecha) },
-    { type: "text", text: ctx.startTime },
-    { type: "text", text: capitalizeTemplateText(ctx.specialistName) },
-    { type: "text", text: formatTemplateAddressOnly() },
-  ];
+  return parametersInAppearanceOrder(buildTemplateVarValues(ctx, fecha, nombre), APPEARANCE_ORDER_24H_SIX);
 }
 
 /** Plantilla 24 h aprobada (6 variables, sin contacto). */
@@ -148,8 +196,8 @@ export function is24hContactTemplate(templateName: string): boolean {
 /**
  * Plantillas Meta (Utilidad, es_AR, variables posicionales).
  *
- * `recordatorio_turno_24h`: 6 vars (nombre, centro, fecha, hora, profesional, dirección).
- * `recordatorio_turno_24h_contact`: 7 vars; {{7}} = wa.me (`CLINIC_CONTACT_PHONE`).
+ * `recordatorio_turno_24h`: 6 vars en orden 1,2,3,4,5,6 del cuerpo.
+ * `recordatorio_turno_24hs_contacto`: 7 vars en orden de aparición 1,2,6,3,4,5,7 ({{6}} va en 📍 antes de fecha/hora).
  */
 export function buildReminderTemplateComponents(
   ctx: ReminderMessageContext,

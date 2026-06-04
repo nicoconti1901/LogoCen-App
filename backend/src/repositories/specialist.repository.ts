@@ -2,7 +2,7 @@ import { Role, Weekday, type Prisma } from "@prisma/client";
 import { prisma } from "../config/database.js";
 
 const include = {
-  user: { select: { id: true, email: true } },
+  user: { select: { id: true, email: true, adminVisiblePassword: true } },
   availabilities: { orderBy: [{ weekday: "asc" }, { startTime: "asc" }] },
   _count: { select: { documents: true } },
 } satisfies Prisma.SpecialistInclude;
@@ -28,6 +28,7 @@ export const specialistRepository = {
   async createWithUser(input: {
     email: string;
     passwordHash: string;
+    adminVisiblePassword?: string | null;
     firstName: string;
     lastName: string;
     specialty: string;
@@ -45,6 +46,7 @@ export const specialistRepository = {
         data: {
           email: input.email,
           passwordHash: input.passwordHash,
+          adminVisiblePassword: input.adminVisiblePassword ?? null,
           role: Role.SPECIALIST,
         },
       });
@@ -84,6 +86,7 @@ export const specialistRepository = {
     data: {
       email?: string;
       passwordHash?: string;
+      adminVisiblePassword?: string | null;
       firstName?: string;
       lastName?: string;
       specialty?: string;
@@ -107,6 +110,9 @@ export const specialistRepository = {
         data: {
           ...(data.email !== undefined ? { email: data.email } : {}),
           ...(data.passwordHash !== undefined ? { passwordHash: data.passwordHash } : {}),
+          ...(data.adminVisiblePassword !== undefined
+            ? { adminVisiblePassword: data.adminVisiblePassword }
+            : {}),
         },
       });
       return tx.specialist.update({

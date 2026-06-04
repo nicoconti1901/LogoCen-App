@@ -15,6 +15,7 @@ import {
   optionalMoneySchema,
   timeSchema,
 } from "../utils/fieldValidation.js";
+import { paymentSplitsInputSchema } from "../utils/paymentSplitsSchema.js";
 
 const createSchema = z.object({
   patientId: z.string().uuid(),
@@ -36,6 +37,7 @@ const occurrenceUpdateSchema = z
     date: dateOnlyStringSchema,
     status: z.nativeEnum(AppointmentStatus).optional(),
     paymentMethod: z.nativeEnum(AppointmentPaymentMethod).optional().nullable(),
+    paymentSplits: paymentSplitsInputSchema,
     paymentCompleted: z.boolean().optional(),
     paymentDate: optionalDateOnlyStringSchema,
     specialistSettledAt: z.coerce.date().optional().nullable(),
@@ -104,6 +106,7 @@ export const upsertOccurrence = asyncHandler(async (req: Request, res: Response)
     {
       ...(body.status !== undefined ? { status: body.status } : {}),
       ...(body.paymentMethod !== undefined ? { paymentMethod: body.paymentMethod } : {}),
+      ...(body.paymentSplits !== undefined ? { paymentSplits: body.paymentSplits } : {}),
       ...(body.paymentCompleted !== undefined ? { paymentCompleted: body.paymentCompleted } : {}),
       ...(body.paymentDate !== undefined
         ? { paymentDate: body.paymentDate ? parseDateOnlyISO(body.paymentDate) : null }

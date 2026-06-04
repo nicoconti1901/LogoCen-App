@@ -14,13 +14,35 @@ import {
   updatePatient,
 } from "../../api/endpoints";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
-import { FormFieldError, invalidFieldClass } from "../../components/FormFieldError";
+import { FormFieldError, FormFieldHint, invalidFieldClass } from "../../components/FormFieldError";
+import { formatPatientAgeLegend } from "../../lib/patientAge";
+import {
+  HINT_PATIENT_BIRTH_DATE,
+  HINT_PATIENT_DOCUMENT,
+  HINT_PATIENT_EMAIL,
+  HINT_PATIENT_NAME,
+  HINT_PATIENT_PHONE_WHATSAPP,
+  HINT_PATIENT_SPECIALIST,
+} from "../../lib/fieldHints";
 import { PatientAppointmentHistoryModal } from "../../components/PatientAppointmentHistoryModal";
 import { PatientDirectoryList, PatientDirectoryToolbar } from "../../components/PatientDirectoryList";
 import { PatientPaymentHistoryModal } from "../../components/PatientPaymentHistoryModal";
 import { useAuth } from "../../contexts/AuthContext";
 import type { ClinicalHistoryEntry, Patient, Specialist } from "../../types";
 import { appointmentDebtAmountArs, appointmentHasDebt } from "../../lib/appointmentDebt";
+import {
+  DIRECTORY_ACTIONS_BAR,
+  DIRECTORY_ACTIONS_CELL,
+  DIRECTORY_CELL_CARD,
+  DIRECTORY_TABLE_HEAD,
+  DIRECTORY_TABLE_HEAD_ROW,
+  DIRECTORY_TABLE_ROW_HOVER,
+  DIRECTORY_TABLE_TD,
+  DIRECTORY_TABLE_TH,
+  DIRECTORY_TABLE_WRAPPER,
+  directoryRowAccent,
+  directoryRowBg,
+} from "../../lib/directoryTableStyles";
 import { formatPersonDisplayLastFirst, formatPersonDisplayLastFirstUpper } from "../../lib/personName";
 import {
   type ClinicalHistoryFields,
@@ -119,6 +141,7 @@ export function AdminPatientsPage() {
   const [editing, setEditing] = useState<Patient | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors<PatientFormFields>>({});
+  const patientAgeLegend = useMemo(() => formatPatientAgeLegend(form.birthDate), [form.birthDate]);
   const [clinicalFieldErrors, setClinicalFieldErrors] = useState<FieldErrors<ClinicalHistoryFields>>({});
   const { data: appointmentHistoryAll = [], isLoading: isLoadingHistory } = useQuery({
     queryKey: ["appointments", "patient-history", historyPatient?.id],
@@ -180,7 +203,7 @@ export function AdminPatientsPage() {
         firstName: form.firstName,
         lastName: form.lastName,
         email: form.email,
-        phone: form.phone || null,
+        phone: form.phone.trim(),
         documentId: form.documentId || null,
         birthDate: form.birthDate || null,
         notes: form.notes || null,
@@ -214,7 +237,7 @@ export function AdminPatientsPage() {
         firstName: form.firstName,
         lastName: form.lastName,
         email: form.email,
-        phone: form.phone || null,
+        phone: form.phone.trim(),
         documentId: form.documentId || null,
         birthDate: form.birthDate || null,
         notes: form.notes || null,
@@ -314,6 +337,7 @@ export function AdminPatientsPage() {
                     if (fieldErrors.firstName) setFieldErrors((prev) => ({ ...prev, firstName: undefined }));
                   }}
                 />
+                <FormFieldHint>{HINT_PATIENT_NAME}</FormFieldHint>
                 <FormFieldError message={fieldErrors.firstName} />
               </div>
               <div>
@@ -327,6 +351,7 @@ export function AdminPatientsPage() {
                     if (fieldErrors.lastName) setFieldErrors((prev) => ({ ...prev, lastName: undefined }));
                   }}
                 />
+                <FormFieldHint>{HINT_PATIENT_NAME}</FormFieldHint>
                 <FormFieldError message={fieldErrors.lastName} />
               </div>
               <div>
@@ -341,14 +366,19 @@ export function AdminPatientsPage() {
                     if (fieldErrors.email) setFieldErrors((prev) => ({ ...prev, email: undefined }));
                   }}
                 />
+                <FormFieldHint>{HINT_PATIENT_EMAIL}</FormFieldHint>
                 <FormFieldError message={fieldErrors.email} />
               </div>
               <div>
-                <label className="text-sm text-slate-600">Teléfono</label>
+                <label className="text-sm text-slate-600">
+                  Celular <span className="text-red-600">*</span>
+                </label>
                 <input
+                  required
                   inputMode="tel"
-                  placeholder="Ej. 2914021589"
-                  maxLength={20}
+                  autoComplete="tel"
+                  placeholder="Ej. 11 4021-5890 o 291 4021589"
+                  maxLength={24}
                   className={invalidFieldClass(Boolean(fieldErrors.phone), "mt-1 w-full rounded-lg border border-slate-300 px-3 py-2")}
                   value={form.phone}
                   onChange={(e) => {
@@ -356,6 +386,7 @@ export function AdminPatientsPage() {
                     if (fieldErrors.phone) setFieldErrors((prev) => ({ ...prev, phone: undefined }));
                   }}
                 />
+                <FormFieldHint>{HINT_PATIENT_PHONE_WHATSAPP}</FormFieldHint>
                 <FormFieldError message={fieldErrors.phone} />
               </div>
               <div>
@@ -370,6 +401,7 @@ export function AdminPatientsPage() {
                     if (fieldErrors.documentId) setFieldErrors((prev) => ({ ...prev, documentId: undefined }));
                   }}
                 />
+                <FormFieldHint>{HINT_PATIENT_DOCUMENT}</FormFieldHint>
                 <FormFieldError message={fieldErrors.documentId} />
               </div>
               <div>
@@ -383,6 +415,10 @@ export function AdminPatientsPage() {
                     if (fieldErrors.birthDate) setFieldErrors((prev) => ({ ...prev, birthDate: undefined }));
                   }}
                 />
+                <FormFieldHint>{HINT_PATIENT_BIRTH_DATE}</FormFieldHint>
+                {patientAgeLegend ? (
+                  <p className="mt-1 text-xs font-medium text-sky-800">{patientAgeLegend}</p>
+                ) : null}
                 <FormFieldError message={fieldErrors.birthDate} />
               </div>
               {isAdmin && (
@@ -404,6 +440,7 @@ export function AdminPatientsPage() {
                       </option>
                     ))}
                   </select>
+                  <FormFieldHint>{HINT_PATIENT_SPECIALIST}</FormFieldHint>
                   <FormFieldError message={fieldErrors.specialistId} />
                 </div>
               )}
@@ -468,22 +505,26 @@ export function AdminPatientsPage() {
       />
       {clinicalHistoryPatient && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-3 sm:p-4">
-          <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-xl border border-slate-200/80 bg-white p-4 shadow-xl ring-1 ring-slate-900/5 sm:p-5">
-            <div className="mb-4 flex items-center justify-between gap-3 border-b border-slate-100 pb-4">
-              <h2 className="text-base font-semibold tracking-tight text-slate-900 sm:text-lg">
-                Historia clínica: {formatPersonDisplayLastFirstUpper(clinicalHistoryPatient.lastName, clinicalHistoryPatient.firstName)}
-              </h2>
-              <button
-                type="button"
-                className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-100 active:translate-y-px"
-                onClick={() => setClinicalHistoryPatient(null)}
-              >
-                Cerrar
-              </button>
+          <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-sky-200/90 bg-white shadow-xl ring-1 ring-slate-900/5">
+            <div className="shrink-0 border-b border-sky-200/80 bg-gradient-to-r from-emerald-50/60 via-sky-50/80 to-white px-4 py-4 sm:px-5">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-base font-semibold tracking-tight text-slate-900 sm:text-lg">
+                  Historia clínica:{" "}
+                  {formatPersonDisplayLastFirstUpper(clinicalHistoryPatient.lastName, clinicalHistoryPatient.firstName)}
+                </h2>
+                <button
+                  type="button"
+                  className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 active:translate-y-px"
+                  onClick={() => setClinicalHistoryPatient(null)}
+                >
+                  Cerrar
+                </button>
+              </div>
             </div>
 
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5 sm:pb-5">
             <form
-              className="mb-4 grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[180px_1fr_auto]"
+              className="mb-4 grid gap-3 rounded-xl border border-sky-200/80 bg-sky-50/40 p-3 ring-1 ring-slate-200/50 sm:grid-cols-[180px_1fr_auto]"
               onSubmit={(e) => {
                 e.preventDefault();
                 const validation = validateClinicalHistoryForm({
@@ -546,110 +587,129 @@ export function AdminPatientsPage() {
               <p className="text-sm text-slate-600">Todavía no hay diagnósticos cargados.</p>
             )}
             {!isLoadingClinicalHistory && clinicalHistory.length > 0 && (
-              <div className="overflow-x-auto rounded-lg border border-slate-200">
-                <table className="min-w-full text-left text-sm">
-                  <thead className="bg-sky-100 text-slate-700">
-                    <tr>
-                      <th className="px-3 py-2">Fecha</th>
-                      <th className="px-3 py-2">Diagnóstico</th>
-                      <th className="px-3 py-2">Especialista</th>
-                      <th className="px-3 py-2">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {clinicalHistory.map((entry: ClinicalHistoryEntry) => (
-                      <tr key={entry.id} className="border-t border-slate-100 align-top">
-                        <td className="px-3 py-2">
-                          {editingClinicalEntryId === entry.id ? (
-                            <input
-                              type="date"
-                              className="w-full rounded-lg border border-slate-300 px-2 py-1"
-                              value={editingClinicalDate}
-                              onChange={(e) => setEditingClinicalDate(e.target.value)}
-                            />
-                          ) : (
-                            entry.recordDate.slice(0, 10)
-                          )}
-                        </td>
-                        <td className="px-3 py-2">
-                          {editingClinicalEntryId === entry.id ? (
-                            <textarea
-                              className="w-full rounded-lg border border-slate-300 px-2 py-1"
-                              rows={2}
-                              value={editingClinicalDiagnosis}
-                              onChange={(e) => setEditingClinicalDiagnosis(e.target.value)}
-                            />
-                          ) : (
-                            entry.diagnosis
-                          )}
-                        </td>
-                        <td className="px-3 py-2">
-                          {entry.specialist
-                            ? formatPersonDisplayLastFirst(entry.specialist.lastName, entry.specialist.firstName)
-                            : "No informado"}
-                        </td>
-                        <td className="px-3 py-2">
-                          <div className="flex flex-wrap gap-2">
-                            {editingClinicalEntryId === entry.id ? (
-                              <>
-                                <button
-                                  type="button"
-                                  className="rounded-lg bg-blue-600 px-2.5 py-1 text-xs text-white hover:bg-blue-700"
-                                  disabled={updateClinicalHistoryMut.isPending}
-                                  onClick={() => {
-                                    if (!editingClinicalDiagnosis.trim()) return;
-                                    updateClinicalHistoryMut.mutate({
-                                      entryId: entry.id,
-                                      recordDate: editingClinicalDate,
-                                      diagnosis: editingClinicalDiagnosis,
-                                    });
-                                  }}
-                                >
-                                  Guardar
-                                </button>
-                                <button
-                                  type="button"
-                                  className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs"
-                                  onClick={() => {
-                                    setEditingClinicalEntryId(null);
-                                    setEditingClinicalDate("");
-                                    setEditingClinicalDiagnosis("");
-                                  }}
-                                >
-                                  Cancelar
-                                </button>
-                              </>
-                            ) : (
-                              <>
-                                <button
-                                  type="button"
-                                  className="rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs text-blue-700 hover:bg-blue-100"
-                                  onClick={() => {
-                                    setEditingClinicalEntryId(entry.id);
-                                    setEditingClinicalDate(entry.recordDate.slice(0, 10));
-                                    setEditingClinicalDiagnosis(entry.diagnosis);
-                                  }}
-                                >
-                                  Editar
-                                </button>
-                                <button
-                                  type="button"
-                                  className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs text-red-700 hover:bg-red-100"
-                                  disabled={deleteClinicalHistoryMut.isPending}
-                                  onClick={() => setPendingDeleteClinicalEntryId(entry.id)}
-                                >
-                                  Eliminar
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        </td>
+              <div className={DIRECTORY_TABLE_WRAPPER}>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[640px] border-collapse text-left text-sm">
+                    <thead className={DIRECTORY_TABLE_HEAD}>
+                      <tr className={DIRECTORY_TABLE_HEAD_ROW}>
+                        <th className={`${DIRECTORY_TABLE_TH} w-[130px] pl-4`}>Fecha</th>
+                        <th className={DIRECTORY_TABLE_TH}>Diagnóstico</th>
+                        <th className={`${DIRECTORY_TABLE_TH} w-[180px]`}>Especialista</th>
+                        <th className={`${DIRECTORY_TABLE_TH} pr-4 text-right`}>Acciones</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {clinicalHistory.map((entry: ClinicalHistoryEntry, index) => (
+                        <tr
+                          key={entry.id}
+                          className={`${DIRECTORY_TABLE_ROW_HOVER} align-top ${directoryRowBg(index)}`}
+                        >
+                          <td
+                            className={`${DIRECTORY_TABLE_TD} border-l-4 pl-3 font-medium tabular-nums text-slate-800 ${directoryRowAccent(entry.id)}`}
+                          >
+                            {editingClinicalEntryId === entry.id ? (
+                              <input
+                                type="date"
+                                className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm shadow-sm"
+                                value={editingClinicalDate}
+                                onChange={(e) => setEditingClinicalDate(e.target.value)}
+                              />
+                            ) : (
+                              entry.recordDate.slice(0, 10)
+                            )}
+                          </td>
+                          <td className={DIRECTORY_TABLE_TD}>
+                            {editingClinicalEntryId === entry.id ? (
+                              <textarea
+                                className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm shadow-sm"
+                                rows={3}
+                                value={editingClinicalDiagnosis}
+                                onChange={(e) => setEditingClinicalDiagnosis(e.target.value)}
+                              />
+                            ) : (
+                              <div className={DIRECTORY_CELL_CARD}>
+                                <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-800">{entry.diagnosis}</p>
+                              </div>
+                            )}
+                          </td>
+                          <td className={DIRECTORY_TABLE_TD}>
+                            {entry.specialist ? (
+                              <div className={DIRECTORY_CELL_CARD}>
+                                <p className="font-medium text-slate-800">
+                                  {formatPersonDisplayLastFirst(entry.specialist.lastName, entry.specialist.firstName)}
+                                </p>
+                                <p className="mt-0.5 text-xs text-slate-500">{entry.specialist.specialty}</p>
+                              </div>
+                            ) : (
+                              <span className="inline-flex rounded-md border border-dashed border-slate-300 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-500">
+                                No informado
+                              </span>
+                            )}
+                          </td>
+                          <td className={`${DIRECTORY_TABLE_TD} ${DIRECTORY_ACTIONS_CELL} pr-4`}>
+                            <div className={DIRECTORY_ACTIONS_BAR}>
+                              {editingClinicalEntryId === entry.id ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="rounded-lg bg-sky-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm ring-1 ring-sky-800/20 hover:bg-sky-700 disabled:opacity-50"
+                                    disabled={updateClinicalHistoryMut.isPending}
+                                    onClick={() => {
+                                      if (!editingClinicalDiagnosis.trim()) return;
+                                      updateClinicalHistoryMut.mutate({
+                                        entryId: entry.id,
+                                        recordDate: editingClinicalDate,
+                                        diagnosis: editingClinicalDiagnosis,
+                                      });
+                                    }}
+                                  >
+                                    Guardar
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+                                    onClick={() => {
+                                      setEditingClinicalEntryId(null);
+                                      setEditingClinicalDate("");
+                                      setEditingClinicalDiagnosis("");
+                                    }}
+                                  >
+                                    Cancelar
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="rounded-lg bg-sky-50 px-2.5 py-1.5 text-xs font-semibold text-sky-800 ring-1 ring-sky-200/80 hover:bg-sky-100"
+                                    onClick={() => {
+                                      setEditingClinicalEntryId(entry.id);
+                                      setEditingClinicalDate(entry.recordDate.slice(0, 10));
+                                      setEditingClinicalDiagnosis(entry.diagnosis);
+                                    }}
+                                  >
+                                    Editar
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="rounded-lg bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-700 ring-1 ring-rose-200/80 hover:bg-rose-100 disabled:opacity-50"
+                                    disabled={deleteClinicalHistoryMut.isPending}
+                                    onClick={() => setPendingDeleteClinicalEntryId(entry.id)}
+                                  >
+                                    Eliminar
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
+            </div>
           </div>
         </div>
       )}

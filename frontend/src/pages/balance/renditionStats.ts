@@ -4,6 +4,7 @@ import {
   appointmentImputadoPagadoArs,
 } from "../../lib/appointmentDebt";
 import type { Appointment } from "../../types";
+import { appointmentHasTransferToSpecialist } from "../../lib/paymentMethodDisplay";
 
 export type RenditionSummary = {
   totalTurnos: number;
@@ -18,7 +19,7 @@ export type RenditionSummary = {
 export function isPendingSpecialistSettlement(a: Appointment): boolean {
   return (
     a.paymentCompleted &&
-    a.paymentMethod === "TRANSFER_TO_SPECIALIST" &&
+    appointmentHasTransferToSpecialist(a.paymentMethod, a.paymentSplits) &&
     (a.specialistSettledAt == null || a.specialistSettledAt === "")
   );
 }

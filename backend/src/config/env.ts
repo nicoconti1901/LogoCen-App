@@ -16,6 +16,8 @@ const envSchema = z.object({
     .optional()
     .transform((v) => v === "true" || v === "1"),
   WHATSAPP_PHONE_NUMBER_ID: z.string().optional(),
+  /** ID de la cuenta WhatsApp Business (WABA). Solo diagnóstico / suscripción webhook. */
+  WHATSAPP_WABA_ID: z.string().optional(),
   WHATSAPP_ACCESS_TOKEN: z.string().optional(),
   WHATSAPP_VERIFY_TOKEN: z.string().optional(),
   WHATSAPP_APP_SECRET: z.string().optional(),

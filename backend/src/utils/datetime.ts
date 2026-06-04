@@ -1,8 +1,11 @@
+import { serializePaymentSplitsForApi } from "./appointmentPaymentSplits.js";
+
 type AppointmentLike = {
   appointmentDate: Date;
   startTime: string;
   endTime: string;
   paymentDate?: Date | null;
+  paymentSplits?: unknown;
   patientConfirmedAt?: Date | null;
   patientConfirmationSource?: string | null;
   medicalRecord: string | null;
@@ -19,6 +22,7 @@ export function enrichAppointment<T extends AppointmentLike>(a: T) {
       : String(dep);
   return {
     ...a,
+    paymentSplits: serializePaymentSplitsForApi(a.paymentSplits),
     reservationDepositAmount,
     // @db.Date llega como Date en UTC (00:00Z). Si se formatea en hora local
     // puede correrse al día anterior en zonas horarias negativas.
