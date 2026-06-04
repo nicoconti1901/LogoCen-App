@@ -1,5 +1,6 @@
 import { Weekday } from "@prisma/client";
 import { z } from "zod";
+import { normalizePhoneToE164 } from "../whatsapp/phone.js";
 import { parseDateOnlyISO, toDateOnly } from "./appointmentTime.js";
 
 export const PERSON_NAME_MIN = 2;
@@ -91,6 +92,21 @@ export const optionalPhoneSchema = z
   .transform((v) => {
     const t = (v ?? "").trim();
     return t || null;
+  });
+
+/** Celular del paciente: obligatorio y compatible con WhatsApp (E.164 AR). */
+export const patientWhatsappPhoneSchema = z
+  .string()
+  .trim()
+  .min(1, "El celular es obligatorio para recordatorios por WhatsApp")
+  .superRefine((v, ctx) => {
+    if (!normalizePhoneToE164(v)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "Formato inválido. Usá móvil argentino: 10 dígitos (área + número) o +54 9 y el número, sin 15 delante",
+      });
+    }
   });
 
 export const optionalDocumentIdSchema = z

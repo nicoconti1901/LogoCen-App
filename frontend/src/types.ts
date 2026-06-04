@@ -14,6 +14,11 @@ export type AppointmentPaymentMethod =
   | "TRANSFER_TO_SPECIALIST"
   | "CASH_TO_LOGOCEN";
 
+export type AppointmentPaymentSplit = {
+  method: AppointmentPaymentMethod;
+  amount: string;
+};
+
 export type PatientConfirmationSource = "MANUAL" | "WHATSAPP";
 
 export type AuthUser = {
@@ -76,6 +81,8 @@ export type Specialist = {
   availabilities: SpecialistAvailability[];
   active: boolean;
   user: { id: string; email: string };
+  /** Solo visible para administradores (clave asignada al crear/cambiar). */
+  visiblePassword?: string | null;
 };
 
 export type SpecialistDocument = {
@@ -121,6 +128,7 @@ export type Appointment = {
   /** Monto de anticipo cuando `status` es RESERVADO (string decimal desde la API). */
   reservationDepositAmount?: string | null;
   paymentMethod: AppointmentPaymentMethod | null;
+  paymentSplits?: AppointmentPaymentSplit[] | null;
   paymentCompleted: boolean;
   paymentDate: string | null;
   specialistSettledAt: string | null;

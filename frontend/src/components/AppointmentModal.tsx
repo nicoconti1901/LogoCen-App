@@ -22,7 +22,16 @@ import {
 } from "../lib/fixedAppointment";
 import { getAppointmentDateStr, getEndTimeStr, getStartTimeStr } from "../lib/appointmentDisplay";
 import { formatPersonDisplayLastFirst, formatPersonDisplayLastFirstUpper, normalizePersonNameField } from "../lib/personName";
-import { FormFieldError, invalidFieldClass } from "./FormFieldError";
+import { FormFieldError, FormFieldHint, invalidFieldClass } from "./FormFieldError";
+import {
+  HINT_APPOINTMENT_CONSULTORIO,
+  HINT_APPOINTMENT_DATE,
+  HINT_APPOINTMENT_PATIENT,
+  HINT_APPOINTMENT_PAYMENT_DATE,
+  HINT_APPOINTMENT_RESERVATION_DEPOSIT,
+  HINT_APPOINTMENT_SPECIALIST,
+  HINT_APPOINTMENT_TIME,
+} from "../lib/fieldHints";
 import {
   type AppointmentFormFields,
   type FieldErrors,
@@ -31,7 +40,13 @@ import {
 } from "../lib/validation";
 import { useAuth } from "../contexts/AuthContext";
 import { ConfirmDialog } from "./ConfirmDialog";
-import type { Appointment, AppointmentPaymentMethod, AppointmentStatus } from "../types";
+import type {
+  Appointment,
+  AppointmentPaymentMethod,
+  AppointmentPaymentSplit,
+  AppointmentStatus,
+} from "../types";
+import { PAYMENT_METHOD_LABELS, hasCombinedPayment } from "../lib/paymentMethodDisplay";
 import { appointmentDebtAmountArs, appointmentHasDebt } from "../lib/appointmentDebt";
 import { appointmentBlocksScheduleSlot } from "../lib/appointmentScheduling";
 
@@ -104,11 +119,12 @@ const paymentMethods: AppointmentPaymentMethod[] = [
   "TRANSFER_TO_SPECIALIST",
   "CASH_TO_LOGOCEN",
 ];
-const paymentMethodLabel: Record<AppointmentPaymentMethod, string> = {
-  TRANSFER_TO_LOGOCEN: "Transferencia a LogoCen",
-  TRANSFER_TO_SPECIALIST: "Transferencia al especialista",
-  CASH_TO_LOGOCEN: "Efectivo a LogoCen",
-};
+type PaymentSplitRow = { method: AppointmentPaymentMethod; amountStr: string };
+
+const defaultSplitRows = (): PaymentSplitRow[] => [
+  { method: "CASH_TO_LOGOCEN", amountStr: "" },
+  { method: "TRANSFER_TO_LOGOCEN", amountStr: "" },
+];
 const labelClass = "block text-sm font-medium text-slate-700";
 const fieldClass =
   "mt-1 w-full rounded-lg border border-slate-300/90 bg-white/90 px-3 py-2 text-slate-800 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200/70";
@@ -146,6 +162,8 @@ export function AppointmentModal({
   const [status, setStatus] = useState<AppointmentStatus>("RESERVED");
   const [reservationDepositStr, setReservationDepositStr] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<AppointmentPaymentMethod | "">("");
+  const [paymentMode, setPaymentMode] = useState<"single" | "split">("single");
+  const [paymentSplitRows, setPaymentSplitRows] = useState<PaymentSplitRow[]>(defaultSplitRows);
   const [paymentCompleted, setPaymentCompleted] = useState(false);
   const [paymentDateStr, setPaymentDateStr] = useState("");
   const [medicalRecord, setMedicalRecord] = useState("");
@@ -239,7 +257,20 @@ export function AppointmentModal({
       setStartTimeStr(getStartTimeStr(appointment));
       setEndTimeStr(getEndTimeStr(appointment));
       setStatus(appointment.status);
-      setPaymentMethod(appointment.paymentMethod ?? "");
+      if (hasCombinedPayment(appointment.paymentSplits)) {
+        setPaymentMode("split");
+        setPaymentSplitRows(
+          appointment.paymentSplits!.map((s) => ({
+            method: s.method,
+            amountStr: String(s.amount).replace(",", "."),
+          }))
+        );
+        setPaymentMethod("");
+      } else {
+        setPaymentMode("single");
+        setPaymentMethod(appointment.paymentMethod ?? "");
+        setPaymentSplitRows(defaultSplitRows());
+      }
       setPaymentCompleted(appointment.paymentCompleted ?? false);
       setPaymentDateStr(appointment.paymentDate ?? "");
       setMedicalRecord(appointment.medicalRecord ?? "");
@@ -261,6 +292,8 @@ export function AppointmentModal({
       setEndTimeStr(localTimeStr(e));
       setStatus("RESERVED");
       setPaymentMethod("");
+      setPaymentMode("single");
+      setPaymentSplitRows(defaultSplitRows());
       setPaymentCompleted(false);
       setPaymentDateStr(localDateStr(s));
       setMedicalRecord("");
@@ -303,6 +336,22 @@ export function AppointmentModal({
     },
   });
 
+  function buildPaymentFields(): {
+    paymentMethod: AppointmentPaymentMethod | null;
+    paymentSplits: AppointmentPaymentSplit[] | null;
+  } {
+    if (paymentMode === "split") {
+      const rows = paymentSplitRows
+        .map((r) => {
+          const amount = parsePositiveMoneyInput(r.amountStr);
+          return amount != null ? { method: r.method, amount: String(amount) } : null;
+        })
+        .filter((x): x is AppointmentPaymentSplit => x != null);
+      return { paymentMethod: null, paymentSplits: rows.length >= 2 ? rows : null };
+    }
+    return { paymentMethod: paymentMethod || null, paymentSplits: null };
+  }
+
   const createMut = useMutation({
     mutationFn: () =>
       createAppointment({
@@ -315,7 +364,7 @@ export function AppointmentModal({
         status,
         reservationDepositAmount:
           status === "RESERVADO" ? parsePositiveMoneyInput(reservationDepositStr) : null,
-        paymentMethod: paymentMethod || null,
+        ...buildPaymentFields(),
         paymentCompleted,
         paymentDate: paymentCompleted ? paymentDateStr : null,
         medicalRecord: medicalRecord || null,
@@ -346,7 +395,7 @@ export function AppointmentModal({
           status,
           reservationDepositAmount:
             status === "RESERVADO" ? parsePositiveMoneyInput(reservationDepositStr) : null,
-          paymentMethod: paymentMethod || null,
+          ...buildPaymentFields(),
           paymentCompleted,
           paymentDate: paymentCompleted ? paymentDateStr : null,
           medicalRecord: medicalRecord || null,
@@ -363,7 +412,7 @@ export function AppointmentModal({
         status,
         reservationDepositAmount:
           status === "RESERVADO" ? parsePositiveMoneyInput(reservationDepositStr) : null,
-        paymentMethod: paymentMethod || null,
+        ...buildPaymentFields(),
         paymentCompleted,
         paymentDate: paymentCompleted ? paymentDateStr : null,
         medicalRecord: medicalRecord || null,
@@ -560,7 +609,14 @@ export function AppointmentModal({
     e.preventDefault();
     if (specialistEditingForbidden) return;
     setError(null);
+    const requireConsultorio =
+      status !== "AUSENTE_CON_AVISO" && (showOccurrenceDetails || (isFixedSeries && !isEditFixed));
     const validation = validateAppointmentForm({
+      patientId,
+      specialistId: effectiveSpecialistId,
+      consultorio,
+      requireConsultorio,
+      requireSpecialist: isAdmin && !fixedSpecialistId,
       dateStr,
       startTimeStr,
       endTimeStr,
@@ -576,12 +632,20 @@ export function AppointmentModal({
     });
     if (!validation.ok) {
       setFieldErrors(validation.fields);
+      setError("Completá los campos obligatorios antes de guardar.");
       return;
     }
     setFieldErrors({});
     if (!canSubmit) {
       setError("Revisá los datos del turno antes de guardar.");
       return;
+    }
+    if (paymentMode === "split") {
+      const pf = buildPaymentFields();
+      if (!pf.paymentSplits || pf.paymentSplits.length < 2) {
+        setError("En pago combinado indicá al menos dos montos mayores a cero.");
+        return;
+      }
     }
     if (isEdit) updateMut.mutate();
     else if (isFixedSeries) createFixedMut.mutate();
@@ -593,13 +657,20 @@ export function AppointmentModal({
   const clearApptField = (field: AppointmentFormFields) => {
     if (fieldErrors[field]) setFieldErrors((prev) => ({ ...prev, [field]: undefined }));
   };
+  const clearApptFields = (...fields: AppointmentFormFields[]) => {
+    setFieldErrors((prev) => {
+      const next = { ...prev };
+      for (const f of fields) delete next[f];
+      return next;
+    });
+  };
 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-stretch justify-end bg-slate-900/40 p-2 backdrop-blur-[1px] sm:items-center sm:p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-3 backdrop-blur-[1px] sm:p-4">
       <div
-        className="h-full w-full max-w-xl overflow-y-auto rounded-xl border border-slate-200/80 bg-white p-6 shadow-xl ring-1 ring-slate-900/5 sm:h-auto sm:max-h-[92vh]"
+        className="w-full max-w-xl max-h-[92vh] overflow-y-auto rounded-xl border border-slate-200/80 bg-white p-6 shadow-xl ring-1 ring-slate-900/5"
         role="dialog"
         aria-modal="true"
       >
@@ -639,9 +710,12 @@ export function AppointmentModal({
             <select
               required
               disabled={!isAdmin && isEdit}
-              className={fieldClass}
+              className={apptFieldFor("patientId")}
               value={patientId}
-              onChange={(e) => setPatientId(e.target.value)}
+              onChange={(e) => {
+                setPatientId(e.target.value);
+                clearApptField("patientId");
+              }}
             >
               <option value="">Seleccione…</option>
               {patients.map((p) => (
@@ -651,6 +725,8 @@ export function AppointmentModal({
                 </option>
               ))}
             </select>
+            <FormFieldHint>{HINT_APPOINTMENT_PATIENT}</FormFieldHint>
+            <FormFieldError message={fieldErrors.patientId} />
           </div>
 
           {isEditFixed && (
@@ -728,9 +804,12 @@ export function AppointmentModal({
               <label className={labelClass}>Especialista</label>
               <select
                 required
-                className={fieldClass}
+                className={apptFieldFor("specialistId")}
                 value={specialistId}
-                onChange={(e) => setSpecialistId(e.target.value)}
+                onChange={(e) => {
+                  setSpecialistId(e.target.value);
+                  clearApptField("specialistId");
+                }}
               >
                 <option value="">Seleccione…</option>
                 {specialists.map((s) => (
@@ -739,6 +818,8 @@ export function AppointmentModal({
                   </option>
                 ))}
               </select>
+              <FormFieldHint>{HINT_APPOINTMENT_SPECIALIST}</FormFieldHint>
+              <FormFieldError message={fieldErrors.specialistId} />
             </div>
           )}
 
@@ -798,6 +879,7 @@ export function AppointmentModal({
                 clearApptField("dateStr");
               }}
             />
+            <FormFieldHint>{HINT_APPOINTMENT_DATE}</FormFieldHint>
             <FormFieldError message={fieldErrors.dateStr} />
           </div>
 
@@ -833,9 +915,12 @@ export function AppointmentModal({
             <label className={labelClass}>Consultorio</label>
             <select
               required
-              className={fieldClass}
+              className={apptFieldFor("consultorio")}
               value={consultorio}
-              onChange={(e) => setConsultorio(e.target.value)}
+              onChange={(e) => {
+                setConsultorio(e.target.value);
+                clearApptField("consultorio");
+              }}
             >
               <option value="">Seleccione consultorio…</option>
               {consultorioOptions.map((o) => (
@@ -844,6 +929,8 @@ export function AppointmentModal({
                 </option>
               ))}
             </select>
+            <FormFieldHint>{HINT_APPOINTMENT_CONSULTORIO}</FormFieldHint>
+            <FormFieldError message={fieldErrors.consultorio} />
             {selectedConsultorioOccupied && (
               <p className="mt-1 text-xs font-medium text-rose-700">
                 Ese consultorio ya está ocupado en el horario elegido (otro profesional o turno fijo).
@@ -899,6 +986,7 @@ export function AppointmentModal({
                   clearApptField("endTimeStr");
                 }}
               />
+              <FormFieldHint>{HINT_APPOINTMENT_TIME}</FormFieldHint>
               <FormFieldError message={fieldErrors.startTimeStr} />
             </div>
             {showOccurrenceDetails && (
@@ -911,7 +999,7 @@ export function AppointmentModal({
                 value={endTimeStr}
                 onChange={(e) => {
                   setEndTimeStr(e.target.value);
-                  clearApptField("endTimeStr");
+                  clearApptFields("endTimeStr", "startTimeStr");
                 }}
               />
               <FormFieldError message={fieldErrors.endTimeStr} />
@@ -961,6 +1049,7 @@ export function AppointmentModal({
                   clearApptField("reservationDepositStr");
                 }}
               />
+              <FormFieldHint>{HINT_APPOINTMENT_RESERVATION_DEPOSIT}</FormFieldHint>
               <FormFieldError message={fieldErrors.reservationDepositStr} />
               <p className="mt-1 text-xs text-slate-600">
                 {(() => {
@@ -985,20 +1074,110 @@ export function AppointmentModal({
               </p>
             </div>
           )}
-          <div>
+          <div className="sm:col-span-2 space-y-3">
             <label className={labelClass}>Forma de pago</label>
-            <select
-              className={fieldClass}
-              value={paymentMethod}
-              onChange={(e) => setPaymentMethod(e.target.value as AppointmentPaymentMethod | "")}
-            >
-              <option value="">Sin definir</option>
-              {paymentMethods.map((method) => (
-                <option key={method} value={method}>
-                  {paymentMethodLabel[method]}
-                </option>
-              ))}
-            </select>
+            <div className="flex flex-wrap gap-3 text-sm">
+              <label className="inline-flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="payment-mode"
+                  checked={paymentMode === "single"}
+                  onChange={() => setPaymentMode("single")}
+                />
+                Una sola forma
+              </label>
+              <label className="inline-flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="payment-mode"
+                  checked={paymentMode === "split"}
+                  onChange={() => setPaymentMode("split")}
+                />
+                Combinado (ej. efectivo + transferencia)
+              </label>
+            </div>
+            {paymentMode === "single" ? (
+              <select
+                className={fieldClass}
+                value={paymentMethod}
+                onChange={(e) => setPaymentMethod(e.target.value as AppointmentPaymentMethod | "")}
+              >
+                <option value="">Sin definir</option>
+                {paymentMethods.map((method) => (
+                  <option key={method} value={method}>
+                    {PAYMENT_METHOD_LABELS[method]}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/80 p-3">
+                {paymentSplitRows.map((row, idx) => (
+                  <div key={idx} className="flex flex-wrap items-end gap-2">
+                    <div className="min-w-[10rem] flex-1">
+                      <span className="text-xs text-slate-600">Forma</span>
+                      <select
+                        className={fieldClass}
+                        value={row.method}
+                        onChange={(e) =>
+                          setPaymentSplitRows((rows) =>
+                            rows.map((r, i) =>
+                              i === idx ? { ...r, method: e.target.value as AppointmentPaymentMethod } : r
+                            )
+                          )
+                        }
+                      >
+                        {paymentMethods.map((method) => (
+                          <option key={method} value={method}>
+                            {PAYMENT_METHOD_LABELS[method]}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="w-28">
+                      <span className="text-xs text-slate-600">Monto (ARS)</span>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        className={fieldClass}
+                        placeholder="0"
+                        value={row.amountStr}
+                        onChange={(e) =>
+                          setPaymentSplitRows((rows) =>
+                            rows.map((r, i) => (i === idx ? { ...r, amountStr: e.target.value } : r))
+                          )
+                        }
+                      />
+                    </div>
+                    {paymentSplitRows.length > 2 && (
+                      <button
+                        type="button"
+                        className="mb-0.5 rounded-lg border border-slate-300 px-2 py-2 text-xs text-slate-600 hover:bg-white"
+                        onClick={() => setPaymentSplitRows((rows) => rows.filter((_, i) => i !== idx))}
+                      >
+                        Quitar
+                      </button>
+                    )}
+                  </div>
+                ))}
+                {paymentSplitRows.length < 5 && (
+                  <button
+                    type="button"
+                    className="text-sm font-medium text-brand-700 hover:text-brand-900"
+                    onClick={() =>
+                      setPaymentSplitRows((rows) => [
+                        ...rows,
+                        { method: "TRANSFER_TO_LOGOCEN", amountStr: "" },
+                      ])
+                    }
+                  >
+                    + Agregar otra forma
+                  </button>
+                )}
+                <p className="text-xs text-slate-600">
+                  Indicá el monto abonado en cada forma (mínimo dos líneas con importe).
+                </p>
+              </div>
+            )}
           </div>
           <div>
             <label className={labelClass}>Pago realizado</label>
@@ -1039,6 +1218,7 @@ export function AppointmentModal({
                   clearApptField("paymentDateStr");
                 }}
               />
+              <FormFieldHint>{HINT_APPOINTMENT_PAYMENT_DATE}</FormFieldHint>
               <FormFieldError message={fieldErrors.paymentDateStr} />
             </div>
           )}

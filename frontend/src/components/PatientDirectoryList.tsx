@@ -1,5 +1,19 @@
 import type { ReactNode } from "react";
 import type { Patient, Specialist } from "../types";
+import {
+  DIRECTORY_ACTIONS_BAR,
+  DIRECTORY_ACTIONS_CELL,
+  DIRECTORY_CELL_CARD,
+  DIRECTORY_TABLE_HEAD,
+  DIRECTORY_TABLE_HEAD_ROW,
+  DIRECTORY_TABLE_ROW_HOVER,
+  DIRECTORY_TABLE_TD,
+  DIRECTORY_TABLE_TH,
+  DIRECTORY_TABLE_WRAPPER,
+  directoryRowAccent,
+  directoryRowBg,
+} from "../lib/directoryTableStyles";
+import { computeAgeFromBirthDate } from "../lib/patientAge";
 import { formatPersonDisplayLastFirst, formatPersonDisplayLastFirstUpper, normalizePersonNameField } from "../lib/personName";
 
 export type PatientDebtFilter = "all" | "debt" | "no_debt";
@@ -45,28 +59,43 @@ function patientMetaLine(p: Patient): string | null {
   if (p.documentId?.trim()) parts.push(`DNI ${p.documentId.trim()}`);
   if (p.birthDate) {
     const y = p.birthDate.slice(0, 4);
-    const age = patientAge(p.birthDate);
+    const age = computeAgeFromBirthDate(p.birthDate);
     parts.push(age != null ? `Nac. ${y} (${age} años)` : `Nac. ${y}`);
   }
   return parts.length > 0 ? parts.join(" · ") : null;
 }
 
-function patientAge(birthDate: string): number | null {
-  const d = new Date(`${birthDate.slice(0, 10)}T12:00:00`);
-  if (Number.isNaN(d.getTime())) return null;
-  const today = new Date();
-  let age = today.getFullYear() - d.getFullYear();
-  const m = today.getMonth() - d.getMonth();
-  if (m < 0 || (m === 0 && today.getDate() < d.getDate())) age -= 1;
-  return age >= 0 && age < 130 ? age : null;
-}
-
-function avatarTone(id: string): { ring: string; bg: string; text: string } {
+function avatarTone(id: string): {
+  ring: string;
+  bg: string;
+  text: string;
+  rowAccent: string;
+} {
   const tones = [
-    { ring: "ring-slate-200", bg: "bg-slate-100", text: "text-slate-700" },
-    { ring: "ring-sky-200", bg: "bg-sky-50", text: "text-sky-800" },
-    { ring: "ring-indigo-200", bg: "bg-indigo-50", text: "text-indigo-800" },
-    { ring: "ring-teal-200", bg: "bg-teal-50", text: "text-teal-800" },
+    {
+      ring: "ring-sky-300",
+      bg: "bg-sky-100",
+      text: "text-sky-900",
+      rowAccent: "border-l-sky-500",
+    },
+    {
+      ring: "ring-indigo-300",
+      bg: "bg-indigo-100",
+      text: "text-indigo-900",
+      rowAccent: "border-l-indigo-500",
+    },
+    {
+      ring: "ring-teal-300",
+      bg: "bg-teal-100",
+      text: "text-teal-900",
+      rowAccent: "border-l-teal-500",
+    },
+    {
+      ring: "ring-violet-300",
+      bg: "bg-violet-100",
+      text: "text-violet-900",
+      rowAccent: "border-l-violet-500",
+    },
   ] as const;
   let h = 0;
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
@@ -86,9 +115,9 @@ export function PatientDirectoryList({
   onDelete,
 }: PatientDirectoryListProps) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-[0_8px_30px_-20px_rgba(15,23,42,0.25)]">
+    <div className={DIRECTORY_TABLE_WRAPPER}>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[980px] table-fixed text-left text-sm">
+        <table className="w-full min-w-[980px] table-fixed border-collapse text-left text-sm">
           <colgroup>
             <col style={{ width: "28%" }} />
             <col style={{ width: "24%" }} />
@@ -96,19 +125,22 @@ export function PatientDirectoryList({
             <col style={{ width: "11%" }} />
             <col style={{ width: "15%" }} />
           </colgroup>
-          <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50/95 text-xs font-semibold uppercase tracking-wider text-slate-500 backdrop-blur-sm">
-            <tr>
-              <th className="px-5 py-3.5">Paciente</th>
-              <th className="px-4 py-3.5">Contacto</th>
-              <th className="px-4 py-3.5">Profesional</th>
-              <th className="px-4 py-3.5 text-right">Pagos</th>
-              <th className="px-5 py-3.5 text-right">Acciones</th>
+          <thead className={`sticky top-0 z-10 ${DIRECTORY_TABLE_HEAD}`}>
+            <tr className={DIRECTORY_TABLE_HEAD_ROW}>
+              <th className={`${DIRECTORY_TABLE_TH} pl-5`}>Paciente</th>
+              <th className={DIRECTORY_TABLE_TH}>Contacto</th>
+              <th className={DIRECTORY_TABLE_TH}>Profesional</th>
+              <th className={`${DIRECTORY_TABLE_TH} text-right`}>Pagos</th>
+              <th className={`${DIRECTORY_TABLE_TH} pr-5 text-right`}>Acciones</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody>
             {isLoading &&
               Array.from({ length: 5 }).map((_, i) => (
-                <tr key={`sk-${i}`} className="animate-pulse">
+                <tr
+                  key={`sk-${i}`}
+                  className={`animate-pulse border-b border-slate-200/80 ${i % 2 === 0 ? "bg-white" : "bg-slate-50"}`}
+                >
                   <td className="px-5 py-5" colSpan={5}>
                     <div className="flex gap-4">
                       <div className="h-11 w-11 rounded-full bg-slate-200" />
@@ -186,9 +218,11 @@ function PatientRow({
   const phone = formatPhoneDisplay(p.phone);
   const name = formatPersonDisplayLastFirstUpper(p.lastName, p.firstName);
 
+  const rowBg = directoryRowBg(index, hasDebt);
+
   return (
-    <tr className={`group transition-colors hover:bg-slate-50/80 ${index % 2 === 1 ? "bg-slate-50/40" : "bg-white"}`}>
-      <td className="px-5 py-4 align-middle">
+    <tr className={`${DIRECTORY_TABLE_ROW_HOVER} ${rowBg}`}>
+      <td className={`${DIRECTORY_TABLE_TD} border-l-4 pl-4 ${directoryRowAccent(p.id, hasDebt)}`}>
         <div className="flex min-w-0 items-center gap-3.5">
           <span
             className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-sm font-bold ring-2 ${tone.ring} ${tone.bg} ${tone.text}`}
@@ -211,11 +245,11 @@ function PatientRow({
         </div>
       </td>
 
-      <td className="px-4 py-4 align-middle">
-        <div className="min-w-0 space-y-1">
+      <td className={DIRECTORY_TABLE_TD}>
+        <div className={`${DIRECTORY_CELL_CARD} space-y-1`}>
           <a
             href={`mailto:${p.email}`}
-            className="block truncate text-sm text-slate-700 underline-offset-2 hover:text-brand-800 hover:underline"
+            className="block truncate text-sm font-medium text-slate-800 underline-offset-2 hover:text-brand-800 hover:underline"
             title={p.email}
           >
             {p.email}
@@ -233,9 +267,9 @@ function PatientRow({
         </div>
       </td>
 
-      <td className="px-4 py-4 align-middle">
+      <td className={DIRECTORY_TABLE_TD}>
         {p.specialist ? (
-          <div className="min-w-0">
+          <div className={DIRECTORY_CELL_CARD}>
             <p className="truncate font-medium text-slate-800" title={formatPersonDisplayLastFirst(p.specialist.lastName, p.specialist.firstName)}>
               {formatPersonDisplayLastFirst(p.specialist.lastName, p.specialist.firstName)}
             </p>
@@ -248,7 +282,7 @@ function PatientRow({
         )}
       </td>
 
-      <td className="px-4 py-4 align-middle text-right">
+      <td className={`${DIRECTORY_TABLE_TD} text-right`}>
         {hasDebt ? (
           <div className="inline-flex flex-col items-end gap-0.5">
             <span className="rounded-md bg-amber-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800 ring-1 ring-amber-200/80">
@@ -263,8 +297,8 @@ function PatientRow({
         )}
       </td>
 
-      <td className="px-5 py-4 align-middle">
-        <div className="flex items-center justify-end gap-0.5">
+      <td className={`${DIRECTORY_TABLE_TD} ${DIRECTORY_ACTIONS_CELL} pr-5`}>
+        <div className={`${DIRECTORY_ACTIONS_BAR} flex-nowrap`}>
           <ActionIconButton label="Turnos" onClick={() => onOpenAppointments(p)}>
             <ClockIcon />
           </ActionIconButton>
@@ -304,11 +338,11 @@ function ActionIconButton({
   children: ReactNode;
 }) {
   const accentClass: Record<ActionAccent, string> = {
-    default: "hover:bg-slate-100 hover:text-slate-900",
-    amber: "hover:bg-amber-50 hover:text-amber-900",
-    emerald: "hover:bg-emerald-50 hover:text-emerald-900",
-    brand: "hover:bg-brand-50 hover:text-brand-900",
-    danger: "hover:bg-rose-50 hover:text-rose-700",
+    default: "bg-slate-50 text-slate-600 hover:bg-slate-200 hover:text-slate-900",
+    amber: "bg-amber-50/80 text-amber-800 hover:bg-amber-100 hover:text-amber-950",
+    emerald: "bg-emerald-50/80 text-emerald-800 hover:bg-emerald-100 hover:text-emerald-950",
+    brand: "bg-sky-50 text-sky-800 hover:bg-sky-200 hover:text-sky-950",
+    danger: "bg-rose-50/80 text-rose-700 hover:bg-rose-100 hover:text-rose-900",
   };
 
   return (
@@ -317,7 +351,7 @@ function ActionIconButton({
       title={label}
       aria-label={label}
       onClick={onClick}
-      className={`inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition ${accentClass[accent]}`}
+      className={`inline-flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ring-1 ring-slate-200/60 transition ${accentClass[accent]}`}
     >
       {children}
     </button>

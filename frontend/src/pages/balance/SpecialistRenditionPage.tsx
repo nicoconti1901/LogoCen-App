@@ -20,17 +20,16 @@ import { isPendingSpecialistSettlement, summarizeAppointments } from "./renditio
 import { formatPersonDisplayLastFirst } from "../../lib/personName";
 import type { Appointment, AppointmentPaymentMethod } from "../../types";
 import {
+  PAYMENT_METHOD_LABELS,
+  amountsByPaymentMethod,
+  formatAppointmentPaymentLabel,
+} from "../../lib/paymentMethodDisplay";
+import {
   dateToIsoLocal,
   formatMoney,
   getRangeFromPreset,
   parseMoney,
 } from "./balanceUtils";
-
-const paymentMethodLabel: Record<AppointmentPaymentMethod, string> = {
-  TRANSFER_TO_LOGOCEN: "Transferencia a LogoCen",
-  TRANSFER_TO_SPECIALIST: "Transferencia al especialista",
-  CASH_TO_LOGOCEN: "Efectivo a LogoCen",
-};
 
 const statusLabel: Record<Appointment["status"], string> = {
   RESERVED: "Reservado",
@@ -167,8 +166,14 @@ export function SpecialistRenditionPage() {
     const pendingSettlement: Appointment[] = [];
 
     for (const a of list) {
-      if (a.paymentCompleted && a.paymentMethod) {
-        byMethod[a.paymentMethod] = (byMethod[a.paymentMethod] ?? 0) + parseMoney(a.specialist.consultationFee);
+      if (a.paymentCompleted) {
+        const fee = parseMoney(a.specialist.consultationFee);
+        const parts = amountsByPaymentMethod(a.paymentMethod, a.paymentSplits, fee);
+        for (const [method, amount] of Object.entries(parts)) {
+          if (amount > 0) {
+            byMethod[method] = (byMethod[method] ?? 0) + amount;
+          }
+        }
       }
       if (isPendingSpecialistSettlement(a)) {
         pendingSettlement.push(a);
@@ -364,9 +369,9 @@ export function SpecialistRenditionPage() {
         <h3 className="text-base font-semibold text-slate-900">Montos por método de cobro</h3>
         <p className="text-sm text-slate-600">Solo turnos con pago realizado, honorario de referencia del turno.</p>
         <ul className="mt-3 space-y-1 text-sm">
-          {(Object.keys(paymentMethodLabel) as AppointmentPaymentMethod[]).map((m) => (
+          {(Object.keys(PAYMENT_METHOD_LABELS) as AppointmentPaymentMethod[]).map((m) => (
             <li key={m} className="flex justify-between gap-2 border-b border-slate-100 py-1">
-              <span>{paymentMethodLabel[m]}</span>
+              <span>{PAYMENT_METHOD_LABELS[m]}</span>
               <span className="font-semibold">{formatMoney(stats.byMethod[m] ?? 0)}</span>
             </li>
           ))}
@@ -425,9 +430,9 @@ export function SpecialistRenditionPage() {
                         >
                           {a.paymentCompleted ? "Pagado" : "Pendiente"}
                         </span>
-                        {a.paymentMethod ? (
+                        {a.paymentMethod || a.paymentSplits?.length ? (
                           <span className="mt-0.5 block text-[11px] text-slate-500">
-                            {paymentMethodLabel[a.paymentMethod]}
+                            {formatAppointmentPaymentLabel(a.paymentMethod, a.paymentSplits)}
                           </span>
                         ) : null}
                       </td>

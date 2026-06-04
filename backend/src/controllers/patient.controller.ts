@@ -10,7 +10,7 @@ import {
   emailSchema,
   optionalDocumentIdSchema,
   optionalLongTextSchema,
-  optionalPhoneSchema,
+  patientWhatsappPhoneSchema,
   personNameSchema,
 } from "../utils/fieldValidation.js";
 
@@ -18,7 +18,7 @@ const createSchema = z.object({
   firstName: personNameSchema,
   lastName: personNameSchema,
   email: emailSchema,
-  phone: optionalPhoneSchema,
+  phone: patientWhatsappPhoneSchema,
   documentId: optionalDocumentIdSchema,
   birthDate: birthDateSchema,
   notes: optionalLongTextSchema(NOTES_MAX),

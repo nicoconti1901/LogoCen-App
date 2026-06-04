@@ -1,3 +1,5 @@
+import { normalizePhoneToE164 } from "./whatsappPhone";
+
 export type ValidationResult = { ok: true } | { ok: false; message: string };
 
 export type FieldErrors<T extends string = string> = Partial<Record<T, string>>;
@@ -65,6 +67,18 @@ export function validateOptionalPhone(value: string): ValidationResult {
   if (!t) return ok();
   if (!PHONE_DIGITS_REGEX.test(stripPhoneDigits(t))) {
     return fail("10 a 15 dígitos, sin letras");
+  }
+  return ok();
+}
+
+/** Celular obligatorio del paciente; debe normalizar a E.164 AR (WhatsApp). */
+export function validatePatientWhatsappPhone(value: string): ValidationResult {
+  const t = value.trim();
+  if (!t) return fail("El celular es obligatorio para recordatorios por WhatsApp");
+  if (!normalizePhoneToE164(t)) {
+    return fail(
+      "Formato inválido. Usá móvil argentino: 10 dígitos (área + número) o +54 9 y el número, sin 15 delante"
+    );
   }
   return ok();
 }
@@ -240,7 +254,7 @@ export function validatePatientForm(
     ["firstName", validatePersonName(form.firstName)],
     ["lastName", validatePersonName(form.lastName)],
     ["email", validateEmail(form.email)],
-    ["phone", validateOptionalPhone(form.phone)],
+    ["phone", validatePatientWhatsappPhone(form.phone)],
     ["documentId", validateOptionalDocumentId(form.documentId)],
     ["birthDate", validateBirthDate(form.birthDate)],
     ["notes", validateLongText(form.notes, 2000)],
@@ -340,6 +354,9 @@ export function validateExpenseForm(form: {
 }
 
 export type AppointmentFormFields =
+  | "patientId"
+  | "specialistId"
+  | "consultorio"
   | "dateStr"
   | "startTimeStr"
   | "endTimeStr"
@@ -350,6 +367,11 @@ export type AppointmentFormFields =
   | "fixedEffectiveUntil";
 
 export function validateAppointmentForm(input: {
+  patientId: string;
+  specialistId: string;
+  consultorio: string;
+  requireConsultorio: boolean;
+  requireSpecialist: boolean;
   dateStr: string;
   startTimeStr: string;
   endTimeStr: string;
@@ -363,12 +385,24 @@ export function validateAppointmentForm(input: {
   fixedEffectiveUntil: string;
   isFixedSeries: boolean;
 }): FieldValidationResult<AppointmentFormFields> {
-  const checks: Array<[AppointmentFormFields, ValidationResult]> = [
+  const checks: Array<[AppointmentFormFields, ValidationResult]> = [];
+
+  if (!input.patientId.trim()) {
+    checks.push(["patientId", fail("Seleccioná un paciente")]);
+  }
+  if (input.requireSpecialist && !input.specialistId.trim()) {
+    checks.push(["specialistId", fail("Seleccioná un especialista")]);
+  }
+  if (input.requireConsultorio && !input.consultorio.trim()) {
+    checks.push(["consultorio", fail("Seleccioná un consultorio")]);
+  }
+
+  checks.push(
     ["dateStr", validateDateOnly(input.dateStr)],
     ["startTimeStr", validateTime(input.startTimeStr)],
     ["reasonForVisit", validateLongText(input.reasonForVisit, 1000)],
-    ["medicalRecord", validateLongText(input.medicalRecord, 5000)],
-  ];
+    ["medicalRecord", validateLongText(input.medicalRecord, 5000)]
+  );
 
   if (input.showEndTime) {
     checks.push(["endTimeStr", validateEndTimeAfterStart(input.startTimeStr, input.endTimeStr)]);

@@ -14,7 +14,12 @@ export type ReminderMessageContext = {
 };
 
 function formatTimeRange(start: string, end: string): string {
-  return `${start} a ${end} hs`;
+  return `${start.trim()} a ${end.trim()} hs`;
+}
+
+/** {{4}} en plantillas Meta: solo hora de inicio. */
+function formatTemplateStartTime(start: string): string {
+  return `${start.trim()} hs`;
 }
 
 export function buildReminderBody(ctx: ReminderMessageContext): string {
@@ -126,7 +131,7 @@ function buildTemplateVarValues(
     1: capitalizeTemplateText(nombre),
     2: formatTemplateClinicName(),
     3: capitalizeFirst(fecha),
-    4: ctx.startTime,
+    4: formatTemplateStartTime(ctx.startTime),
     5: capitalizeTemplateText(ctx.specialistName),
     6: formatTemplateAddressOnly(),
     7: formatTemplateClinicContactLink(),

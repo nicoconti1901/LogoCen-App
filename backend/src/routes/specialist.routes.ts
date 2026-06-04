@@ -36,5 +36,10 @@ specialistRouter.delete(
 );
 specialistRouter.get("/:id", specialistController.getById);
 specialistRouter.post("/", requireRole(Role.ADMIN), specialistController.create);
+specialistRouter.post(
+  "/:id/visible-password",
+  requireRole(Role.ADMIN),
+  specialistController.registerVisiblePassword
+);
 specialistRouter.patch("/:id", requireRole(Role.ADMIN, Role.SPECIALIST), specialistController.update);
 specialistRouter.delete("/:id", requireRole(Role.ADMIN), specialistController.remove);
