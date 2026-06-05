@@ -280,6 +280,25 @@ export async function createFixedAppointmentSeries(body: {
   return data;
 }
 
+export async function fetchFixedAppointmentSeries(seriesId: string): Promise<FixedAppointmentSeries> {
+  const { data } = await api.get<FixedAppointmentSeries>(`/appointments/fixed-series/${seriesId}`);
+  return data;
+}
+
+export async function rescheduleFixedAppointmentSeries(
+  seriesId: string,
+  body: {
+    consultorio: string;
+    startTime: string;
+    displayDurationMinutes: number;
+    effectiveUntil?: string | null;
+    fromDate: string;
+  }
+): Promise<FixedAppointmentSeries> {
+  const { data } = await api.patch<FixedAppointmentSeries>(`/appointments/fixed-series/${seriesId}`, body);
+  return data;
+}
+
 export async function cancelFixedAppointmentSeries(seriesId: string): Promise<FixedAppointmentSeries> {
   const { data } = await api.patch<FixedAppointmentSeries>(`/appointments/fixed-series/${seriesId}/cancel`);
   return data;

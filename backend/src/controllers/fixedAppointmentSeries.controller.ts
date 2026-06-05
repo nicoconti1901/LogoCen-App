@@ -72,10 +72,38 @@ function ctx(req: Request) {
   };
 }
 
+const rescheduleSchema = z.object({
+  consultorio: z.string().min(1),
+  startTime: timeSchema,
+  displayDurationMinutes: z.number().int().min(15).max(240),
+  effectiveUntil: optionalDateOnlyStringSchema,
+  fromDate: dateOnlyStringSchema,
+});
+
+export const getById = asyncHandler(async (req: Request, res: Response) => {
+  const row = await fixedAppointmentSeriesService.getFixedAppointmentSeriesById(
+    String(req.params.seriesId),
+    ctx(req).role,
+    ctx(req).userSpecialistId
+  );
+  res.json(row);
+});
+
 export const create = asyncHandler(async (req: Request, res: Response) => {
   const body = createSchema.parse(req.body);
   const row = await fixedAppointmentSeriesService.createFixedAppointmentSeries(body, ctx(req).role, ctx(req).userSpecialistId);
   res.status(201).json(row);
+});
+
+export const reschedule = asyncHandler(async (req: Request, res: Response) => {
+  const body = rescheduleSchema.parse(req.body);
+  const row = await fixedAppointmentSeriesService.rescheduleFixedAppointmentSeries(
+    String(req.params.seriesId),
+    body,
+    ctx(req).role,
+    ctx(req).userSpecialistId
+  );
+  res.json(row);
 });
 
 export const cancel = asyncHandler(async (req: Request, res: Response) => {

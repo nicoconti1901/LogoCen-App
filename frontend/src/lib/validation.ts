@@ -62,6 +62,13 @@ export function validateEmail(value: string): ValidationResult {
   return ok();
 }
 
+export function validateOptionalEmail(value: string): ValidationResult {
+  const t = value.trim();
+  if (!t) return ok();
+  if (!EMAIL_REGEX.test(t)) return fail("Correo inválido");
+  return ok();
+}
+
 export function validateOptionalPhone(value: string): ValidationResult {
   const t = value.trim();
   if (!t) return ok();
@@ -75,6 +82,18 @@ export function validateOptionalPhone(value: string): ValidationResult {
 export function validatePatientWhatsappPhone(value: string): ValidationResult {
   const t = value.trim();
   if (!t) return fail("El celular es obligatorio para recordatorios por WhatsApp");
+  if (!normalizePhoneToE164(t)) {
+    return fail(
+      "Formato inválido. Usá móvil argentino: 10 dígitos (área + número) o +54 9 y el número, sin 15 delante"
+    );
+  }
+  return ok();
+}
+
+/** Celular opcional; si se indica, debe ser válido para WhatsApp. */
+export function validateOptionalPatientWhatsappPhone(value: string): ValidationResult {
+  const t = value.trim();
+  if (!t) return ok();
   if (!normalizePhoneToE164(t)) {
     return fail(
       "Formato inválido. Usá móvil argentino: 10 dígitos (área + número) o +54 9 y el número, sin 15 delante"
@@ -104,6 +123,12 @@ export function validateOptionalDateOnly(value: string): ValidationResult {
   if (!t) return ok();
   if (!DATE_ONLY_REGEX.test(t)) return fail("Use formato AAAA-MM-DD");
   return ok();
+}
+
+export function validateOptionalBirthDate(value: string): ValidationResult {
+  const t = value.trim();
+  if (!t) return ok();
+  return validateBirthDate(t);
 }
 
 export function validateBirthDate(value: string): ValidationResult {
@@ -253,10 +278,10 @@ export function validatePatientForm(
   const checks: Array<[PatientFormFields, ValidationResult]> = [
     ["firstName", validatePersonName(form.firstName)],
     ["lastName", validatePersonName(form.lastName)],
-    ["email", validateEmail(form.email)],
-    ["phone", validatePatientWhatsappPhone(form.phone)],
+    ["email", validateOptionalEmail(form.email)],
+    ["phone", validateOptionalPatientWhatsappPhone(form.phone)],
     ["documentId", validateOptionalDocumentId(form.documentId)],
-    ["birthDate", validateBirthDate(form.birthDate)],
+    ["birthDate", validateOptionalBirthDate(form.birthDate)],
     ["notes", validateLongText(form.notes, 2000)],
   ];
   if (options.requireSpecialist && !form.specialistId.trim()) {
