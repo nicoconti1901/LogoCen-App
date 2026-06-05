@@ -109,6 +109,38 @@ export const patientWhatsappPhoneSchema = z
     }
   });
 
+/** Correo opcional del paciente (vacío permitido). */
+export const optionalEmailSchema = z
+  .union([z.string(), z.literal(""), z.null()])
+  .optional()
+  .transform((v) => (typeof v === "string" ? v.trim().toLowerCase() : ""))
+  .superRefine((v, ctx) => {
+    if (!v) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Correo inválido" });
+    }
+  });
+
+/** Celular opcional; si se indica, debe ser válido para WhatsApp. */
+export const optionalPatientWhatsappPhoneSchema = z
+  .union([z.string(), z.literal(""), z.null()])
+  .optional()
+  .superRefine((v, ctx) => {
+    const t = (v ?? "").trim();
+    if (!t) return;
+    if (!normalizePhoneToE164(t)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "Formato inválido. Usá móvil argentino: 10 dígitos (área + número) o +54 9 y el número, sin 15 delante",
+      });
+    }
+  })
+  .transform((v) => {
+    const t = (v ?? "").trim();
+    return t || null;
+  });
+
 export const optionalDocumentIdSchema = z
   .union([z.string(), z.literal(""), z.null()])
   .optional()

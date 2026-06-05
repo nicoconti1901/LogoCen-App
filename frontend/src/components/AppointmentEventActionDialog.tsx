@@ -186,8 +186,10 @@ export type AppointmentEventActionDialogProps = {
   showNewSlot: boolean;
   showDelete: boolean;
   showFixedCancel: boolean;
+  showEditFixedSchedule?: boolean;
   onClose: () => void;
   onEdit: () => void;
+  onEditFixedSchedule?: () => void;
   onNewSlot: () => void;
   onDelete: () => void;
   onCancelOccurrence: () => void;
@@ -202,8 +204,10 @@ export function AppointmentEventActionDialog({
   showNewSlot,
   showDelete,
   showFixedCancel,
+  showEditFixedSchedule = false,
   onClose,
   onEdit,
+  onEditFixedSchedule,
   onNewSlot,
   onDelete,
   onCancelOccurrence,
@@ -243,6 +247,17 @@ export function AppointmentEventActionDialog({
       emphasis: "featured",
       icon: "edit",
       onClick: onEdit,
+    });
+  }
+  if (showEditFixedSchedule && isFixed && onEditFixedSchedule) {
+    mainActions.push({
+      key: "edit-schedule",
+      label: "Editar horario fijo",
+      hint: "Cambiar día, hora o consultorio de la serie",
+      tone: "violet",
+      emphasis: "featured",
+      icon: "edit",
+      onClick: onEditFixedSchedule,
     });
   }
   if (showNewSlot) {

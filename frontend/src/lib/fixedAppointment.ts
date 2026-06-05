@@ -39,3 +39,31 @@ export function weekdayLabelFromDate(dateIso: string): string {
   const keys = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"] as const;
   return WEEKDAY_LABEL_ES[keys[d.getDay()]] ?? "";
 }
+
+const WEEKDAY_INDEX: Record<string, number> = {
+  SUNDAY: 0,
+  MONDAY: 1,
+  TUESDAY: 2,
+  WEDNESDAY: 3,
+  THURSDAY: 4,
+  FRIDAY: 5,
+  SATURDAY: 6,
+};
+
+/** Próxima fecha (hoy o posterior) que coincide con el día de la semana de la serie. */
+export function nextDateForSeriesWeekday(weekday: string, minDateIso?: string): string {
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const startIso = minDateIso && minDateIso > todayIso ? minDateIso : todayIso;
+  const target = WEEKDAY_INDEX[weekday] ?? 1;
+  const d = new Date(`${startIso}T12:00:00`);
+  for (let i = 0; i < 7; i++) {
+    if (d.getDay() === target) {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      return `${y}-${m}-${day}`;
+    }
+    d.setDate(d.getDate() + 1);
+  }
+  return startIso;
+}

@@ -45,7 +45,7 @@ export async function createPatient(data: {
   return patientRepository.create({
     firstName: normalizePersonNameField(data.firstName),
     lastName: normalizePersonNameField(data.lastName),
-    email: data.email.toLowerCase().trim(),
+    email: data.email?.trim() ? data.email.toLowerCase().trim() : "",
     phone: data.phone?.trim() || null,
     documentId: data.documentId?.trim() || null,
     birthDate: data.birthDate ?? null,
@@ -75,7 +75,9 @@ export async function updatePatient(
   return patientRepository.update(id, {
     ...(data.firstName !== undefined ? { firstName: normalizePersonNameField(data.firstName) } : {}),
     ...(data.lastName !== undefined ? { lastName: normalizePersonNameField(data.lastName) } : {}),
-    ...(data.email !== undefined ? { email: data.email.toLowerCase().trim() } : {}),
+    ...(data.email !== undefined
+      ? { email: data.email?.trim() ? data.email.toLowerCase().trim() : "" }
+      : {}),
     ...(data.phone !== undefined ? { phone: data.phone?.trim() || null } : {}),
     ...(data.documentId !== undefined ? { documentId: data.documentId?.trim() || null } : {}),
     ...(data.birthDate !== undefined ? { birthDate: data.birthDate } : {}),

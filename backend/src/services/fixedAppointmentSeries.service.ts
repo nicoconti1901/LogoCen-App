@@ -33,6 +33,10 @@ import {
   assertNoOverlap,
 } from "./appointment.service.js";
 import {
+  assertNoFixedSeriesBlocksConsultorio,
+  assertNoFixedSeriesBlocksSpecialist,
+} from "../utils/fixedAppointmentScheduling.js";
+import {
   buildVirtualAppointmentForDate,
   iterateSeriesOccurrenceDates,
   parseFixedAppointmentId,
@@ -55,7 +59,7 @@ function defaultPatientHistoryRange(): { from: Date; to: Date } {
   return { from, to };
 }
 
-const DISPLAY_DURATION_MIN = 60;
+const DISPLAY_DURATION_MIN = 30;
 const DISPLAY_DURATION_MAX = 240;
 
 function assertCanAccessSeries(
@@ -158,6 +162,115 @@ export async function createFixedAppointmentSeries(
     effectiveFrom,
     effectiveUntil,
     reasonForVisit: data.reasonForVisit,
+  });
+}
+
+export async function getFixedAppointmentSeriesById(
+  seriesId: string,
+  role: Role,
+  userSpecialistId: string | null
+) {
+  const series = await fixedAppointmentSeriesRepository.findById(seriesId);
+  if (!series || !series.active) throw new AppError(404, "Serie de turno fijo no encontrada");
+  assertCanAccessSeries(role, userSpecialistId, series.specialistId);
+  return series;
+}
+
+/**
+ * Cambia horario/consultorio/duración de una serie fija: da de baja la serie anterior
+ * (turnos futuros del horario viejo) y crea una nueva desde `fromDate`.
+ */
+export async function rescheduleFixedAppointmentSeries(
+  seriesId: string,
+  data: {
+    consultorio: string;
+    startTime: string;
+    displayDurationMinutes: number;
+    effectiveUntil?: string | null;
+    fromDate: string;
+  },
+  role: Role,
+  userSpecialistId: string | null
+) {
+  const series = await fixedAppointmentSeriesRepository.findById(seriesId);
+  if (!series || !series.active) throw new AppError(404, "Serie de turno fijo no encontrada");
+  assertCanAccessSeries(role, userSpecialistId, series.specialistId);
+
+  const startTime = assertValidTime(data.startTime);
+  const displayDurationMinutes = data.displayDurationMinutes;
+  if (displayDurationMinutes < 15 || displayDurationMinutes > DISPLAY_DURATION_MAX) {
+    throw new AppError(400, "Duración de visualización inválida (15–240 min)");
+  }
+  const endTime = seriesEndTime(startTime, displayDurationMinutes);
+  if (timeToMinutes(endTime) <= timeToMinutes(startTime)) {
+    throw new AppError(400, "La hora de fin debe ser posterior al inicio");
+  }
+
+  const consultorio = data.consultorio.trim();
+  if (!consultorio) throw new AppError(400, "Debe indicar el consultorio");
+
+  const fromDate = parseDateOnlyISO(data.fromDate);
+  const today = toDateOnly(new Date());
+  if (fromDate < today) {
+    throw new AppError(400, "La fecha de inicio del nuevo horario debe ser hoy o posterior");
+  }
+
+  const specialist = await specialistRepository.findById(series.specialistId);
+  if (!specialist || !specialist.active) {
+    throw new AppError(400, "Especialista inválido o inactivo");
+  }
+  assertInsideAvailability(specialist, fromDate, startTime, endTime);
+
+  const effectiveUntil = data.effectiveUntil ? parseDateOnlyISO(data.effectiveUntil) : null;
+  if (effectiveUntil && effectiveUntil < fromDate) {
+    throw new AppError(400, "La fecha de fin debe ser posterior o igual al inicio");
+  }
+
+  const weekday = weekdayFromDate(fromDate);
+  const occurrenceDates = iterateSeriesOccurrenceDates({
+    weekday,
+    effectiveFrom: fromDate,
+    effectiveUntil,
+  });
+
+  for (const occDate of occurrenceDates) {
+    await assertNoOverlap(series.specialistId, occDate, startTime, endTime);
+    await assertNoConsultorioOverlap(consultorio, occDate, startTime, endTime);
+    await assertNoFixedSeriesBlocksSpecialist({
+      specialistId: series.specialistId,
+      appointmentDate: occDate,
+      startTime,
+      endTime,
+      excludeSeriesId: seriesId,
+    });
+    await assertNoFixedSeriesBlocksConsultorio({
+      consultorio,
+      appointmentDate: occDate,
+      startTime,
+      endTime,
+      excludeSeriesId: seriesId,
+    });
+  }
+
+  const untilOld = new Date(fromDate);
+  untilOld.setDate(untilOld.getDate() - 1);
+  const oldUntil = toDateOnly(untilOld);
+  if (oldUntil >= toDateOnly(series.effectiveFrom)) {
+    await fixedAppointmentSeriesRepository.deactivate(seriesId, oldUntil);
+  } else {
+    await fixedAppointmentSeriesRepository.deactivate(seriesId, toDateOnly(series.effectiveFrom));
+  }
+
+  return fixedAppointmentSeriesRepository.create({
+    patientId: series.patientId,
+    specialistId: series.specialistId,
+    consultorio,
+    weekday,
+    startTime,
+    displayDurationMinutes,
+    effectiveFrom: fromDate,
+    effectiveUntil,
+    reasonForVisit: series.reasonForVisit,
   });
 }
 

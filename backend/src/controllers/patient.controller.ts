@@ -7,18 +7,18 @@ import {
   DIAGNOSIS_MAX,
   NOTES_MAX,
   birthDateSchema,
-  emailSchema,
   optionalDocumentIdSchema,
+  optionalEmailSchema,
   optionalLongTextSchema,
-  patientWhatsappPhoneSchema,
+  optionalPatientWhatsappPhoneSchema,
   personNameSchema,
 } from "../utils/fieldValidation.js";
 
 const createSchema = z.object({
   firstName: personNameSchema,
   lastName: personNameSchema,
-  email: emailSchema,
-  phone: patientWhatsappPhoneSchema,
+  email: optionalEmailSchema,
+  phone: optionalPatientWhatsappPhoneSchema,
   documentId: optionalDocumentIdSchema,
   birthDate: birthDateSchema,
   notes: optionalLongTextSchema(NOTES_MAX),
