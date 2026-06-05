@@ -470,10 +470,11 @@ export function AppointmentModal({
 
   const rescheduleFixedMut = useMutation({
     mutationFn: () => {
-      if (!fixedSeriesScheduleId) throw new Error("Serie fija inválida");
+      const seriesId = fixedSeriesSchedule?.id ?? fixedSeriesScheduleId;
+      if (!seriesId) throw new Error("Serie fija inválida");
       const duration = durationMinutesFromRange(startTimeStr, endTimeStr);
       if (duration == null) throw new Error("Horario inválido");
-      return rescheduleFixedAppointmentSeries(fixedSeriesScheduleId, {
+      return rescheduleFixedAppointmentSeries(seriesId, {
         consultorio,
         startTime: startTimeStr,
         displayDurationMinutes: duration,

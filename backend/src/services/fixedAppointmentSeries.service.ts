@@ -162,13 +162,30 @@ export async function createFixedAppointmentSeries(
   });
 }
 
+/** Si la serie ya fue dada de baja, devuelve la activa del mismo paciente y especialista. */
+async function resolveActiveFixedSeries(seriesId: string) {
+  const series = await fixedAppointmentSeriesRepository.findById(seriesId);
+  if (!series) throw new AppError(404, "Serie de turno fijo no encontrada");
+  if (series.active) return series;
+
+  const replacement = await prisma.fixedAppointmentSeries.findFirst({
+    where: {
+      active: true,
+      patientId: series.patientId,
+      specialistId: series.specialistId,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  if (replacement) return replacement;
+  throw new AppError(404, "Serie de turno fijo no encontrada");
+}
+
 export async function getFixedAppointmentSeriesById(
   seriesId: string,
   role: Role,
   userSpecialistId: string | null
 ) {
-  const series = await fixedAppointmentSeriesRepository.findById(seriesId);
-  if (!series || !series.active) throw new AppError(404, "Serie de turno fijo no encontrada");
+  const series = await resolveActiveFixedSeries(seriesId);
   assertCanAccessSeries(role, userSpecialistId, series.specialistId);
   return series;
 }
@@ -189,8 +206,7 @@ export async function rescheduleFixedAppointmentSeries(
   role: Role,
   userSpecialistId: string | null
 ) {
-  const series = await fixedAppointmentSeriesRepository.findById(seriesId);
-  if (!series || !series.active) throw new AppError(404, "Serie de turno fijo no encontrada");
+  const series = await resolveActiveFixedSeries(seriesId);
   assertCanAccessSeries(role, userSpecialistId, series.specialistId);
 
   const startTime = assertValidTime(data.startTime);
@@ -224,11 +240,6 @@ export async function rescheduleFixedAppointmentSeries(
   }
 
   const weekday = weekdayFromDate(fromDate);
-  const occurrenceDates = iterateSeriesOccurrenceDates({
-    weekday,
-    effectiveFrom: fromDate,
-    effectiveUntil,
-  });
 
   const untilOld = new Date(fromDate);
   untilOld.setDate(untilOld.getDate() - 1);
@@ -236,16 +247,27 @@ export async function rescheduleFixedAppointmentSeries(
   const deactivateUntil =
     oldUntil >= toDateOnly(series.effectiveFrom) ? oldUntil : toDateOnly(series.effectiveFrom);
 
-  const rollbackState = {
-    active: series.active,
-    effectiveUntil: series.effectiveUntil,
-  };
+  const activesForPatient = await prisma.fixedAppointmentSeries.findMany({
+    where: {
+      active: true,
+      patientId: series.patientId,
+      specialistId: series.specialistId,
+    },
+  });
+  const rollbackStates = activesForPatient.map((s) => ({
+    id: s.id,
+    active: s.active,
+    effectiveUntil: s.effectiveUntil,
+  }));
 
-  // Desactivar la serie anterior antes de validar: así no cuenta como conflicto consigo misma.
-  await fixedAppointmentSeriesRepository.deactivate(seriesId, deactivateUntil);
+  // Baja todas las series activas del paciente con este especialista (evita duplicados históricos).
+  for (const s of activesForPatient) {
+    const until =
+      deactivateUntil >= toDateOnly(s.effectiveFrom) ? deactivateUntil : toDateOnly(s.effectiveFrom);
+    await fixedAppointmentSeriesRepository.deactivate(s.id, until);
+  }
 
   const conflictExclude = {
-    excludeSeriesId: seriesId,
     excludePatientSpecialist: {
       patientId: series.patientId,
       specialistId: series.specialistId,
@@ -253,24 +275,23 @@ export async function rescheduleFixedAppointmentSeries(
   };
 
   try {
-    for (const occDate of occurrenceDates) {
-      await assertNoOverlap(
-        series.specialistId,
-        occDate,
-        startTime,
-        endTime,
-        undefined,
-        conflictExclude
-      );
-      await assertNoConsultorioOverlap(
-        consultorio,
-        occDate,
-        startTime,
-        endTime,
-        undefined,
-        conflictExclude
-      );
-    }
+    // Una fecha alcanza para turnos semanales (mismo día de la semana en toda la serie).
+    await assertNoOverlap(
+      series.specialistId,
+      fromDate,
+      startTime,
+      endTime,
+      undefined,
+      conflictExclude
+    );
+    await assertNoConsultorioOverlap(
+      consultorio,
+      fromDate,
+      startTime,
+      endTime,
+      undefined,
+      conflictExclude
+    );
 
     return await fixedAppointmentSeriesRepository.create({
       patientId: series.patientId,
@@ -284,13 +305,15 @@ export async function rescheduleFixedAppointmentSeries(
       reasonForVisit: series.reasonForVisit,
     });
   } catch (err) {
-    await prisma.fixedAppointmentSeries.update({
-      where: { id: seriesId },
-      data: {
-        active: rollbackState.active,
-        effectiveUntil: rollbackState.effectiveUntil,
-      },
-    });
+    for (const prev of rollbackStates) {
+      await prisma.fixedAppointmentSeries.update({
+        where: { id: prev.id },
+        data: {
+          active: prev.active,
+          effectiveUntil: prev.effectiveUntil,
+        },
+      });
+    }
     throw err;
   }
 }
