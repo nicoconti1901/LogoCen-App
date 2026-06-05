@@ -6,12 +6,35 @@ import { errorHandler } from "./middleware/errorHandler.js";
 import { apiRouter } from "./routes/index.js";
 import { whatsappWebhookRouter } from "./routes/whatsapp.webhook.routes.js";
 
+function normalizeCorsOrigin(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return trimmed;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (trimmed.startsWith("//")) return `https:${trimmed}`;
+  return `https://${trimmed}`;
+}
+
+function parseCorsOrigins(raw: string): string[] {
+  return [...new Set(raw.split(",").map(normalizeCorsOrigin).filter(Boolean))];
+}
+
 export function createApp() {
   const app = express();
+  const allowedOrigins = parseCorsOrigins(env.CORS_ORIGIN);
 
   app.use(
     cors({
-      origin: env.CORS_ORIGIN,
+      origin(origin, callback) {
+        if (!origin) {
+          callback(null, true);
+          return;
+        }
+        if (allowedOrigins.includes(origin)) {
+          callback(null, origin);
+          return;
+        }
+        callback(new Error("Not allowed by CORS"));
+      },
       credentials: true,
     })
   );
