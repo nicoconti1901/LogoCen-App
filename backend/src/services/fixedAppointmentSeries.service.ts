@@ -33,10 +33,6 @@ import {
   assertNoOverlap,
 } from "./appointment.service.js";
 import {
-  assertNoFixedSeriesBlocksConsultorio,
-  assertNoFixedSeriesBlocksSpecialist,
-} from "../utils/fixedAppointmentScheduling.js";
-import {
   buildVirtualAppointmentForDate,
   iterateSeriesOccurrenceDates,
   parseFixedAppointmentId,
@@ -234,22 +230,8 @@ export async function rescheduleFixedAppointmentSeries(
   });
 
   for (const occDate of occurrenceDates) {
-    await assertNoOverlap(series.specialistId, occDate, startTime, endTime);
-    await assertNoConsultorioOverlap(consultorio, occDate, startTime, endTime);
-    await assertNoFixedSeriesBlocksSpecialist({
-      specialistId: series.specialistId,
-      appointmentDate: occDate,
-      startTime,
-      endTime,
-      excludeSeriesId: seriesId,
-    });
-    await assertNoFixedSeriesBlocksConsultorio({
-      consultorio,
-      appointmentDate: occDate,
-      startTime,
-      endTime,
-      excludeSeriesId: seriesId,
-    });
+    await assertNoOverlap(series.specialistId, occDate, startTime, endTime, undefined, seriesId);
+    await assertNoConsultorioOverlap(consultorio, occDate, startTime, endTime, undefined, seriesId);
   }
 
   const untilOld = new Date(fromDate);

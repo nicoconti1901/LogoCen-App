@@ -20,6 +20,16 @@ export function getFixedSeriesId(a: Appointment): string | null {
   return parseFixedAppointmentId(a.id)?.seriesId ?? null;
 }
 
+/** Ignora la serie fija que se está editando al calcular ocupación de consultorio. */
+export function isOwnFixedSeriesConsultorioSlot(
+  slot: { id: string; fixedSeriesId?: string | null },
+  seriesId: string | null | undefined
+): boolean {
+  if (!seriesId) return false;
+  if (slot.fixedSeriesId) return slot.fixedSeriesId === seriesId;
+  return slot.id.startsWith(`${PREFIX}${seriesId}:`);
+}
+
 export function getFixedOccurrenceDate(a: Appointment): string {
   return parseFixedAppointmentId(a.id)?.dateIso ?? getAppointmentDateStr(a);
 }

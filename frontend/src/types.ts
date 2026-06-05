@@ -113,6 +113,7 @@ export type ConsultorioSlot = {
   endTime: string;
   status: AppointmentStatus;
   isFixedSeries?: boolean;
+  fixedSeriesId?: string | null;
 };
 
 /** Respuesta API enriquecida: fecha, franja horaria, snake_case opcional */

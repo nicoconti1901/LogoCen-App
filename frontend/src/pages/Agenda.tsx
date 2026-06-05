@@ -12,7 +12,6 @@ import {
   cancelFixedAppointmentSeries,
   deleteAppointment,
   fetchAppointments,
-  fetchFixedAppointmentSeries,
   fetchSpecialist,
   fetchSpecialists,
   skipFixedAppointmentOccurrence,
@@ -24,7 +23,7 @@ import { AppointmentModal } from "../components/AppointmentModal";
 import { AppointmentEventActionDialog } from "../components/AppointmentEventActionDialog";
 import { PatientPaymentHistoryModal } from "../components/PatientPaymentHistoryModal";
 import { useAuth } from "../contexts/AuthContext";
-import type { Appointment, FixedAppointmentSeries, Specialist } from "../types";
+import type { Appointment, Specialist } from "../types";
 import { appointmentHasDebt, appointmentDebtAmountArs, reservadoHonorarioRemainder } from "../lib/appointmentDebt";
 import { appointmentBlocksScheduleSlot } from "../lib/appointmentScheduling";
 import { formatAppointmentPaymentLabel } from "../lib/paymentMethodDisplay";
@@ -349,7 +348,9 @@ export function AgendaPage() {
   const [unavailableHintOpen, setUnavailableHintOpen] = useState(false);
   const [deleteTargetAppointmentId, setDeleteTargetAppointmentId] = useState<string | null>(null);
   const [fixedCancelMode, setFixedCancelMode] = useState<"occurrence" | "series" | null>(null);
-  const [fixedSeriesSchedule, setFixedSeriesSchedule] = useState<FixedAppointmentSeries | null>(null);
+  const [fixedSeriesScheduleId, setFixedSeriesScheduleId] = useState<string | null>(null);
+  const [fixedSeriesScheduleSeed, setFixedSeriesScheduleSeed] = useState<Appointment | null>(null);
+  const [eventActionError, setEventActionError] = useState<string | null>(null);
   const qc = useQueryClient();
   const shouldOpenQuickSlots = searchParams.get("new") === "1";
   const effectiveSpecialistId = routeSpecialistId ?? (user?.role === "SPECIALIST" ? user.specialistId ?? undefined : undefined);
@@ -556,6 +557,7 @@ export function AgendaPage() {
       if (effectiveSpecialistId && a.specialistId !== effectiveSpecialistId) return;
       setClickedAppointment(a);
       setClickedSlot(slotFromAppointment(a));
+      setEventActionError(null);
       setEventActionOpen(true);
     },
     [user?.role, user?.specialistId, effectiveSpecialistId]
@@ -935,13 +937,15 @@ export function AgendaPage() {
             setModalOpen(false);
             setSelected(null);
             setSlot(null);
-            setFixedSeriesSchedule(null);
+            setFixedSeriesScheduleId(null);
+            setFixedSeriesScheduleSeed(null);
           }}
           initialStart={slot?.start}
           initialEnd={slot?.end}
           appointment={selected}
           fixedSpecialistId={effectiveSpecialistId}
-          fixedSeriesSchedule={fixedSeriesSchedule}
+          fixedSeriesScheduleId={fixedSeriesScheduleId}
+          fixedSeriesScheduleSeed={fixedSeriesScheduleSeed}
           onSaved={() => void refetch()}
         />
 
@@ -966,35 +970,42 @@ export function AgendaPage() {
             showDelete={canDeleteClickedAppointment}
             showFixedCancel={canManageFixedClicked}
             showEditFixedSchedule={user?.role === "ADMIN" && clickedIsFixed}
+            actionError={eventActionError}
             onClose={() => {
               setEventActionOpen(false);
               setClickedAppointment(null);
               setClickedSlot(null);
+              setEventActionError(null);
             }}
             onEdit={() => {
               setEventActionOpen(false);
               setClickedAppointment(null);
               setClickedSlot(null);
-              setFixedSeriesSchedule(null);
+              setFixedSeriesScheduleId(null);
+              setFixedSeriesScheduleSeed(null);
               setSelected(clickedAppointment);
               setSlot(null);
               setModalOpen(true);
             }}
-            onEditFixedSchedule={async () => {
-              const seriesId = getFixedSeriesId(clickedAppointment);
-              if (!seriesId) return;
-              try {
-                const series = await fetchFixedAppointmentSeries(seriesId);
-                setEventActionOpen(false);
-                setClickedAppointment(null);
-                setClickedSlot(null);
-                setSelected(null);
-                setSlot(null);
-                setFixedSeriesSchedule(series);
-                setModalOpen(true);
-              } catch {
-                setEventActionOpen(false);
+            onEditFixedSchedule={() => {
+              const appt = clickedAppointment;
+              if (!appt) return;
+              const seriesId = getFixedSeriesId(appt);
+              if (!seriesId) {
+                setEventActionError(
+                  "No se pudo identificar la serie del turno fijo. Actualizá la página e intentá de nuevo."
+                );
+                return;
               }
+              setEventActionError(null);
+              setEventActionOpen(false);
+              setClickedAppointment(null);
+              setClickedSlot(null);
+              setSelected(null);
+              setSlot(null);
+              setFixedSeriesScheduleId(seriesId);
+              setFixedSeriesScheduleSeed(appt);
+              setModalOpen(true);
             }}
             onNewSlot={() => {
               if (!clickedSlot) return;

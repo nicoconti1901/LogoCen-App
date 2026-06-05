@@ -187,6 +187,7 @@ export type AppointmentEventActionDialogProps = {
   showDelete: boolean;
   showFixedCancel: boolean;
   showEditFixedSchedule?: boolean;
+  actionError?: string | null;
   onClose: () => void;
   onEdit: () => void;
   onEditFixedSchedule?: () => void;
@@ -205,6 +206,7 @@ export function AppointmentEventActionDialog({
   showDelete,
   showFixedCancel,
   showEditFixedSchedule = false,
+  actionError = null,
   onClose,
   onEdit,
   onEditFixedSchedule,
@@ -363,6 +365,11 @@ export function AppointmentEventActionDialog({
         </div>
 
         <div className="max-h-[min(55vh,22rem)] overflow-y-auto px-3 py-3 sm:px-4">
+          {actionError ? (
+            <p className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-950">
+              {actionError}
+            </p>
+          ) : null}
           {mainActions.length > 0 && (
             <div className="space-y-2.5">
               <p className="px-0.5 text-[11px] font-bold uppercase tracking-wider text-brand-800">

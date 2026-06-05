@@ -6,6 +6,7 @@ import {
   deleteAppointment,
   fetchAppointments,
   fetchConsultorioSlots,
+  fetchFixedAppointmentSeries,
   fetchPatientFixedSeries,
   fetchPatients,
   fetchSpecialist,
@@ -20,6 +21,7 @@ import {
   getFixedOccurrenceDate,
   getFixedSeriesId,
   isFixedSeriesAppointment,
+  isOwnFixedSeriesConsultorioSlot,
   nextDateForSeriesWeekday,
 } from "../lib/fixedAppointment";
 import { getAppointmentDateStr, getEndTimeStr, getStartTimeStr } from "../lib/appointmentDisplay";
@@ -47,7 +49,6 @@ import type {
   AppointmentPaymentMethod,
   AppointmentPaymentSplit,
   AppointmentStatus,
-  FixedAppointmentSeries,
 } from "../types";
 import { PAYMENT_METHOD_LABELS, hasCombinedPayment } from "../lib/paymentMethodDisplay";
 import { appointmentDebtAmountArs, appointmentHasDebt } from "../lib/appointmentDebt";
@@ -62,7 +63,9 @@ type Props = {
   /** Admin viendo la agenda de un especialista: el turno queda asignado a ese profesional. */
   fixedSpecialistId?: string;
   /** Editar horario/consultorio de una serie fija (cancela turnos futuros del horario anterior). */
-  fixedSeriesSchedule?: FixedAppointmentSeries | null;
+  fixedSeriesScheduleId?: string | null;
+  /** Turno clickeado para precargar el formulario mientras se carga la serie. */
+  fixedSeriesScheduleSeed?: Appointment | null;
   onSaved: () => void;
 };
 
@@ -163,7 +166,8 @@ export function AppointmentModal({
   initialEnd,
   appointment,
   fixedSpecialistId,
-  fixedSeriesSchedule,
+  fixedSeriesScheduleId,
+  fixedSeriesScheduleSeed,
   onSaved,
 }: Props) {
   const { user } = useAuth();
@@ -210,7 +214,22 @@ export function AppointmentModal({
     enabled: open && Boolean(effectiveSpecialistId),
   });
 
-  const isEditingFixedSeriesSchedule = Boolean(fixedSeriesSchedule);
+  const fixedSeriesScheduleQ = useQuery({
+    queryKey: ["fixed-series", "detail", fixedSeriesScheduleId],
+    queryFn: () => fetchFixedAppointmentSeries(fixedSeriesScheduleId!),
+    enabled: open && Boolean(fixedSeriesScheduleId),
+    retry: 1,
+  });
+  const fixedSeriesSchedule = fixedSeriesScheduleQ.data ?? null;
+  const excludedFixedSeriesId = useMemo(() => {
+    if (!fixedSeriesScheduleId && !fixedSeriesScheduleSeed) return null;
+    return (
+      fixedSeriesScheduleId ??
+      (fixedSeriesScheduleSeed ? getFixedSeriesId(fixedSeriesScheduleSeed) : null)
+    );
+  }, [fixedSeriesScheduleId, fixedSeriesScheduleSeed]);
+
+  const isEditingFixedSeriesSchedule = Boolean(fixedSeriesScheduleId);
   const isEdit = Boolean(appointment) || isEditingFixedSeriesSchedule;
   const isEditFixed =
     Boolean(appointment && isFixedSeriesAppointment(appointment)) && !isEditingFixedSeriesSchedule;
@@ -270,25 +289,50 @@ export function AppointmentModal({
     if (!open) return;
     setError(null);
     setFieldErrors({});
-    if (fixedSeriesSchedule) {
-      const s = fixedSeriesSchedule;
-      setPatientId(s.patientId);
-      setSpecialistId(s.specialistId);
-      setConsultorio(s.consultorio);
-      setDateStr(nextDateForSeriesWeekday(s.weekday, s.effectiveFrom.slice(0, 10)));
-      setStartTimeStr(s.startTime);
-      setEndTimeStr(endTimeFromDuration(s.startTime, s.displayDurationMinutes));
-      setFixedEffectiveUntil(s.effectiveUntil?.slice(0, 10) ?? "");
-      setIsFixedSeries(true);
-      setStatus("RESERVED");
-      setPaymentMethod("");
-      setPaymentMode("single");
-      setPaymentSplitRows(defaultSplitRows());
-      setPaymentCompleted(false);
-      setPaymentDateStr("");
-      setMedicalRecord("");
-      setReasonForVisit(s.reasonForVisit ?? "");
-      setReservationDepositStr("");
+    if (fixedSeriesScheduleId) {
+      if (fixedSeriesSchedule) {
+        const s = fixedSeriesSchedule;
+        const effectiveFromIso =
+          typeof s.effectiveFrom === "string" ? s.effectiveFrom.slice(0, 10) : "";
+        setPatientId(s.patientId);
+        setSpecialistId(s.specialistId);
+        setConsultorio(s.consultorio);
+        setDateStr(nextDateForSeriesWeekday(s.weekday, effectiveFromIso));
+        setStartTimeStr(s.startTime);
+        setEndTimeStr(endTimeFromDuration(s.startTime, s.displayDurationMinutes));
+        setFixedEffectiveUntil(
+          typeof s.effectiveUntil === "string" ? s.effectiveUntil.slice(0, 10) : ""
+        );
+        setIsFixedSeries(true);
+        setStatus("RESERVED");
+        setPaymentMethod("");
+        setPaymentMode("single");
+        setPaymentSplitRows(defaultSplitRows());
+        setPaymentCompleted(false);
+        setPaymentDateStr("");
+        setMedicalRecord("");
+        setReasonForVisit(s.reasonForVisit ?? "");
+        setReservationDepositStr("");
+      } else if (fixedSeriesScheduleSeed) {
+        const appt = fixedSeriesScheduleSeed;
+        setPatientId(appt.patientId);
+        setSpecialistId(appt.specialistId);
+        setConsultorio(appt.consultorio ?? "");
+        setDateStr(getAppointmentDateStr(appt));
+        setStartTimeStr(getStartTimeStr(appt));
+        setEndTimeStr(getEndTimeStr(appt));
+        setFixedEffectiveUntil("");
+        setIsFixedSeries(true);
+        setStatus("RESERVED");
+        setPaymentMethod("");
+        setPaymentMode("single");
+        setPaymentSplitRows(defaultSplitRows());
+        setPaymentCompleted(false);
+        setPaymentDateStr("");
+        setMedicalRecord("");
+        setReasonForVisit(appt.reasonForVisit ?? "");
+        setReservationDepositStr("");
+      }
     } else if (appointment) {
       setPatientId(appointment.patientId);
       setSpecialistId(appointment.specialistId);
@@ -342,7 +386,18 @@ export function AppointmentModal({
       setIsFixedSeries(false);
       setFixedEffectiveUntil("");
     }
-  }, [open, appointment, fixedSeriesSchedule, initialStart, initialEnd, isAdmin, mySpecialistId, fixedSpecialistId]);
+  }, [
+    open,
+    appointment,
+    fixedSeriesScheduleId,
+    fixedSeriesSchedule,
+    fixedSeriesScheduleSeed,
+    initialStart,
+    initialEnd,
+    isAdmin,
+    mySpecialistId,
+    fixedSpecialistId,
+  ]);
 
   const patientFixedSeriesQ = useQuery({
     queryKey: ["fixed-series", patientId, effectiveSpecialistId],
@@ -398,10 +453,10 @@ export function AppointmentModal({
 
   const rescheduleFixedMut = useMutation({
     mutationFn: () => {
-      if (!fixedSeriesSchedule) throw new Error("Serie fija inválida");
+      if (!fixedSeriesScheduleId) throw new Error("Serie fija inválida");
       const duration = durationMinutesFromRange(startTimeStr, endTimeStr);
       if (duration == null) throw new Error("Horario inválido");
-      return rescheduleFixedAppointmentSeries(fixedSeriesSchedule.id, {
+      return rescheduleFixedAppointmentSeries(fixedSeriesScheduleId, {
         consultorio,
         startTime: startTimeStr,
         displayDurationMinutes: duration,
@@ -538,8 +593,7 @@ export function AppointmentModal({
           a.id !== appointment?.id &&
           !(
             isEditingFixedSeriesSchedule &&
-            fixedSeriesSchedule &&
-            a.id.startsWith(`fixed:${fixedSeriesSchedule.id}:`)
+            isOwnFixedSeriesConsultorioSlot(a, excludedFixedSeriesId)
           ) &&
           appointmentBlocksScheduleSlot(a) &&
           a.consultorio.trim().toLowerCase() === office
@@ -581,7 +635,14 @@ export function AppointmentModal({
     }
     if (free.length === 0) free.push({ label: "Sin huecos", minutes: 0 });
     return free;
-  }, [consultorio, dateStr, consultorioDayRows, appointment?.id, isEditingFixedSeriesSchedule, fixedSeriesSchedule?.id]);
+  }, [
+    consultorio,
+    dateStr,
+    consultorioDayRows,
+    appointment?.id,
+    isEditingFixedSeriesSchedule,
+    excludedFixedSeriesId,
+  ]);
 
   const consultorioOptions = useMemo(() => {
     const selectedStart = startTimeStr ? hhmmToMinutes(startTimeStr) : NaN;
@@ -604,8 +665,7 @@ export function AppointmentModal({
               a.id !== appointment?.id &&
               !(
                 isEditingFixedSeriesSchedule &&
-                fixedSeriesSchedule &&
-                a.id.startsWith(`fixed:${fixedSeriesSchedule.id}:`)
+                isOwnFixedSeriesConsultorioSlot(a, excludedFixedSeriesId)
               ) &&
               appointmentBlocksScheduleSlot(a) &&
               a.consultorio.trim().toLowerCase() === office.toLowerCase()
@@ -638,7 +698,7 @@ export function AppointmentModal({
     startTimeStr,
     endTimeStr,
     isEditingFixedSeriesSchedule,
-    fixedSeriesSchedule?.id,
+    excludedFixedSeriesId,
   ]);
 
   const selectedConsultorioOccupied = useMemo(() => {
@@ -655,6 +715,9 @@ export function AppointmentModal({
 
   const canSubmit = useMemo(() => {
     if (specialistEditingForbidden) return false;
+    if (isEditingFixedSeriesSchedule && (fixedSeriesScheduleQ.isLoading || fixedSeriesScheduleQ.isError)) {
+      return false;
+    }
     if (!patientId || !dateStr || !startTimeStr) return false;
     if (showScheduleEndTime && !endTimeStr) return false;
     if (isFixedSeries && !isEditFixed && status !== "AUSENTE_CON_AVISO" && !consultorio.trim()) return false;
@@ -691,6 +754,8 @@ export function AppointmentModal({
     isFixedSeries,
     isEditFixed,
     isEditingFixedSeriesSchedule,
+    fixedSeriesScheduleQ.isLoading,
+    fixedSeriesScheduleQ.isError,
     showOccurrenceDetails,
     showScheduleEndTime,
     selectedConsultorioOccupied,
@@ -824,7 +889,17 @@ export function AppointmentModal({
             <FormFieldError message={fieldErrors.patientId} />
           </div>
 
-          {isEditingFixedSeriesSchedule && (
+          {isEditingFixedSeriesSchedule && fixedSeriesScheduleQ.isLoading && (
+            <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+              Cargando datos del turno fijo…
+            </p>
+          )}
+          {isEditingFixedSeriesSchedule && fixedSeriesScheduleQ.isError && (
+            <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-950">
+              No se pudo cargar el turno fijo. Cerrá este formulario e intentá de nuevo.
+            </p>
+          )}
+          {isEditingFixedSeriesSchedule && !fixedSeriesScheduleQ.isLoading && !fixedSeriesScheduleQ.isError && (
             <p className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm text-violet-950">
               Al guardar, el horario anterior deja de aplicarse desde la <strong>fecha de inicio</strong> indicada. Los
               turnos futuros del horario viejo se cancelan en la agenda.
@@ -1039,7 +1114,7 @@ export function AppointmentModal({
             <FormFieldError message={fieldErrors.consultorio} />
             {selectedConsultorioOccupied && (
               <p className="mt-1 text-xs font-medium text-rose-700">
-                Ese consultorio ya está ocupado en el horario elegido (otro profesional o turno fijo).
+                Ese consultorio ya está ocupado en el horario elegido (otro profesional u otro turno fijo).
               </p>
             )}
             {consultorio.trim() && dateStr && (
