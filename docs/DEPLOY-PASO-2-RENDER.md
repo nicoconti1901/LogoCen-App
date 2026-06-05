@@ -29,7 +29,7 @@ Repo: `https://github.com/nicoconti1901/LogoCen-App.git`
 | **Name** | `logocen-api` (o el que quieras) |
 | **Root Directory** | `backend` |
 | **Runtime** | Node |
-| **Build Command** | `npm install && npm run build && npx prisma generate` |
+| **Build Command** | `npm install && npm run build` |
 | **Start Command** | `npm run start` |
 | **Instance type** | **Starter** (~USD 7/mes). Evitá Free (duerme; WhatsApp falla). |
 

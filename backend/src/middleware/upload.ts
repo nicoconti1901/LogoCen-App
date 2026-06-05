@@ -19,8 +19,12 @@ const MIME_EXTENSION: Record<string, string> = {
 const ALLOWED_MIME_TYPES = new Set(Object.keys(MIME_EXTENSION));
 
 const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, SPECIALIST_UPLOAD_DIR),
-  filename: (_req, file, cb) => {
+  destination: (
+    _req: Request,
+    _file: Express.Multer.File,
+    cb: (error: Error | null, destination: string) => void
+  ) => cb(null, SPECIALIST_UPLOAD_DIR),
+  filename: (_req: Request, file: Express.Multer.File, cb: (error: Error | null, filename: string) => void) => {
     const ext = MIME_EXTENSION[file.mimetype] ?? path.extname(file.originalname) ?? ".bin";
     cb(null, `${Date.now()}-${randomUUID()}${ext}`);
   },
@@ -29,7 +33,7 @@ const storage = multer.diskStorage({
 const specialistPhotoUpload = multer({
   storage,
   limits: { fileSize: 5 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) => {
+  fileFilter: (_req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
     if (!ALLOWED_MIME_TYPES.has(file.mimetype)) {
       cb(new AppError(400, "Formato de imagen no soportado (jpg, png, webp, gif)"));
       return;
