@@ -71,7 +71,7 @@ El seed crea el usuario admin inicial (ver `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASS
 |-------|--------|
 | Root Directory | `backend` |
 | Runtime | Node |
-| Build Command | `npm install && npm run build && npx prisma generate` |
+| Build Command | `npm install && npm run build` |
 | Start Command | `npm run start` |
 | Instance type | Starter (o superior; **no** Free si querés WhatsApp estable) |
 
