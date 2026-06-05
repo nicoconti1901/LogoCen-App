@@ -75,13 +75,18 @@ export function assertInsideAvailability(
   }
 }
 
+export type ScheduleConflictExclude = {
+  excludeSeriesId?: string;
+  excludePatientSpecialist?: { patientId: string; specialistId: string };
+};
+
 export async function assertNoOverlap(
   specialistId: string,
   appointmentDate: Date,
   startTime: string,
   endTime: string,
   excludeId?: string,
-  excludeSeriesId?: string
+  conflictExclude?: ScheduleConflictExclude
 ): Promise<void> {
   const sameDay = await appointmentRepository.findBySpecialistAndDate(
     specialistId,
@@ -100,7 +105,8 @@ export async function assertNoOverlap(
     appointmentDate,
     startTime,
     endTime,
-    excludeSeriesId,
+    excludeSeriesId: conflictExclude?.excludeSeriesId,
+    excludePatientSpecialist: conflictExclude?.excludePatientSpecialist,
   });
 }
 
@@ -110,7 +116,7 @@ export async function assertNoConsultorioOverlap(
   startTime: string,
   endTime: string,
   excludeId?: string,
-  excludeSeriesId?: string
+  conflictExclude?: ScheduleConflictExclude
 ): Promise<void> {
   if (!consultorio.trim()) return;
   const sameDay = await appointmentRepository.findByConsultorioAndDate(
@@ -130,7 +136,8 @@ export async function assertNoConsultorioOverlap(
     appointmentDate,
     startTime,
     endTime,
-    excludeSeriesId,
+    excludeSeriesId: conflictExclude?.excludeSeriesId,
+    excludePatientSpecialist: conflictExclude?.excludePatientSpecialist,
   });
 }
 
@@ -264,6 +271,8 @@ export async function listConsultorioSlotsForRange(from: Date, to: Date) {
       status: a.status,
       isFixedSeries: Boolean(parsed),
       fixedSeriesId: parsed?.seriesId ?? null,
+      patientId: a.patientId,
+      specialistId: a.specialistId,
     };
   });
 }

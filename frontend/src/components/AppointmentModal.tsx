@@ -21,7 +21,7 @@ import {
   getFixedOccurrenceDate,
   getFixedSeriesId,
   isFixedSeriesAppointment,
-  isOwnFixedSeriesConsultorioSlot,
+  shouldExcludeConsultorioSlotWhenReschedulingFixed,
   nextDateForSeriesWeekday,
 } from "../lib/fixedAppointment";
 import { getAppointmentDateStr, getEndTimeStr, getStartTimeStr } from "../lib/appointmentDisplay";
@@ -221,6 +221,8 @@ export function AppointmentModal({
     retry: 1,
   });
   const fixedSeriesSchedule = fixedSeriesScheduleQ.data ?? null;
+  const isEditingFixedSeriesSchedule = Boolean(fixedSeriesScheduleId);
+
   const excludedFixedSeriesId = useMemo(() => {
     if (!fixedSeriesScheduleId && !fixedSeriesScheduleSeed) return null;
     return (
@@ -229,7 +231,22 @@ export function AppointmentModal({
     );
   }, [fixedSeriesScheduleId, fixedSeriesScheduleSeed]);
 
-  const isEditingFixedSeriesSchedule = Boolean(fixedSeriesScheduleId);
+  const rescheduleConflictExclude = useMemo(() => {
+    if (!isEditingFixedSeriesSchedule) return null;
+    const seedPatient = fixedSeriesScheduleSeed?.patientId ?? null;
+    const seedSpecialist = fixedSeriesScheduleSeed?.specialistId ?? null;
+    return {
+      excludedSeriesId: excludedFixedSeriesId,
+      patientId: fixedSeriesSchedule?.patientId ?? seedPatient,
+      specialistId: fixedSeriesSchedule?.specialistId ?? seedSpecialist ?? effectiveSpecialistId ?? null,
+    };
+  }, [
+    isEditingFixedSeriesSchedule,
+    excludedFixedSeriesId,
+    fixedSeriesSchedule,
+    fixedSeriesScheduleSeed,
+    effectiveSpecialistId,
+  ]);
   const isEdit = Boolean(appointment) || isEditingFixedSeriesSchedule;
   const isEditFixed =
     Boolean(appointment && isFixedSeriesAppointment(appointment)) && !isEditingFixedSeriesSchedule;
@@ -592,8 +609,8 @@ export function AppointmentModal({
         (a) =>
           a.id !== appointment?.id &&
           !(
-            isEditingFixedSeriesSchedule &&
-            isOwnFixedSeriesConsultorioSlot(a, excludedFixedSeriesId)
+            rescheduleConflictExclude &&
+            shouldExcludeConsultorioSlotWhenReschedulingFixed(a, rescheduleConflictExclude)
           ) &&
           appointmentBlocksScheduleSlot(a) &&
           a.consultorio.trim().toLowerCase() === office
@@ -640,8 +657,7 @@ export function AppointmentModal({
     dateStr,
     consultorioDayRows,
     appointment?.id,
-    isEditingFixedSeriesSchedule,
-    excludedFixedSeriesId,
+    rescheduleConflictExclude,
   ]);
 
   const consultorioOptions = useMemo(() => {
@@ -664,8 +680,8 @@ export function AppointmentModal({
             (a) =>
               a.id !== appointment?.id &&
               !(
-                isEditingFixedSeriesSchedule &&
-                isOwnFixedSeriesConsultorioSlot(a, excludedFixedSeriesId)
+                rescheduleConflictExclude &&
+                shouldExcludeConsultorioSlotWhenReschedulingFixed(a, rescheduleConflictExclude)
               ) &&
               appointmentBlocksScheduleSlot(a) &&
               a.consultorio.trim().toLowerCase() === office.toLowerCase()
@@ -697,8 +713,7 @@ export function AppointmentModal({
     appointment?.id,
     startTimeStr,
     endTimeStr,
-    isEditingFixedSeriesSchedule,
-    excludedFixedSeriesId,
+    rescheduleConflictExclude,
   ]);
 
   const selectedConsultorioOccupied = useMemo(() => {
