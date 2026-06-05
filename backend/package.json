@@ -22,7 +22,9 @@
     "whatsapp:verify-setup": "tsx scripts/verify-whatsapp-setup.ts",
     "whatsapp:simulate-confirm": "tsx scripts/simulate-whatsapp-confirm.ts",
     "whatsapp:resend-latest": "tsx scripts/resend-latest-reminder.ts",
-    "whatsapp:real-test": "tsx scripts/send-real-whatsapp-test.ts"
+    "whatsapp:real-test": "tsx scripts/send-real-whatsapp-test.ts",
+    "test:reschedule-fixed": "tsx scripts/test-reschedule-fixed-direct.ts",
+    "test:reschedule-http": "tsx scripts/test-reschedule-http.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.5.0",

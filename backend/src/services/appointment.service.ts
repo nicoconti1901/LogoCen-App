@@ -75,12 +75,18 @@ export function assertInsideAvailability(
   }
 }
 
+export type ScheduleConflictExclude = {
+  excludeSeriesId?: string;
+  excludePatientSpecialist?: { patientId: string; specialistId: string };
+};
+
 export async function assertNoOverlap(
   specialistId: string,
   appointmentDate: Date,
   startTime: string,
   endTime: string,
-  excludeId?: string
+  excludeId?: string,
+  conflictExclude?: ScheduleConflictExclude
 ): Promise<void> {
   const sameDay = await appointmentRepository.findBySpecialistAndDate(
     specialistId,
@@ -99,6 +105,8 @@ export async function assertNoOverlap(
     appointmentDate,
     startTime,
     endTime,
+    excludeSeriesId: conflictExclude?.excludeSeriesId,
+    excludePatientSpecialist: conflictExclude?.excludePatientSpecialist,
   });
 }
 
@@ -107,7 +115,8 @@ export async function assertNoConsultorioOverlap(
   appointmentDate: Date,
   startTime: string,
   endTime: string,
-  excludeId?: string
+  excludeId?: string,
+  conflictExclude?: ScheduleConflictExclude
 ): Promise<void> {
   if (!consultorio.trim()) return;
   const sameDay = await appointmentRepository.findByConsultorioAndDate(
@@ -127,6 +136,8 @@ export async function assertNoConsultorioOverlap(
     appointmentDate,
     startTime,
     endTime,
+    excludeSeriesId: conflictExclude?.excludeSeriesId,
+    excludePatientSpecialist: conflictExclude?.excludePatientSpecialist,
   });
 }
 
@@ -248,15 +259,22 @@ export async function listConsultorioSlotsForRange(from: Date, to: Date) {
 
   const merged = [...rows, ...virtual].filter((a) => a.status !== AppointmentStatus.AUSENTE_CON_AVISO);
 
-  return merged.map((a) => ({
-    id: a.id,
-    consultorio: a.consultorio.trim(),
-    appointmentDate: a.appointmentDate,
-    startTime: a.startTime,
-    endTime: a.endTime,
-    status: a.status,
-    isFixedSeries: a.id.startsWith("fixed:"),
-  }));
+  const { parseFixedAppointmentId } = await import("../utils/fixedAppointmentOccurrences.js");
+  return merged.map((a) => {
+    const parsed = parseFixedAppointmentId(a.id);
+    return {
+      id: a.id,
+      consultorio: a.consultorio.trim(),
+      appointmentDate: a.appointmentDate,
+      startTime: a.startTime,
+      endTime: a.endTime,
+      status: a.status,
+      isFixedSeries: Boolean(parsed),
+      fixedSeriesId: parsed?.seriesId ?? null,
+      patientId: a.patientId,
+      specialistId: a.specialistId,
+    };
+  });
 }
 
 export async function getAppointmentById(id: string, role: Role, userSpecialistId: string | null) {

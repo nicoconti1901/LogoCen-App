@@ -20,6 +20,45 @@ export function getFixedSeriesId(a: Appointment): string | null {
   return parseFixedAppointmentId(a.id)?.seriesId ?? null;
 }
 
+/** Ignora la serie fija que se está editando al calcular ocupación de consultorio. */
+export function isOwnFixedSeriesConsultorioSlot(
+  slot: { id: string; fixedSeriesId?: string | null },
+  seriesId: string | null | undefined
+): boolean {
+  if (!seriesId) return false;
+  if (slot.fixedSeriesId) return slot.fixedSeriesId === seriesId;
+  return slot.id.startsWith(`${PREFIX}${seriesId}:`);
+}
+
+/** Al reprogramar turno fijo: no contar turnos del mismo paciente con el mismo especialista. */
+export function isOwnPatientSpecialistConsultorioSlot(
+  slot: { patientId?: string; specialistId?: string },
+  patientId: string | null | undefined,
+  specialistId: string | null | undefined
+): boolean {
+  if (!patientId || !specialistId) return false;
+  return slot.patientId === patientId && slot.specialistId === specialistId;
+}
+
+export function shouldExcludeConsultorioSlotWhenReschedulingFixed(
+  slot: {
+    id: string;
+    fixedSeriesId?: string | null;
+    patientId?: string;
+    specialistId?: string;
+  },
+  context: {
+    excludedSeriesId: string | null;
+    patientId: string | null;
+    specialistId: string | null;
+  }
+): boolean {
+  return (
+    isOwnFixedSeriesConsultorioSlot(slot, context.excludedSeriesId) ||
+    isOwnPatientSpecialistConsultorioSlot(slot, context.patientId, context.specialistId)
+  );
+}
+
 export function getFixedOccurrenceDate(a: Appointment): string {
   return parseFixedAppointmentId(a.id)?.dateIso ?? getAppointmentDateStr(a);
 }

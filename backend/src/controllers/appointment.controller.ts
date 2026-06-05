@@ -124,6 +124,9 @@ export const consultorioSlots = asyncHandler(async (req: Request, res: Response)
       endTime: a.endTime,
       status: a.status,
       isFixedSeries: a.isFixedSeries,
+      fixedSeriesId: a.fixedSeriesId,
+      patientId: a.patientId,
+      specialistId: a.specialistId,
     }))
   );
 });

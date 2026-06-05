@@ -48,6 +48,23 @@ async function activeSeriesOnDate(specialistId: string, day: Date) {
   });
 }
 
+export type FixedSeriesConflictExclude = {
+  excludeSeriesId?: string;
+  /** Al reprogramar: ignorar otros turnos fijos del mismo paciente con este especialista. */
+  excludePatientSpecialist?: { patientId: string; specialistId: string };
+};
+
+function shouldExcludeFixedSeries(
+  series: { id: string; patientId: string; specialistId: string },
+  exclude?: FixedSeriesConflictExclude
+): boolean {
+  if (!exclude) return false;
+  if (exclude.excludeSeriesId && series.id === exclude.excludeSeriesId) return true;
+  const ps = exclude.excludePatientSpecialist;
+  if (ps && series.patientId === ps.patientId && series.specialistId === ps.specialistId) return true;
+  return false;
+}
+
 /** El especialista tiene un turno fijo que ocupa la franja (otro paciente no puede agendarse). */
 export async function assertNoFixedSeriesBlocksSpecialist(params: {
   specialistId: string;
@@ -55,12 +72,17 @@ export async function assertNoFixedSeriesBlocksSpecialist(params: {
   startTime: string;
   endTime: string;
   excludeSeriesId?: string;
+  excludePatientSpecialist?: { patientId: string; specialistId: string };
 }): Promise<void> {
+  const exclude: FixedSeriesConflictExclude = {
+    excludeSeriesId: params.excludeSeriesId,
+    excludePatientSpecialist: params.excludePatientSpecialist,
+  };
   const day = toDateOnly(params.appointmentDate);
   const seriesList = await activeSeriesOnDate(params.specialistId, day);
 
   for (const series of seriesList) {
-    if (params.excludeSeriesId && series.id === params.excludeSeriesId) continue;
+    if (shouldExcludeFixedSeries(series, exclude)) continue;
     if (!blocksSlot(series, day)) continue;
 
     const fixedEnd = seriesEndTime(series.startTime, series.displayDurationMinutes);
@@ -77,7 +99,12 @@ export async function assertNoFixedSeriesBlocksConsultorio(params: {
   startTime: string;
   endTime: string;
   excludeSeriesId?: string;
+  excludePatientSpecialist?: { patientId: string; specialistId: string };
 }): Promise<void> {
+  const exclude: FixedSeriesConflictExclude = {
+    excludeSeriesId: params.excludeSeriesId,
+    excludePatientSpecialist: params.excludePatientSpecialist,
+  };
   const office = params.consultorio.trim().toLowerCase();
   if (!office) return;
 
@@ -89,7 +116,7 @@ export async function assertNoFixedSeriesBlocksConsultorio(params: {
   const seriesList = allOnDay.filter((s) => s.consultorio.trim().toLowerCase() === office);
 
   for (const series of seriesList) {
-    if (params.excludeSeriesId && series.id === params.excludeSeriesId) continue;
+    if (shouldExcludeFixedSeries(series, exclude)) continue;
     if (!blocksSlot(series, day)) continue;
 
     const fixedEnd = seriesEndTime(series.startTime, series.displayDurationMinutes);
