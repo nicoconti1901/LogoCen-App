@@ -390,7 +390,7 @@ export async function createAppointment(
     reasonForVisit: data.reasonForVisit?.trim() || null,
   });
 
-  await syncWhatsappReminderForAppointment({
+  void syncWhatsappReminderForAppointment({
     appointmentRef: created.id,
     patientId: created.patientId,
     specialistId: created.specialistId,
@@ -401,7 +401,7 @@ export async function createAppointment(
     status: created.status,
   }).catch(() => undefined);
 
-  return (await appointmentRepository.findById(created.id)) ?? created;
+  return created;
 }
 
 export async function updateAppointment(
@@ -564,7 +564,7 @@ export async function updateAppointment(
     ...(data.reasonForVisit !== undefined ? { reasonForVisit: data.reasonForVisit?.trim() || null } : {}),
   });
 
-  await syncWhatsappReminderForAppointment({
+  void syncWhatsappReminderForAppointment({
     appointmentRef: updated.id,
     patientId: updated.patientId,
     specialistId: updated.specialistId,
@@ -575,7 +575,7 @@ export async function updateAppointment(
     status: updated.status,
   }).catch(() => undefined);
 
-  return (await appointmentRepository.findById(updated.id)) ?? updated;
+  return updated;
 }
 
 export async function deleteAppointment(id: string, role: Role, userSpecialistId: string | null) {

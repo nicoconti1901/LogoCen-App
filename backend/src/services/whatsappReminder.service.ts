@@ -42,10 +42,14 @@ function seriesEndTimeForReminder(startTime: string, displayDurationMinutes: num
 }
 
 async function syncWhatsappReminderForFixedOccurrence(
-  series: Awaited<ReturnType<typeof fixedAppointmentSeriesRepository.findById>>,
-  occurrenceDate: Date
+  series: NonNullable<Awaited<ReturnType<typeof fixedAppointmentSeriesRepository.findById>>>,
+  occurrenceDate: Date,
+  cached?: {
+    patientPhone?: string | null;
+    occurrenceByDate?: Map<string, AppointmentStatus>;
+  }
 ): Promise<void> {
-  if (!series || !series.active) return;
+  if (!series.active) return;
 
   const dateIso = formatDateOnlyISO(occurrenceDate);
   if (series.skips.some((s) => formatStoredDateOnlyISO(s.skipDate) === dateIso)) {
@@ -53,19 +57,27 @@ async function syncWhatsappReminderForFixedOccurrence(
     return;
   }
 
-  const occ = await fixedAppointmentOccurrenceRepository.findBySeriesAndDate(series.id, occurrenceDate);
-  const status = occ?.status ?? AppointmentStatus.RESERVED;
+  let status: AppointmentStatus = AppointmentStatus.RESERVED;
+  if (cached?.occurrenceByDate) {
+    status = cached.occurrenceByDate.get(dateIso) ?? AppointmentStatus.RESERVED;
+  } else {
+    const occ = await fixedAppointmentOccurrenceRepository.findBySeriesAndDate(series.id, occurrenceDate);
+    status = occ?.status ?? AppointmentStatus.RESERVED;
+  }
 
-  await syncWhatsappReminderForAppointment({
-    appointmentRef: buildFixedAppointmentId(series.id, dateIso),
-    patientId: series.patientId,
-    specialistId: series.specialistId,
-    appointmentDate: occurrenceDate,
-    startTime: series.startTime,
-    endTime: seriesEndTimeForReminder(series.startTime, series.displayDurationMinutes),
-    consultorio: series.consultorio,
-    status,
-  });
+  await syncWhatsappReminderForAppointment(
+    {
+      appointmentRef: buildFixedAppointmentId(series.id, dateIso),
+      patientId: series.patientId,
+      specialistId: series.specialistId,
+      appointmentDate: occurrenceDate,
+      startTime: series.startTime,
+      endTime: seriesEndTimeForReminder(series.startTime, series.displayDurationMinutes),
+      consultorio: series.consultorio,
+      status,
+    },
+    cached?.patientPhone !== undefined ? { patientPhone: cached.patientPhone } : undefined
+  );
 }
 
 /** Programa recordatorios para las próximas ocurrencias de una serie fija activa. */
@@ -75,15 +87,30 @@ export async function syncWhatsappRemindersForFixedSeries(seriesId: string): Pro
 
   const today = toDateOnly(new Date());
   const rangeFrom = toDateOnly(series.effectiveFrom) > today ? toDateOnly(series.effectiveFrom) : today;
+  const rangeTo = series.effectiveUntil ? toDateOnly(series.effectiveUntil) : null;
   const occurrenceDates = iterateSeriesOccurrenceDates({
     weekday: series.weekday,
     effectiveFrom: rangeFrom,
-    effectiveUntil: series.effectiveUntil ? toDateOnly(series.effectiveUntil) : null,
+    effectiveUntil: rangeTo,
     maxWeeks: FIXED_SERIES_REMINDER_HORIZON_WEEKS,
   });
+  if (!occurrenceDates.length) return;
+
+  const hardEnd = occurrenceDates[occurrenceDates.length - 1]!;
+  const [patient, occurrences] = await Promise.all([
+    patientRepository.findById(series.patientId),
+    fixedAppointmentOccurrenceRepository.findManyForSeriesInRange(seriesId, rangeFrom, hardEnd),
+  ]);
+  const patientPhone = patient?.phone ?? null;
+  const occByDate = new Map(
+    occurrences.map((o) => [formatStoredDateOnlyISO(o.occurrenceDate), o.status])
+  );
 
   for (const occurrenceDate of occurrenceDates) {
-    await syncWhatsappReminderForFixedOccurrence(series, occurrenceDate).catch(() => undefined);
+    await syncWhatsappReminderForFixedOccurrence(series, occurrenceDate, {
+      patientPhone,
+      occurrenceByDate: occByDate,
+    }).catch(() => undefined);
   }
 }
 
@@ -137,7 +164,8 @@ export type AppointmentReminderTarget = {
 
 /** Programa recordatorio 24 h antes, o confirma sin WhatsApp si el turno es en menos de 48 h. */
 export async function syncWhatsappReminderForAppointment(
-  target: AppointmentReminderTarget
+  target: AppointmentReminderTarget,
+  cached?: { patientPhone?: string | null }
 ): Promise<void> {
   await whatsappReminderRepository.cancelPendingForAppointment(target.appointmentRef);
 
@@ -150,8 +178,12 @@ export async function syncWhatsappReminderForAppointment(
     return;
   }
 
-  const patient = await patientRepository.findById(target.patientId);
-  if (!patient?.phone?.trim()) return;
+  let patientPhone = cached?.patientPhone;
+  if (patientPhone === undefined) {
+    const patient = await patientRepository.findById(target.patientId);
+    patientPhone = patient?.phone ?? null;
+  }
+  if (!patientPhone?.trim()) return;
 
   const plan = planWhatsappReminder(target.appointmentDate, target.startTime, now);
   if (!plan) return;

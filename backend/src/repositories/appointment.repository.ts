@@ -85,6 +85,29 @@ export const appointmentRepository = {
     });
   },
 
+  findInDateRangeBySpecialist(specialistId: string, from: Date, to: Date, excludeId?: string) {
+    return prisma.appointment.findMany({
+      where: {
+        specialistId,
+        appointmentDate: { gte: from, lte: to },
+        status: { not: AppointmentStatus.AUSENTE_CON_AVISO },
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+      },
+    });
+  },
+
+  findInDateRangeByConsultorio(consultorio: string, from: Date, to: Date, excludeId?: string) {
+    const office = consultorio.trim();
+    return prisma.appointment.findMany({
+      where: {
+        appointmentDate: { gte: from, lte: to },
+        status: { not: AppointmentStatus.AUSENTE_CON_AVISO },
+        consultorio: { equals: office, mode: "insensitive" },
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+      },
+    });
+  },
+
   /** Citas del mismo día y consultorio (para detectar choques de sala) */
   findByConsultorioAndDate(consultorio: string, appointmentDate: Date, excludeId?: string) {
     const office = consultorio.trim();

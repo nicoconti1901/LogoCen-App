@@ -33,6 +33,7 @@ import {
   assertNoConsultorioOverlap,
   assertNoOverlap,
 } from "./appointment.service.js";
+import { assertNoConflictsForNewFixedSeries } from "../utils/fixedAppointmentScheduling.js";
 import {
   buildVirtualAppointmentForDate,
   iterateSeriesOccurrenceDates,
@@ -145,10 +146,16 @@ export async function createFixedAppointmentSeries(
     effectiveUntil,
   });
 
-  for (const occDate of occurrenceDates) {
-    await assertNoOverlap(data.specialistId, occDate, startTime, endTime);
-    await assertNoConsultorioOverlap(consultorio, occDate, startTime, endTime);
-  }
+  await assertNoConflictsForNewFixedSeries({
+    specialistId: data.specialistId,
+    consultorio,
+    weekday,
+    effectiveFrom,
+    effectiveUntil,
+    startTime,
+    endTime,
+    maxWeeks: occurrenceDates.length,
+  });
 
   const created = await fixedAppointmentSeriesRepository.create({
     patientId: data.patientId,
@@ -162,8 +169,11 @@ export async function createFixedAppointmentSeries(
     reasonForVisit: data.reasonForVisit,
   });
 
-  const { syncWhatsappRemindersForFixedSeries } = await import("./whatsappReminder.service.js");
-  await syncWhatsappRemindersForFixedSeries(created.id).catch(() => undefined);
+  void import("./whatsappReminder.service.js")
+    .then(({ syncWhatsappRemindersForFixedSeries }) =>
+      syncWhatsappRemindersForFixedSeries(created.id)
+    )
+    .catch(() => undefined);
 
   return created;
 }
@@ -311,8 +321,11 @@ export async function rescheduleFixedAppointmentSeries(
       reasonForVisit: series.reasonForVisit,
     });
 
-    const { syncWhatsappRemindersForFixedSeries } = await import("./whatsappReminder.service.js");
-    await syncWhatsappRemindersForFixedSeries(created.id).catch(() => undefined);
+    void import("./whatsappReminder.service.js")
+      .then(({ syncWhatsappRemindersForFixedSeries }) =>
+        syncWhatsappRemindersForFixedSeries(created.id)
+      )
+      .catch(() => undefined);
 
     return created;
   } catch (err) {
@@ -345,8 +358,9 @@ export async function cancelFixedAppointmentSeries(
       ? toDateOnly(series.effectiveUntil)
       : today;
   const deactivated = await fixedAppointmentSeriesRepository.deactivate(seriesId, until);
-  const { cancelWhatsappRemindersForFixedSeries } = await import("./whatsappReminder.service.js");
-  await cancelWhatsappRemindersForFixedSeries(seriesId).catch(() => undefined);
+  void import("./whatsappReminder.service.js")
+    .then(({ cancelWhatsappRemindersForFixedSeries }) => cancelWhatsappRemindersForFixedSeries(seriesId))
+    .catch(() => undefined);
   return deactivated;
 }
 
@@ -380,10 +394,11 @@ export async function skipFixedAppointmentOccurrence(
     }
     throw e;
   }
-  const { cancelWhatsappRemindersForAppointment } = await import("./whatsappReminder.service.js");
-  await cancelWhatsappRemindersForAppointment(
-    buildFixedAppointmentId(seriesId, formatDateOnlyISO(skipDate))
-  ).catch(() => undefined);
+  void import("./whatsappReminder.service.js")
+    .then(({ cancelWhatsappRemindersForAppointment }) =>
+      cancelWhatsappRemindersForAppointment(buildFixedAppointmentId(seriesId, formatDateOnlyISO(skipDate)))
+    )
+    .catch(() => undefined);
   return { ok: true };
 }
 
@@ -582,7 +597,10 @@ export async function upsertFixedAppointmentOccurrence(
   const refreshed = await fixedAppointmentSeriesRepository.findById(seriesId);
   if (!refreshed) throw new AppError(404, "Serie de turno fijo no encontrada");
   const occ = await fixedAppointmentOccurrenceRepository.findBySeriesAndDate(seriesId, occurrenceDate);
-  const { syncWhatsappReminderForFixedOccurrenceDate } = await import("./whatsappReminder.service.js");
-  await syncWhatsappReminderForFixedOccurrenceDate(seriesId, dateIso).catch(() => undefined);
+  void import("./whatsappReminder.service.js")
+    .then(({ syncWhatsappReminderForFixedOccurrenceDate }) =>
+      syncWhatsappReminderForFixedOccurrenceDate(seriesId, dateIso)
+    )
+    .catch(() => undefined);
   return buildVirtualAppointmentForDate(refreshed, occurrenceDate, occ);
 }
