@@ -266,6 +266,13 @@ export async function deleteAppointment(id: string): Promise<void> {
   await api.delete(appointmentResourcePath(id));
 }
 
+export type FixedSeriesConflictStrategy = "skip_days" | "truncate_before_first";
+
+export type FixedSeriesScheduleConflict = {
+  date: string;
+  reasons: ("consultorio" | "specialist")[];
+};
+
 export async function createFixedAppointmentSeries(body: {
   patientId: string;
   specialistId: string;
@@ -275,6 +282,7 @@ export async function createFixedAppointmentSeries(body: {
   displayDurationMinutes?: number;
   effectiveUntil?: string | null;
   reasonForVisit?: string | null;
+  conflictStrategy?: FixedSeriesConflictStrategy;
 }): Promise<FixedAppointmentSeries> {
   const { data } = await api.post<FixedAppointmentSeries>("/appointments/fixed-series", body);
   return data;

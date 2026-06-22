@@ -4,6 +4,8 @@ import {
   createAppointment,
   createFixedAppointmentSeries,
   deleteAppointment,
+  type FixedSeriesConflictStrategy,
+  type FixedSeriesScheduleConflict,
   fetchAppointments,
   fetchConsultorioSlots,
   fetchFixedAppointmentSeries,
@@ -44,6 +46,7 @@ import {
 } from "../lib/validation";
 import { useAuth } from "../contexts/AuthContext";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { FixedSeriesConflictDialog } from "./FixedSeriesConflictDialog";
 import type {
   Appointment,
   AppointmentPaymentMethod,
@@ -194,6 +197,9 @@ export function AppointmentModal({
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors<AppointmentFormFields>>({});
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [fixedConflictDialog, setFixedConflictDialog] = useState<{
+    conflicts: FixedSeriesScheduleConflict[];
+  } | null>(null);
   const effectiveSpecialistId = fixedSpecialistId ?? (isAdmin ? specialistId : mySpecialistId);
 
   const qc = useQueryClient();
@@ -423,7 +429,7 @@ export function AppointmentModal({
   });
 
   const createFixedMut = useMutation({
-    mutationFn: () => {
+    mutationFn: (opts?: { conflictStrategy?: FixedSeriesConflictStrategy }) => {
       const duration = durationMinutesFromRange(startTimeStr, endTimeStr);
       if (duration == null) throw new Error("Horario inválido");
       return createFixedAppointmentSeries({
@@ -435,20 +441,28 @@ export function AppointmentModal({
         displayDurationMinutes: duration,
         effectiveUntil: fixedEffectiveUntil.trim() === "" ? null : fixedEffectiveUntil,
         reasonForVisit: reasonForVisit || null,
+        conflictStrategy: opts?.conflictStrategy,
       });
     },
     onSuccess: async () => {
+      setFixedConflictDialog(null);
       await qc.invalidateQueries({ queryKey: ["appointments"] });
       await qc.invalidateQueries({ queryKey: ["fixed-series"] });
       onSaved();
       onClose();
     },
     onError: (e: unknown) => {
-      const msg =
+      const response =
         e && typeof e === "object" && "response" in e
-          ? (e as { response?: { data?: { message?: string } } }).response?.data?.message
+          ? (e as { response?: { data?: { message?: string; code?: string; conflicts?: FixedSeriesScheduleConflict[] } } })
+              .response?.data
           : null;
-      setError(msg ?? "No se pudo crear el turno fijo");
+      if (response?.code === "FIXED_SERIES_SCHEDULE_CONFLICTS" && response.conflicts?.length) {
+        setFixedConflictDialog({ conflicts: response.conflicts });
+        setError(null);
+        return;
+      }
+      setError(response?.message ?? "No se pudo crear el turno fijo");
     },
   });
 
@@ -821,7 +835,7 @@ export function AppointmentModal({
     }
     if (isEditingFixedSeriesSchedule) rescheduleFixedMut.mutate();
     else if (isEdit && appointment) updateMut.mutate();
-    else if (isFixedSeries) createFixedMut.mutate();
+    else if (isFixedSeries) createFixedMut.mutate({});
     else createMut.mutate();
   }
 
@@ -1496,6 +1510,14 @@ export function AppointmentModal({
           deleteMut.mutate();
           setShowDeleteConfirm(false);
         }}
+      />
+      <FixedSeriesConflictDialog
+        open={Boolean(fixedConflictDialog)}
+        conflicts={fixedConflictDialog?.conflicts ?? []}
+        busy={createFixedMut.isPending}
+        onSkipDays={() => createFixedMut.mutate({ conflictStrategy: "skip_days" })}
+        onTruncateBefore={() => createFixedMut.mutate({ conflictStrategy: "truncate_before_first" })}
+        onCancel={() => setFixedConflictDialog(null)}
       />
     </div>
   );

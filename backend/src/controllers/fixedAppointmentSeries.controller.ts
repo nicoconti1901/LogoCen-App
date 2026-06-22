@@ -26,6 +26,7 @@ const createSchema = z.object({
   displayDurationMinutes: z.number().int().min(15).max(240).optional(),
   effectiveUntil: optionalDateOnlyStringSchema,
   reasonForVisit: optionalLongTextSchema(REASON_MAX),
+  conflictStrategy: z.enum(["skip_days", "truncate_before_first"]).optional(),
 });
 
 const skipSchema = z.object({

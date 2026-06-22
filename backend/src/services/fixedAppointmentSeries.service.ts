@@ -33,7 +33,7 @@ import {
   assertNoConsultorioOverlap,
   assertNoOverlap,
 } from "./appointment.service.js";
-import { assertNoConflictsForNewFixedSeries } from "../utils/fixedAppointmentScheduling.js";
+import { assertNoConflictsForNewFixedSeries, findConflictsForNewFixedSeries } from "../utils/fixedAppointmentScheduling.js";
 import { PerfSpan } from "../utils/perfLog.js";
 import {
   buildVirtualAppointmentForDate,
@@ -62,6 +62,8 @@ function defaultPatientHistoryRange(): { from: Date; to: Date } {
 const DISPLAY_DURATION_MIN = 30;
 const DISPLAY_DURATION_MAX = 240;
 
+export type FixedSeriesConflictStrategy = "skip_days" | "truncate_before_first";
+
 function assertCanAccessSeries(
   role: Role,
   userSpecialistId: string | null,
@@ -89,6 +91,7 @@ export async function createFixedAppointmentSeries(
     displayDurationMinutes?: number;
     effectiveUntil?: string | null;
     reasonForVisit?: string | null;
+    conflictStrategy?: FixedSeriesConflictStrategy;
   },
   role: Role,
   userSpecialistId: string | null
@@ -151,7 +154,7 @@ export async function createFixedAppointmentSeries(
     effectiveUntil,
   });
 
-  await assertNoConflictsForNewFixedSeries({
+  const conflictParams = {
     specialistId: data.specialistId,
     consultorio,
     weekday,
@@ -160,6 +163,40 @@ export async function createFixedAppointmentSeries(
     startTime,
     endTime,
     maxWeeks: occurrenceDates.length,
+  };
+
+  const conflicts = await findConflictsForNewFixedSeries(conflictParams);
+
+  if (conflicts.length > 0 && !data.conflictStrategy) {
+    throw new AppError(
+      409,
+      `Hay ${conflicts.length} fecha(s) con consultorio o especialista ocupados en ese horario.`,
+      "FIXED_SERIES_SCHEDULE_CONFLICTS",
+      { conflicts }
+    );
+  }
+
+  let finalEffectiveUntil = effectiveUntil;
+  let skipDates: string[] = [];
+
+  if (conflicts.length > 0 && data.conflictStrategy === "truncate_before_first") {
+    const firstConflict = parseDateOnlyISO(conflicts[0]!.date);
+    const lastValid = occurrenceDates.filter((d) => toDateOnly(d) < firstConflict).pop();
+    if (!lastValid) {
+      throw new AppError(
+        409,
+        "El primer turno de la serie ya tiene conflicto. Elegí otro horario, consultorio o fecha de inicio."
+      );
+    }
+    finalEffectiveUntil = toDateOnly(lastValid);
+  } else if (conflicts.length > 0 && data.conflictStrategy === "skip_days") {
+    skipDates = conflicts.map((c) => c.date);
+  }
+
+  await assertNoConflictsForNewFixedSeries({
+    ...conflictParams,
+    effectiveUntil: finalEffectiveUntil,
+    ignoreDates: skipDates.length ? new Set(skipDates) : undefined,
   });
 
   perf.mark("conflicts");
@@ -172,9 +209,13 @@ export async function createFixedAppointmentSeries(
     startTime,
     displayDurationMinutes,
     effectiveFrom,
-    effectiveUntil,
+    effectiveUntil: finalEffectiveUntil,
     reasonForVisit: data.reasonForVisit,
   });
+
+  for (const dateIso of skipDates) {
+    await fixedAppointmentSeriesRepository.addSkip(created.id, parseDateOnlyISO(dateIso));
+  }
 
   void import("./whatsappReminder.service.js")
     .then(({ syncWhatsappRemindersForFixedSeries }) =>
