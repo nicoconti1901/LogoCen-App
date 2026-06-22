@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { whatsappConfig } from "../config/whatsapp.js";
+import { appointmentRepository } from "../repositories/appointment.repository.js";
 import { parseConfirmButtonId, isWhatsappConfirmText } from "../whatsapp/messageBuilder.js";
 import {
   confirmAppointmentFromWhatsapp,
@@ -33,8 +34,13 @@ async function confirmFromButtonPayload(from: string | undefined, payload: strin
     console.warn("[whatsapp] botón con payload no reconocido", { from, payload });
     return;
   }
-  const ok = await confirmAppointmentFromWhatsapp(appointmentRef);
-  console.info("[whatsapp] botón confirmación", { from, payload, appointmentRef, ok });
+  const ok = await confirmAppointmentFromWhatsapp(appointmentRef, { waFrom: from });
+  const log: Record<string, unknown> = { from, payload, appointmentRef, ok };
+  if (!ok) {
+    const appt = await appointmentRepository.findById(appointmentRef);
+    if (appt) log.statusTurno = appt.status;
+  }
+  console.info("[whatsapp] botón confirmación", log);
 }
 
 export function verifyMetaWebhookSignature(rawBody: Buffer, signatureHeader: string | undefined): boolean {

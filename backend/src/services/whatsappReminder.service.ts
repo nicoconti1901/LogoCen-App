@@ -399,15 +399,29 @@ async function loadReminderContext(
 }
 
 /** Confirma turno cuando el paciente toca el botón en WhatsApp. */
-export async function confirmAppointmentFromWhatsapp(appointmentRef: string): Promise<boolean> {
+export async function confirmAppointmentFromWhatsapp(
+  appointmentRef: string,
+  options?: { waFrom?: string }
+): Promise<boolean> {
   const fixed = parseFixedAppointmentId(appointmentRef);
   if (fixed) {
+    const series = await fixedAppointmentSeriesRepository.findById(fixed.seriesId);
+    if (!series) return false;
+    if (options?.waFrom) {
+      const patient = await patientRepository.findById(series.patientId);
+      if (!patient || !whatsappPhonesMatch(patient.phone, options.waFrom)) return false;
+    }
+
     const occurrenceDate = parseDateOnlyISO(fixed.dateIso);
     const existing = await fixedAppointmentOccurrenceRepository.findBySeriesAndDate(
       fixed.seriesId,
       occurrenceDate
     );
     const previousStatus = existing?.status ?? AppointmentStatus.RESERVED;
+    if (previousStatus === AppointmentStatus.CONFIRMADO) {
+      await cancelWhatsappRemindersForAppointment(appointmentRef);
+      return true;
+    }
     if (previousStatus !== AppointmentStatus.RESERVED) return false;
     const patch = syncPatientConfirmationForStatusChange(
       AppointmentStatus.CONFIRMADO,
@@ -433,6 +447,13 @@ export async function confirmAppointmentFromWhatsapp(appointmentRef: string): Pr
 
   const appt = await appointmentRepository.findById(appointmentRef);
   if (!appt) return false;
+  if (options?.waFrom && !whatsappPhonesMatch(appt.patient.phone, options.waFrom)) {
+    return false;
+  }
+  if (appt.status === AppointmentStatus.CONFIRMADO) {
+    await cancelWhatsappRemindersForAppointment(appointmentRef);
+    return true;
+  }
   if (appt.status !== AppointmentStatus.RESERVED) return false;
 
   const patch = syncPatientConfirmationForStatusChange(
