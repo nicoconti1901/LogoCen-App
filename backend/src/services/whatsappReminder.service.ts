@@ -1,7 +1,6 @@
 import {
   AppointmentStatus,
   PatientConfirmationSource,
-  Role,
   WhatsappReminderKind,
 } from "@prisma/client";
 import { isWhatsappConfigured } from "../config/whatsapp.js";
@@ -32,7 +31,6 @@ import {
   planWhatsappReminder,
   shouldAutoConfirmWithoutWhatsapp,
 } from "../whatsapp/reminderSchedule.js";
-import { upsertFixedAppointmentOccurrence } from "./fixedAppointmentSeries.service.js";
 
 /** Cuántas semanas hacia adelante se programan recordatorios de turnos fijos. */
 const FIXED_SERIES_REMINDER_HORIZON_WEEKS = 16;
@@ -216,13 +214,17 @@ async function autoConfirmAppointmentWithoutWhatsapp(
       existing?.patientConfirmationSource ?? null,
       PatientConfirmationSource.MANUAL
     );
-    await upsertFixedAppointmentOccurrence(
-      fixed.seriesId,
-      fixed.dateIso,
-      { status: AppointmentStatus.CONFIRMADO, ...patch },
-      Role.ADMIN,
-      null
-    );
+    await fixedAppointmentOccurrenceRepository.upsert(fixed.seriesId, occurrenceDate, {
+      status: AppointmentStatus.CONFIRMADO,
+      ...patch,
+      reservationDepositAmount: existing?.reservationDepositAmount ?? null,
+      paymentMethod: existing?.paymentMethod ?? null,
+      paymentCompleted: existing?.paymentCompleted ?? false,
+      paymentDate: existing?.paymentDate ?? null,
+      specialistSettledAt: existing?.specialistSettledAt ?? null,
+      medicalRecord: existing?.medicalRecord ?? null,
+      reasonForVisit: existing?.reasonForVisit ?? null,
+    });
     return;
   }
 
@@ -417,13 +419,17 @@ export async function confirmAppointmentFromWhatsapp(appointmentRef: string): Pr
       existing?.patientConfirmationSource ?? null,
       PatientConfirmationSource.WHATSAPP
     );
-    await upsertFixedAppointmentOccurrence(
-      fixed.seriesId,
-      fixed.dateIso,
-      { status: AppointmentStatus.CONFIRMADO, ...patch },
-      Role.ADMIN,
-      null
-    );
+    await fixedAppointmentOccurrenceRepository.upsert(fixed.seriesId, occurrenceDate, {
+      status: AppointmentStatus.CONFIRMADO,
+      ...patch,
+      reservationDepositAmount: existing?.reservationDepositAmount ?? null,
+      paymentMethod: existing?.paymentMethod ?? null,
+      paymentCompleted: existing?.paymentCompleted ?? false,
+      paymentDate: existing?.paymentDate ?? null,
+      specialistSettledAt: existing?.specialistSettledAt ?? null,
+      medicalRecord: existing?.medicalRecord ?? null,
+      reasonForVisit: existing?.reasonForVisit ?? null,
+    });
     await cancelWhatsappRemindersForAppointment(appointmentRef);
     return true;
   }

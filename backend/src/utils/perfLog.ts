@@ -9,7 +9,7 @@ export class PerfSpan {
 
   finish(meta: Record<string, unknown>): number {
     const totalMs = Math.round(performance.now() - this.start);
-    console.log(
+    console.warn(
       JSON.stringify({
         type: "perf",
         ...meta,
@@ -27,7 +27,7 @@ export function logHttpPerf(params: {
   status: number;
   ms: number;
 }): void {
-  console.log(
+  console.warn(
     JSON.stringify({
       type: "perf",
       op: "http",

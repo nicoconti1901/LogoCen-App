@@ -5,6 +5,7 @@ import {
   type WhatsappReminder,
 } from "@prisma/client";
 import { prisma } from "../config/database.js";
+import { withPrismaRetry } from "../utils/prismaRetry.js";
 
 export const whatsappReminderRepository = {
   upsertScheduled(data: {
@@ -13,41 +14,45 @@ export const whatsappReminderRepository = {
     kind: WhatsappReminderKind;
     scheduledSendAt: Date;
   }): Promise<WhatsappReminder> {
-    return prisma.whatsappReminder.upsert({
-      where: {
-        appointmentRef_kind: {
-          appointmentRef: data.appointmentRef,
-          kind: data.kind,
+    return withPrismaRetry(() =>
+      prisma.whatsappReminder.upsert({
+        where: {
+          appointmentRef_kind: {
+            appointmentRef: data.appointmentRef,
+            kind: data.kind,
+          },
         },
-      },
-      create: {
-        appointmentRef: data.appointmentRef,
-        patientId: data.patientId,
-        kind: data.kind,
-        scheduledSendAt: data.scheduledSendAt,
-        status: WhatsappReminderStatus.SCHEDULED,
-      },
-      update: {
-        patientId: data.patientId,
-        scheduledSendAt: data.scheduledSendAt,
-        status: WhatsappReminderStatus.SCHEDULED,
-        sentAt: null,
-        waMessageId: null,
-        lastError: null,
-      },
-    });
+        create: {
+          appointmentRef: data.appointmentRef,
+          patientId: data.patientId,
+          kind: data.kind,
+          scheduledSendAt: data.scheduledSendAt,
+          status: WhatsappReminderStatus.SCHEDULED,
+        },
+        update: {
+          patientId: data.patientId,
+          scheduledSendAt: data.scheduledSendAt,
+          status: WhatsappReminderStatus.SCHEDULED,
+          sentAt: null,
+          waMessageId: null,
+          lastError: null,
+        },
+      })
+    );
   },
 
   cancelPendingForAppointment(appointmentRef: string): Promise<number> {
-    return prisma.whatsappReminder
-      .updateMany({
-        where: {
-          appointmentRef,
-          status: WhatsappReminderStatus.SCHEDULED,
-        },
-        data: { status: WhatsappReminderStatus.CANCELLED },
-      })
-      .then((r) => r.count);
+    return withPrismaRetry(() =>
+      prisma.whatsappReminder
+        .updateMany({
+          where: {
+            appointmentRef,
+            status: WhatsappReminderStatus.SCHEDULED,
+          },
+          data: { status: WhatsappReminderStatus.CANCELLED },
+        })
+        .then((r) => r.count)
+    );
   },
 
   findDue(now: Date, limit = 50): Promise<WhatsappReminder[]> {
