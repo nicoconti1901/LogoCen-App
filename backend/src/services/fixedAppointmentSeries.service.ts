@@ -34,6 +34,7 @@ import {
   assertNoOverlap,
 } from "./appointment.service.js";
 import { assertNoConflictsForNewFixedSeries } from "../utils/fixedAppointmentScheduling.js";
+import { PerfSpan } from "../utils/perfLog.js";
 import {
   buildVirtualAppointmentForDate,
   iterateSeriesOccurrenceDates,
@@ -92,6 +93,8 @@ export async function createFixedAppointmentSeries(
   role: Role,
   userSpecialistId: string | null
 ) {
+  const perf = new PerfSpan();
+
   if (role === Role.SPECIALIST) {
     if (!userSpecialistId || data.specialistId !== userSpecialistId) {
       throw new AppError(403, "Solo puede crear turnos fijos para usted mismo");
@@ -140,6 +143,8 @@ export async function createFixedAppointmentSeries(
     );
   }
 
+  perf.mark("validated");
+
   const occurrenceDates = iterateSeriesOccurrenceDates({
     weekday,
     effectiveFrom,
@@ -156,6 +161,8 @@ export async function createFixedAppointmentSeries(
     endTime,
     maxWeeks: occurrenceDates.length,
   });
+
+  perf.mark("conflicts");
 
   const created = await fixedAppointmentSeriesRepository.create({
     patientId: data.patientId,
@@ -174,6 +181,8 @@ export async function createFixedAppointmentSeries(
       syncWhatsappRemindersForFixedSeries(created.id)
     )
     .catch(() => undefined);
+
+  perf.finish({ op: "fixed-series.create", seriesId: created.id });
 
   return created;
 }
@@ -222,6 +231,7 @@ export async function rescheduleFixedAppointmentSeries(
   role: Role,
   userSpecialistId: string | null
 ) {
+  const perf = new PerfSpan();
   const series = await resolveActiveFixedSeries(seriesId);
   assertCanAccessSeries(role, userSpecialistId, series.specialistId);
 
@@ -283,6 +293,8 @@ export async function rescheduleFixedAppointmentSeries(
     await fixedAppointmentSeriesRepository.deactivate(s.id, until);
   }
 
+  perf.mark("deactivated");
+
   const conflictExclude = {
     excludePatientSpecialist: {
       patientId: series.patientId,
@@ -309,6 +321,8 @@ export async function rescheduleFixedAppointmentSeries(
       conflictExclude
     );
 
+    perf.mark("conflicts");
+
     const created = await fixedAppointmentSeriesRepository.create({
       patientId: series.patientId,
       specialistId: series.specialistId,
@@ -326,6 +340,8 @@ export async function rescheduleFixedAppointmentSeries(
         syncWhatsappRemindersForFixedSeries(created.id)
       )
       .catch(() => undefined);
+
+    perf.finish({ op: "fixed-series.reschedule", seriesId: created.id });
 
     return created;
   } catch (err) {

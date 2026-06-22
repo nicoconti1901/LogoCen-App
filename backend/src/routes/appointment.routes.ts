@@ -2,10 +2,12 @@ import { Router } from "express";
 import * as appointmentController from "../controllers/appointment.controller.js";
 import * as fixedAppointmentSeriesController from "../controllers/fixedAppointmentSeries.controller.js";
 import { requireAuth } from "../middleware/auth.js";
+import { appointmentWritePerfLog } from "../middleware/requestPerfLog.js";
 
 export const appointmentRouter = Router();
 
 appointmentRouter.use(requireAuth);
+appointmentRouter.use(appointmentWritePerfLog);
 
 appointmentRouter.get("/", appointmentController.list);
 appointmentRouter.get("/consultorio-slots", appointmentController.consultorioSlots);

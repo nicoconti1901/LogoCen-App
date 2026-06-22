@@ -29,6 +29,7 @@ import {
   cancelWhatsappRemindersForAppointment,
   syncWhatsappReminderForAppointment,
 } from "./whatsappReminder.service.js";
+import { PerfSpan } from "../utils/perfLog.js";
 import {
   normalizeAppointmentPaymentFields,
   parseStoredPaymentSplits,
@@ -333,6 +334,8 @@ export async function createAppointment(
   role: Role,
   userSpecialistId: string | null
 ) {
+  const perf = new PerfSpan();
+
   if (role === Role.SPECIALIST) {
     if (!userSpecialistId || data.specialistId !== userSpecialistId) {
       throw new AppError(403, "Solo puede crear citas para usted mismo");
@@ -362,6 +365,8 @@ export async function createAppointment(
   if (consultorio) {
     await assertNoConsultorioOverlap(consultorio, appointmentDate, startTime, endTime);
   }
+
+  perf.mark("validated");
 
   const parsedDeposit = parseMoneyToDecimal(data.reservationDepositAmount ?? null);
   const reservationDepositAmount = reservationDepositForStatus(
@@ -401,6 +406,8 @@ export async function createAppointment(
     status: created.status,
   }).catch(() => undefined);
 
+  perf.finish({ op: "appointment.create", appointmentId: created.id });
+
   return created;
 }
 
@@ -427,6 +434,7 @@ export async function updateAppointment(
   role: Role,
   userSpecialistId: string | null
 ) {
+  const perf = new PerfSpan();
   const { parseFixedAppointmentId } = await import("../utils/fixedAppointmentOccurrences.js");
   const fixedParsed = parseFixedAppointmentId(id);
   if (fixedParsed) {
@@ -503,6 +511,8 @@ export async function updateAppointment(
     }
   }
 
+  perf.mark("validated");
+
   if (data.patientId) {
     const patient = await patientRepository.findById(data.patientId);
     if (!patient) throw new AppError(400, "Paciente no encontrado");
@@ -574,6 +584,8 @@ export async function updateAppointment(
     consultorio: updated.consultorio,
     status: updated.status,
   }).catch(() => undefined);
+
+  perf.finish({ op: "appointment.update", appointmentId: updated.id });
 
   return updated;
 }
