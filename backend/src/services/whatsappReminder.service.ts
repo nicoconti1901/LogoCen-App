@@ -254,10 +254,7 @@ export async function processDueWhatsappReminders(): Promise<{
   sent: number;
   failed: number;
   skipped: number;
-  fixedSeriesSynced: number;
 }> {
-  const fixedSeriesSynced = await refreshActiveFixedSeriesReminderSchedule().catch(() => 0);
-
   const due = await whatsappReminderRepository.findDue(new Date());
   let sent = 0;
   let failed = 0;
@@ -275,7 +272,7 @@ export async function processDueWhatsappReminders(): Promise<{
     else skipped++;
   }
 
-  return { processed: due.length, sent, failed, skipped, fixedSeriesSynced };
+  return { processed: due.length, sent, failed, skipped };
 }
 
 async function sendSingleReminder(
