@@ -71,6 +71,45 @@ export const fixedAppointmentSeriesRepository = {
     });
   },
 
+  /** Series activas con datos mínimos para detectar conflictos (sin joins pesados). */
+  findActiveSeriesForConflictCheck(params: {
+    rangeFrom: Date;
+    rangeTo: Date;
+    specialistId?: string;
+    consultorio?: string;
+  }): Promise<FixedSeriesWithOccurrencesInRange[]> {
+    const office = params.consultorio?.trim();
+    return prisma.fixedAppointmentSeries.findMany({
+      where: {
+        active: true,
+        effectiveFrom: { lte: params.rangeTo },
+        OR: [{ effectiveUntil: null }, { effectiveUntil: { gte: params.rangeFrom } }],
+        ...(params.specialistId ? { specialistId: params.specialistId } : {}),
+        ...(office ? { consultorio: { equals: office, mode: "insensitive" } } : {}),
+      },
+      select: {
+        id: true,
+        patientId: true,
+        specialistId: true,
+        weekday: true,
+        startTime: true,
+        displayDurationMinutes: true,
+        consultorio: true,
+        effectiveFrom: true,
+        effectiveUntil: true,
+        active: true,
+        reasonForVisit: true,
+        createdAt: true,
+        updatedAt: true,
+        skips: { select: { skipDate: true } },
+        occurrences: {
+          where: { occurrenceDate: { gte: params.rangeFrom, lte: params.rangeTo } },
+          select: { occurrenceDate: true, status: true },
+        },
+      },
+    }) as Promise<FixedSeriesWithOccurrencesInRange[]>;
+  },
+
   findActiveByPatientSpecialistWeekday(params: {
     patientId: string;
     specialistId: string;
