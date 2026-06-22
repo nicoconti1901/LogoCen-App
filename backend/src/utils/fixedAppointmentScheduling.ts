@@ -101,8 +101,14 @@ function hardEndForSeriesRange(effectiveFrom: Date, effectiveUntil: Date | null,
   return toDateOnly(x);
 }
 
-/** Valida conflictos de una serie fija nueva en pocas consultas (evita 100+ round-trips a Neon). */
-export async function assertNoConflictsForNewFixedSeries(params: {
+export type FixedSeriesOccurrenceConflictReason = "consultorio" | "specialist";
+
+export type FixedSeriesOccurrenceConflict = {
+  date: string;
+  reasons: FixedSeriesOccurrenceConflictReason[];
+};
+
+type ConflictCheckParams = {
   specialistId: string;
   consultorio: string;
   weekday: Weekday;
@@ -111,7 +117,10 @@ export async function assertNoConflictsForNewFixedSeries(params: {
   startTime: string;
   endTime: string;
   maxWeeks?: number;
-}): Promise<void> {
+  ignoreDates?: Set<string>;
+};
+
+async function loadConflictCheckData(params: ConflictCheckParams) {
   const maxWeeks = params.maxWeeks ?? 104;
   const from = toDateOnly(params.effectiveFrom);
   const hardEnd = hardEndForSeriesRange(from, params.effectiveUntil, maxWeeks);
@@ -137,44 +146,95 @@ export async function assertNoConflictsForNewFixedSeries(params: {
     }),
   ]);
 
-  for (const row of specialistAppts) {
-    const iso = formatStoredDateOnlyISO(row.appointmentDate);
-    if (!occurrenceSet.has(iso)) continue;
-    if (weekdayFromDate(row.appointmentDate) !== params.weekday) continue;
-    if (timesOverlap(params.startTime, params.endTime, row.startTime, row.endTime)) {
-      throw new AppError(409, "El especialista ya tiene una cita en ese horario");
-    }
-  }
-
-  for (const row of consultorioAppts) {
-    const iso = formatStoredDateOnlyISO(row.appointmentDate);
-    if (!occurrenceSet.has(iso)) continue;
-    if (weekdayFromDate(row.appointmentDate) !== params.weekday) continue;
-    if (timesOverlap(params.startTime, params.endTime, row.startTime, row.endTime)) {
-      throw new AppError(409, "El consultorio ya está ocupado en ese horario");
-    }
-  }
-
   const office = params.consultorio.trim().toLowerCase();
   const seriesOnConsultorio = allSeriesInRange.filter(
     (s) => s.consultorio.trim().toLowerCase() === office
   );
 
-  for (const occDate of occurrenceDates) {
-    for (const series of seriesOnSpecialist) {
-      if (!blocksSlot(series, occDate)) continue;
-      const fixedEnd = seriesEndTime(series.startTime, series.displayDurationMinutes);
-      if (!timesOverlap(params.startTime, params.endTime, series.startTime, fixedEnd)) continue;
-      throw new AppError(409, "El especialista ya tiene un turno fijo en ese horario");
-    }
+  return {
+    occurrenceDates,
+    occurrenceSet,
+    specialistAppts,
+    consultorioAppts,
+    seriesOnSpecialist,
+    seriesOnConsultorio,
+    ignoreDates: params.ignoreDates,
+  };
+}
 
-    for (const series of seriesOnConsultorio) {
-      if (!blocksSlot(series, occDate)) continue;
-      const fixedEnd = seriesEndTime(series.startTime, series.displayDurationMinutes);
-      if (!timesOverlap(params.startTime, params.endTime, series.startTime, fixedEnd)) continue;
-      throw new AppError(409, "El consultorio ya está ocupado por un turno fijo en ese horario");
+function collectOccurrenceConflicts(
+  data: Awaited<ReturnType<typeof loadConflictCheckData>>,
+  params: Pick<ConflictCheckParams, "weekday" | "startTime" | "endTime">
+): FixedSeriesOccurrenceConflict[] {
+  const byDate = new Map<string, Set<FixedSeriesOccurrenceConflictReason>>();
+
+  const add = (iso: string, reason: FixedSeriesOccurrenceConflictReason) => {
+    if (data.ignoreDates?.has(iso)) return;
+    if (!data.occurrenceSet.has(iso)) return;
+    const set = byDate.get(iso) ?? new Set<FixedSeriesOccurrenceConflictReason>();
+    set.add(reason);
+    byDate.set(iso, set);
+  };
+
+  for (const row of data.specialistAppts) {
+    const iso = formatStoredDateOnlyISO(row.appointmentDate);
+    if (weekdayFromDate(row.appointmentDate) !== params.weekday) continue;
+    if (timesOverlap(params.startTime, params.endTime, row.startTime, row.endTime)) {
+      add(iso, "specialist");
     }
   }
+
+  for (const row of data.consultorioAppts) {
+    const iso = formatStoredDateOnlyISO(row.appointmentDate);
+    if (weekdayFromDate(row.appointmentDate) !== params.weekday) continue;
+    if (timesOverlap(params.startTime, params.endTime, row.startTime, row.endTime)) {
+      add(iso, "consultorio");
+    }
+  }
+
+  for (const occDate of data.occurrenceDates) {
+    const iso = formatDateOnlyISO(occDate);
+    for (const series of data.seriesOnSpecialist) {
+      if (!blocksSlot(series, occDate)) continue;
+      const fixedEnd = seriesEndTime(series.startTime, series.displayDurationMinutes);
+      if (!timesOverlap(params.startTime, params.endTime, series.startTime, fixedEnd)) continue;
+      add(iso, "specialist");
+    }
+
+    for (const series of data.seriesOnConsultorio) {
+      if (!blocksSlot(series, occDate)) continue;
+      const fixedEnd = seriesEndTime(series.startTime, series.displayDurationMinutes);
+      if (!timesOverlap(params.startTime, params.endTime, series.startTime, fixedEnd)) continue;
+      add(iso, "consultorio");
+    }
+  }
+
+  return [...byDate.entries()]
+    .map(([date, reasons]) => ({
+      date,
+      reasons: [...reasons].sort() as FixedSeriesOccurrenceConflictReason[],
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** Detecta fechas de la serie con consultorio o especialista ocupados. */
+export async function findConflictsForNewFixedSeries(
+  params: ConflictCheckParams
+): Promise<FixedSeriesOccurrenceConflict[]> {
+  const data = await loadConflictCheckData(params);
+  return collectOccurrenceConflicts(data, params);
+}
+
+/** Valida conflictos de una serie fija nueva en pocas consultas (evita 100+ round-trips a Neon). */
+export async function assertNoConflictsForNewFixedSeries(params: ConflictCheckParams): Promise<void> {
+  const conflicts = await findConflictsForNewFixedSeries(params);
+  if (conflicts.length === 0) return;
+
+  const first = conflicts[0]!;
+  if (first.reasons.includes("consultorio")) {
+    throw new AppError(409, "El consultorio ya está ocupado en ese horario");
+  }
+  throw new AppError(409, "El especialista ya tiene una cita en ese horario");
 }
 
 /** El consultorio está ocupado por un turno fijo en esa franja (cualquier especialista). */
