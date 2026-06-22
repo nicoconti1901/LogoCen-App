@@ -6,9 +6,9 @@ export const HINT_PATIENT_NAME =
 export const HINT_PATIENT_EMAIL = "Correo de contacto del paciente (ej. nombre@ejemplo.com).";
 
 export const HINT_PATIENT_PHONE_WHATSAPP =
-  "Celular argentino para recordatorios por WhatsApp. Ejemplos: 11 4021-5890, 291 4021589 o +54 9 11 4021-5890. " +
-  "Usá 10 dígitos (código de área + número) sin el 15 delante; el sistema agrega el 9 del móvil. " +
-  "Si cargás +54, incluí el 9 después del país (549…).";
+  "Opcional. Si lo cargás, debe ser celular argentino para recordatorios por WhatsApp. " +
+  "Ejemplos: 11 4021-5890, 291 4021589 o +54 9 11 4021-5890. " +
+  "Sin celular no se envía WhatsApp; el turno sigue Agendado hasta confirmación manual.";
 
 export const HINT_PATIENT_DOCUMENT =
   "Opcional. DNI: 7 u 8 dígitos; pasaporte: 6 a 12 caracteres alfanuméricos.";
