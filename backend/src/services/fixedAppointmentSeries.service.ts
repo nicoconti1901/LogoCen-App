@@ -33,7 +33,7 @@ import {
   assertNoConsultorioOverlap,
   assertNoOverlap,
 } from "./appointment.service.js";
-import { assertNoConflictsForNewFixedSeries, findConflictsForNewFixedSeries } from "../utils/fixedAppointmentScheduling.js";
+import { findConflictsForNewFixedSeries } from "../utils/fixedAppointmentScheduling.js";
 import { PerfSpan } from "../utils/perfLog.js";
 import {
   buildVirtualAppointmentForDate,
@@ -193,11 +193,16 @@ export async function createFixedAppointmentSeries(
     skipDates = conflicts.map((c) => c.date);
   }
 
-  await assertNoConflictsForNewFixedSeries({
-    ...conflictParams,
-    effectiveUntil: finalEffectiveUntil,
-    ignoreDates: skipDates.length ? new Set(skipDates) : undefined,
-  });
+  if (conflicts.length > 0 && data.conflictStrategy) {
+    const remaining = await findConflictsForNewFixedSeries({
+      ...conflictParams,
+      effectiveUntil: finalEffectiveUntil,
+      ignoreDates: skipDates.length ? new Set(skipDates) : undefined,
+    });
+    if (remaining.length > 0) {
+      throw new AppError(409, "Quedaron conflictos de agenda tras aplicar la estrategia elegida");
+    }
+  }
 
   perf.mark("conflicts");
 

@@ -132,24 +132,22 @@ async function loadConflictCheckData(params: ConflictCheckParams) {
   });
   const occurrenceSet = new Set(occurrenceDates.map((d) => formatDateOnlyISO(d)));
 
-  const [specialistAppts, consultorioAppts, seriesOnSpecialist, allSeriesInRange] = await Promise.all([
+  const office = params.consultorio.trim();
+
+  const [specialistAppts, consultorioAppts, seriesOnSpecialist, seriesOnConsultorio] = await Promise.all([
     appointmentRepository.findInDateRangeBySpecialist(params.specialistId, from, hardEnd),
     appointmentRepository.findInDateRangeByConsultorio(params.consultorio, from, hardEnd),
-    fixedAppointmentSeriesRepository.findActiveForAgenda({
+    fixedAppointmentSeriesRepository.findActiveSeriesForConflictCheck({
       specialistId: params.specialistId,
       rangeFrom: from,
       rangeTo: hardEnd,
     }),
-    fixedAppointmentSeriesRepository.findActiveForAgenda({
+    fixedAppointmentSeriesRepository.findActiveSeriesForConflictCheck({
+      consultorio: office,
       rangeFrom: from,
       rangeTo: hardEnd,
     }),
   ]);
-
-  const office = params.consultorio.trim().toLowerCase();
-  const seriesOnConsultorio = allSeriesInRange.filter(
-    (s) => s.consultorio.trim().toLowerCase() === office
-  );
 
   return {
     occurrenceDates,
