@@ -203,7 +203,7 @@ export function AdminPatientsPage() {
         firstName: form.firstName,
         lastName: form.lastName,
         email: form.email,
-        phone: form.phone.trim(),
+        phone: form.phone.trim() || null,
         documentId: form.documentId || null,
         birthDate: form.birthDate || null,
         notes: form.notes || null,
@@ -237,7 +237,7 @@ export function AdminPatientsPage() {
         firstName: form.firstName,
         lastName: form.lastName,
         email: form.email,
-        phone: form.phone.trim(),
+        phone: form.phone.trim() || null,
         documentId: form.documentId || null,
         birthDate: form.birthDate || null,
         notes: form.notes || null,
@@ -370,11 +370,8 @@ export function AdminPatientsPage() {
                 <FormFieldError message={fieldErrors.email} />
               </div>
               <div>
-                <label className="text-sm text-slate-600">
-                  Celular <span className="text-red-600">*</span>
-                </label>
+                <label className="text-sm text-slate-600">Celular</label>
                 <input
-                  required
                   inputMode="tel"
                   autoComplete="tel"
                   placeholder="Ej. 11 4021-5890 o 291 4021589"

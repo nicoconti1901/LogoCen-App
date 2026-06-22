@@ -1,7 +1,6 @@
 import {
   AppointmentStatus,
   PatientConfirmationSource,
-  Role,
   WhatsappReminderKind,
 } from "@prisma/client";
 import { isWhatsappConfigured } from "../config/whatsapp.js";
@@ -11,8 +10,19 @@ import { fixedAppointmentSeriesRepository } from "../repositories/fixedAppointme
 import { patientRepository } from "../repositories/patient.repository.js";
 import { whatsappReminderRepository } from "../repositories/whatsappReminder.repository.js";
 import { syncPatientConfirmationForStatusChange } from "../utils/appointmentConfirmation.js";
-import { parseDateOnlyISO, minutesToHHmm, timeToMinutes, toDateOnly } from "../utils/appointmentTime.js";
-import { parseFixedAppointmentId } from "../utils/fixedAppointmentOccurrences.js";
+import {
+  formatDateOnlyISO,
+  formatStoredDateOnlyISO,
+  minutesToHHmm,
+  parseDateOnlyISO,
+  timeToMinutes,
+  toDateOnly,
+} from "../utils/appointmentTime.js";
+import {
+  buildFixedAppointmentId,
+  iterateSeriesOccurrenceDates,
+  parseFixedAppointmentId,
+} from "../utils/fixedAppointmentOccurrences.js";
 import { buildReminderBody, isWhatsappConfirmText } from "../whatsapp/messageBuilder.js";
 import { sendConfirmationReminderMessage } from "../whatsapp/metaClient.js";
 import { normalizePhoneToE164, whatsappPhonesMatch } from "../whatsapp/phone.js";
@@ -21,7 +31,123 @@ import {
   planWhatsappReminder,
   shouldAutoConfirmWithoutWhatsapp,
 } from "../whatsapp/reminderSchedule.js";
-import { upsertFixedAppointmentOccurrence } from "./fixedAppointmentSeries.service.js";
+
+/** Cuántas semanas hacia adelante se programan recordatorios de turnos fijos. */
+const FIXED_SERIES_REMINDER_HORIZON_WEEKS = 16;
+
+function seriesEndTimeForReminder(startTime: string, displayDurationMinutes: number): string {
+  return minutesToHHmm(timeToMinutes(startTime) + displayDurationMinutes);
+}
+
+async function syncWhatsappReminderForFixedOccurrence(
+  series: NonNullable<Awaited<ReturnType<typeof fixedAppointmentSeriesRepository.findById>>>,
+  occurrenceDate: Date,
+  cached?: {
+    patientPhone?: string | null;
+    occurrenceByDate?: Map<string, AppointmentStatus>;
+  }
+): Promise<void> {
+  if (!series.active) return;
+
+  const dateIso = formatDateOnlyISO(occurrenceDate);
+  if (series.skips.some((s) => formatStoredDateOnlyISO(s.skipDate) === dateIso)) {
+    await cancelWhatsappRemindersForAppointment(buildFixedAppointmentId(series.id, dateIso));
+    return;
+  }
+
+  let status: AppointmentStatus = AppointmentStatus.RESERVED;
+  if (cached?.occurrenceByDate) {
+    status = cached.occurrenceByDate.get(dateIso) ?? AppointmentStatus.RESERVED;
+  } else {
+    const occ = await fixedAppointmentOccurrenceRepository.findBySeriesAndDate(series.id, occurrenceDate);
+    status = occ?.status ?? AppointmentStatus.RESERVED;
+  }
+
+  await syncWhatsappReminderForAppointment(
+    {
+      appointmentRef: buildFixedAppointmentId(series.id, dateIso),
+      patientId: series.patientId,
+      specialistId: series.specialistId,
+      appointmentDate: occurrenceDate,
+      startTime: series.startTime,
+      endTime: seriesEndTimeForReminder(series.startTime, series.displayDurationMinutes),
+      consultorio: series.consultorio,
+      status,
+    },
+    cached?.patientPhone !== undefined ? { patientPhone: cached.patientPhone } : undefined
+  );
+}
+
+/** Programa recordatorios para las próximas ocurrencias de una serie fija activa. */
+export async function syncWhatsappRemindersForFixedSeries(seriesId: string): Promise<void> {
+  const series = await fixedAppointmentSeriesRepository.findById(seriesId);
+  if (!series || !series.active) return;
+
+  const today = toDateOnly(new Date());
+  const rangeFrom = toDateOnly(series.effectiveFrom) > today ? toDateOnly(series.effectiveFrom) : today;
+  const rangeTo = series.effectiveUntil ? toDateOnly(series.effectiveUntil) : null;
+  const occurrenceDates = iterateSeriesOccurrenceDates({
+    weekday: series.weekday,
+    effectiveFrom: rangeFrom,
+    effectiveUntil: rangeTo,
+    maxWeeks: FIXED_SERIES_REMINDER_HORIZON_WEEKS,
+  });
+  if (!occurrenceDates.length) return;
+
+  const hardEnd = occurrenceDates[occurrenceDates.length - 1]!;
+  const [patient, occurrences] = await Promise.all([
+    patientRepository.findById(series.patientId),
+    fixedAppointmentOccurrenceRepository.findManyForSeriesInRange(seriesId, rangeFrom, hardEnd),
+  ]);
+  const patientPhone = patient?.phone ?? null;
+  const occByDate = new Map(
+    occurrences.map((o) => [formatStoredDateOnlyISO(o.occurrenceDate), o.status])
+  );
+
+  for (const occurrenceDate of occurrenceDates) {
+    await syncWhatsappReminderForFixedOccurrence(series, occurrenceDate, {
+      patientPhone,
+      occurrenceByDate: occByDate,
+    }).catch(() => undefined);
+  }
+}
+
+export async function syncWhatsappReminderForFixedOccurrenceDate(
+  seriesId: string,
+  dateIso: string
+): Promise<void> {
+  const series = await fixedAppointmentSeriesRepository.findById(seriesId);
+  if (!series) return;
+  await syncWhatsappReminderForFixedOccurrence(series, parseDateOnlyISO(dateIso));
+}
+
+/** Asegura recordatorios de todas las series fijas activas (cron / mantenimiento). */
+export async function refreshActiveFixedSeriesReminderSchedule(): Promise<number> {
+  const actives = await fixedAppointmentSeriesRepository.findActiveOverlappingRange({});
+  let count = 0;
+  for (const series of actives) {
+    await syncWhatsappRemindersForFixedSeries(series.id).catch(() => undefined);
+    count++;
+  }
+  return count;
+}
+
+export async function cancelWhatsappRemindersForFixedSeries(seriesId: string): Promise<void> {
+  const series = await fixedAppointmentSeriesRepository.findById(seriesId);
+  if (!series) return;
+
+  const occurrenceDates = iterateSeriesOccurrenceDates({
+    weekday: series.weekday,
+    effectiveFrom: toDateOnly(series.effectiveFrom),
+    effectiveUntil: series.effectiveUntil ? toDateOnly(series.effectiveUntil) : null,
+    maxWeeks: FIXED_SERIES_REMINDER_HORIZON_WEEKS,
+  });
+
+  for (const occurrenceDate of occurrenceDates) {
+    const ref = buildFixedAppointmentId(seriesId, formatDateOnlyISO(occurrenceDate));
+    await cancelWhatsappRemindersForAppointment(ref).catch(() => undefined);
+  }
+}
 
 export type AppointmentReminderTarget = {
   appointmentRef: string;
@@ -36,7 +162,8 @@ export type AppointmentReminderTarget = {
 
 /** Programa recordatorio 24 h antes, o confirma sin WhatsApp si el turno es en menos de 48 h. */
 export async function syncWhatsappReminderForAppointment(
-  target: AppointmentReminderTarget
+  target: AppointmentReminderTarget,
+  cached?: { patientPhone?: string | null }
 ): Promise<void> {
   await whatsappReminderRepository.cancelPendingForAppointment(target.appointmentRef);
 
@@ -49,8 +176,12 @@ export async function syncWhatsappReminderForAppointment(
     return;
   }
 
-  const patient = await patientRepository.findById(target.patientId);
-  if (!patient?.phone?.trim()) return;
+  let patientPhone = cached?.patientPhone;
+  if (patientPhone === undefined) {
+    const patient = await patientRepository.findById(target.patientId);
+    patientPhone = patient?.phone ?? null;
+  }
+  if (!patientPhone?.trim()) return;
 
   const plan = planWhatsappReminder(target.appointmentDate, target.startTime, now);
   if (!plan) return;
@@ -83,13 +214,17 @@ async function autoConfirmAppointmentWithoutWhatsapp(
       existing?.patientConfirmationSource ?? null,
       PatientConfirmationSource.MANUAL
     );
-    await upsertFixedAppointmentOccurrence(
-      fixed.seriesId,
-      fixed.dateIso,
-      { status: AppointmentStatus.CONFIRMADO, ...patch },
-      Role.ADMIN,
-      null
-    );
+    await fixedAppointmentOccurrenceRepository.upsert(fixed.seriesId, occurrenceDate, {
+      status: AppointmentStatus.CONFIRMADO,
+      ...patch,
+      reservationDepositAmount: existing?.reservationDepositAmount ?? null,
+      paymentMethod: existing?.paymentMethod ?? null,
+      paymentCompleted: existing?.paymentCompleted ?? false,
+      paymentDate: existing?.paymentDate ?? null,
+      specialistSettledAt: existing?.specialistSettledAt ?? null,
+      medicalRecord: existing?.medicalRecord ?? null,
+      reasonForVisit: existing?.reasonForVisit ?? null,
+    });
     return;
   }
 
@@ -119,7 +254,10 @@ export async function processDueWhatsappReminders(): Promise<{
   sent: number;
   failed: number;
   skipped: number;
+  fixedSeriesSynced: number;
 }> {
+  const fixedSeriesSynced = await refreshActiveFixedSeriesReminderSchedule().catch(() => 0);
+
   const due = await whatsappReminderRepository.findDue(new Date());
   let sent = 0;
   let failed = 0;
@@ -137,7 +275,7 @@ export async function processDueWhatsappReminders(): Promise<{
     else skipped++;
   }
 
-  return { processed: due.length, sent, failed, skipped };
+  return { processed: due.length, sent, failed, skipped, fixedSeriesSynced };
 }
 
 async function sendSingleReminder(
@@ -281,13 +419,17 @@ export async function confirmAppointmentFromWhatsapp(appointmentRef: string): Pr
       existing?.patientConfirmationSource ?? null,
       PatientConfirmationSource.WHATSAPP
     );
-    await upsertFixedAppointmentOccurrence(
-      fixed.seriesId,
-      fixed.dateIso,
-      { status: AppointmentStatus.CONFIRMADO, ...patch },
-      Role.ADMIN,
-      null
-    );
+    await fixedAppointmentOccurrenceRepository.upsert(fixed.seriesId, occurrenceDate, {
+      status: AppointmentStatus.CONFIRMADO,
+      ...patch,
+      reservationDepositAmount: existing?.reservationDepositAmount ?? null,
+      paymentMethod: existing?.paymentMethod ?? null,
+      paymentCompleted: existing?.paymentCompleted ?? false,
+      paymentDate: existing?.paymentDate ?? null,
+      specialistSettledAt: existing?.specialistSettledAt ?? null,
+      medicalRecord: existing?.medicalRecord ?? null,
+      reasonForVisit: existing?.reasonForVisit ?? null,
+    });
     await cancelWhatsappRemindersForAppointment(appointmentRef);
     return true;
   }

@@ -33,10 +33,13 @@ import {
   assertNoConsultorioOverlap,
   assertNoOverlap,
 } from "./appointment.service.js";
+import { assertNoConflictsForNewFixedSeries } from "../utils/fixedAppointmentScheduling.js";
+import { PerfSpan } from "../utils/perfLog.js";
 import {
   buildVirtualAppointmentForDate,
   iterateSeriesOccurrenceDates,
   parseFixedAppointmentId,
+  buildFixedAppointmentId,
 } from "../utils/fixedAppointmentOccurrences.js";
 
 function parseMoneyToDecimal(value: string | number | Prisma.Decimal | null | undefined): Prisma.Decimal | null {
@@ -90,6 +93,8 @@ export async function createFixedAppointmentSeries(
   role: Role,
   userSpecialistId: string | null
 ) {
+  const perf = new PerfSpan();
+
   if (role === Role.SPECIALIST) {
     if (!userSpecialistId || data.specialistId !== userSpecialistId) {
       throw new AppError(403, "Solo puede crear turnos fijos para usted mismo");
@@ -138,18 +143,28 @@ export async function createFixedAppointmentSeries(
     );
   }
 
+  perf.mark("validated");
+
   const occurrenceDates = iterateSeriesOccurrenceDates({
     weekday,
     effectiveFrom,
     effectiveUntil,
   });
 
-  for (const occDate of occurrenceDates) {
-    await assertNoOverlap(data.specialistId, occDate, startTime, endTime);
-    await assertNoConsultorioOverlap(consultorio, occDate, startTime, endTime);
-  }
+  await assertNoConflictsForNewFixedSeries({
+    specialistId: data.specialistId,
+    consultorio,
+    weekday,
+    effectiveFrom,
+    effectiveUntil,
+    startTime,
+    endTime,
+    maxWeeks: occurrenceDates.length,
+  });
 
-  return fixedAppointmentSeriesRepository.create({
+  perf.mark("conflicts");
+
+  const created = await fixedAppointmentSeriesRepository.create({
     patientId: data.patientId,
     specialistId: data.specialistId,
     consultorio,
@@ -160,6 +175,16 @@ export async function createFixedAppointmentSeries(
     effectiveUntil,
     reasonForVisit: data.reasonForVisit,
   });
+
+  void import("./whatsappReminder.service.js")
+    .then(({ syncWhatsappRemindersForFixedSeries }) =>
+      syncWhatsappRemindersForFixedSeries(created.id)
+    )
+    .catch(() => undefined);
+
+  perf.finish({ op: "fixed-series.create", seriesId: created.id });
+
+  return created;
 }
 
 /** Si la serie ya fue dada de baja, devuelve la activa del mismo paciente y especialista. */
@@ -206,6 +231,7 @@ export async function rescheduleFixedAppointmentSeries(
   role: Role,
   userSpecialistId: string | null
 ) {
+  const perf = new PerfSpan();
   const series = await resolveActiveFixedSeries(seriesId);
   assertCanAccessSeries(role, userSpecialistId, series.specialistId);
 
@@ -267,6 +293,8 @@ export async function rescheduleFixedAppointmentSeries(
     await fixedAppointmentSeriesRepository.deactivate(s.id, until);
   }
 
+  perf.mark("deactivated");
+
   const conflictExclude = {
     excludePatientSpecialist: {
       patientId: series.patientId,
@@ -293,7 +321,9 @@ export async function rescheduleFixedAppointmentSeries(
       conflictExclude
     );
 
-    return await fixedAppointmentSeriesRepository.create({
+    perf.mark("conflicts");
+
+    const created = await fixedAppointmentSeriesRepository.create({
       patientId: series.patientId,
       specialistId: series.specialistId,
       consultorio,
@@ -304,6 +334,16 @@ export async function rescheduleFixedAppointmentSeries(
       effectiveUntil,
       reasonForVisit: series.reasonForVisit,
     });
+
+    void import("./whatsappReminder.service.js")
+      .then(({ syncWhatsappRemindersForFixedSeries }) =>
+        syncWhatsappRemindersForFixedSeries(created.id)
+      )
+      .catch(() => undefined);
+
+    perf.finish({ op: "fixed-series.reschedule", seriesId: created.id });
+
+    return created;
   } catch (err) {
     for (const prev of rollbackStates) {
       await prisma.fixedAppointmentSeries.update({
@@ -333,7 +373,11 @@ export async function cancelFixedAppointmentSeries(
     series.effectiveUntil && toDateOnly(series.effectiveUntil) < today
       ? toDateOnly(series.effectiveUntil)
       : today;
-  return fixedAppointmentSeriesRepository.deactivate(seriesId, until);
+  const deactivated = await fixedAppointmentSeriesRepository.deactivate(seriesId, until);
+  void import("./whatsappReminder.service.js")
+    .then(({ cancelWhatsappRemindersForFixedSeries }) => cancelWhatsappRemindersForFixedSeries(seriesId))
+    .catch(() => undefined);
+  return deactivated;
 }
 
 export async function skipFixedAppointmentOccurrence(
@@ -366,6 +410,11 @@ export async function skipFixedAppointmentOccurrence(
     }
     throw e;
   }
+  void import("./whatsappReminder.service.js")
+    .then(({ cancelWhatsappRemindersForAppointment }) =>
+      cancelWhatsappRemindersForAppointment(buildFixedAppointmentId(seriesId, formatDateOnlyISO(skipDate)))
+    )
+    .catch(() => undefined);
   return { ok: true };
 }
 
@@ -564,5 +613,10 @@ export async function upsertFixedAppointmentOccurrence(
   const refreshed = await fixedAppointmentSeriesRepository.findById(seriesId);
   if (!refreshed) throw new AppError(404, "Serie de turno fijo no encontrada");
   const occ = await fixedAppointmentOccurrenceRepository.findBySeriesAndDate(seriesId, occurrenceDate);
+  void import("./whatsappReminder.service.js")
+    .then(({ syncWhatsappReminderForFixedOccurrenceDate }) =>
+      syncWhatsappReminderForFixedOccurrenceDate(seriesId, dateIso)
+    )
+    .catch(() => undefined);
   return buildVirtualAppointmentForDate(refreshed, occurrenceDate, occ);
 }
