@@ -11,7 +11,8 @@ Confirmá que estas variables estén en el servicio **logocen-app** (mismos valo
 
 | Variable | Notas |
 |----------|--------|
-| `WHATSAPP_ENABLED` | `true` |
+| `WHATSAPP_ENABLED` | `true` cuando quieras enviar (credenciales Meta) |
+| `WHATSAPP_REMINDERS_ENABLED` | `true` para programar/enviar recordatorios 24 h; `false` = pausado sin borrar config |
 | `WHATSAPP_PHONE_NUMBER_ID` | ID del número real (no +1 555…) |
 | `WHATSAPP_ACCESS_TOKEN` | Token permanente (system user) en producción |
 | `WHATSAPP_VERIFY_TOKEN` | Texto que elijas; debe coincidir con Meta webhook |

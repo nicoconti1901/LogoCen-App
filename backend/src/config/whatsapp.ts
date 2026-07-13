@@ -29,3 +29,11 @@ export function isWhatsappConfigured(): boolean {
       whatsappConfig.accessToken
   );
 }
+
+/** Programar/enviar recordatorios 24 h. Independiente de credenciales (pausa sin borrar config). */
+export function isWhatsappRemindersEnabled(): boolean {
+  if (env.WHATSAPP_REMINDERS_ENABLED !== undefined) {
+    return env.WHATSAPP_REMINDERS_ENABLED;
+  }
+  return Boolean(whatsappConfig.enabled);
+}

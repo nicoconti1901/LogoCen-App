@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import { env } from "../config/env.js";
-import { whatsappConfig } from "../config/whatsapp.js";
+import { isWhatsappConfigured, isWhatsappRemindersEnabled, whatsappConfig } from "../config/whatsapp.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { AppError } from "../middleware/errorHandler.js";
 import { processDueWhatsappReminders } from "../services/whatsappReminder.service.js";
@@ -58,5 +58,43 @@ export const runRemindersCron = asyncHandler(async (req: Request, res: Response)
     throw new AppError(401, "No autorizado");
   }
   const result = await processDueWhatsappReminders();
-  res.json(result);
+  res.json({ ...result, whatsappConfigured: isWhatsappConfigured(), remindersEnabled: isWhatsappRemindersEnabled() });
+});
+
+export const whatsappStatus = asyncHandler(async (req: Request, res: Response) => {
+  if (!env.CRON_SECRET) {
+    throw new AppError(503, "CRON_SECRET no configurado");
+  }
+  const secret = req.header("x-cron-secret");
+  if (secret !== env.CRON_SECRET) {
+    throw new AppError(401, "No autorizado");
+  }
+  res.json({
+    whatsappConfigured: isWhatsappConfigured(),
+    remindersEnabled: isWhatsappRemindersEnabled(),
+    template24h: whatsappConfig.reminderTemplate24hName,
+    clinicName: whatsappConfig.clinicName,
+  });
+});
+
+export const forceSendReminder = asyncHandler(async (req: Request, res: Response) => {
+  if (!env.CRON_SECRET) {
+    throw new AppError(503, "CRON_SECRET no configurado");
+  }
+  const secret = req.header("x-cron-secret");
+  if (secret !== env.CRON_SECRET) {
+    throw new AppError(401, "No autorizado");
+  }
+  const appointmentRef = typeof req.body?.appointmentRef === "string" ? req.body.appointmentRef.trim() : "";
+  if (!appointmentRef) {
+    throw new AppError(400, "appointmentRef requerido");
+  }
+  const { forceSendWhatsappReminderForAppointment } = await import(
+    "../services/whatsappReminder.service.js"
+  );
+  const result = await forceSendWhatsappReminderForAppointment(appointmentRef);
+  if (!result.sent) {
+    throw new AppError(400, result.error ?? "No se pudo enviar");
+  }
+  res.json({ ok: true, appointmentRef });
 });

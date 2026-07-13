@@ -404,7 +404,9 @@ export async function createAppointment(
     endTime: created.endTime,
     consultorio: created.consultorio,
     status: created.status,
-  }).catch(() => undefined);
+  }).catch((err) => {
+    console.error("[whatsapp] sync falló al crear turno", { appointmentId: created.id, err });
+  });
 
   perf.finish({ op: "appointment.create", appointmentId: created.id });
 
@@ -583,7 +585,9 @@ export async function updateAppointment(
     endTime: updated.endTime,
     consultorio: updated.consultorio,
     status: updated.status,
-  }).catch(() => undefined);
+  }).catch((err) => {
+    console.error("[whatsapp] sync falló al actualizar turno", { appointmentId: updated.id, err });
+  });
 
   perf.finish({ op: "appointment.update", appointmentId: updated.id });
 
