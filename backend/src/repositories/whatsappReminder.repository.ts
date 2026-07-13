@@ -66,6 +66,26 @@ export const whatsappReminderRepository = {
     });
   },
 
+  findLatestForAppointment(appointmentRef: string): Promise<WhatsappReminder | null> {
+    return prisma.whatsappReminder.findFirst({
+      where: { appointmentRef },
+      orderBy: { updatedAt: "desc" },
+    });
+  },
+
+  scheduleSendNow(id: string): Promise<WhatsappReminder> {
+    return prisma.whatsappReminder.update({
+      where: { id },
+      data: {
+        status: WhatsappReminderStatus.SCHEDULED,
+        scheduledSendAt: new Date(),
+        sentAt: null,
+        waMessageId: null,
+        lastError: null,
+      },
+    });
+  },
+
   markSent(id: string, waMessageId: string): Promise<WhatsappReminder> {
     return prisma.whatsappReminder.update({
       where: { id },

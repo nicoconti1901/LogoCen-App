@@ -14,13 +14,15 @@ export type ReminderSchedulePlan = {
   scheduledSendAt: Date;
 } | null;
 
-/** Combina fecha @db.Date y hora HH:mm en instante local del servidor (misma convención que la agenda). */
+/** Argentina (ART, UTC−3 sin DST): hora de agenda → instante UTC. Render corre en UTC. */
+const CLINIC_UTC_OFFSET_HOURS = 3;
+
+/** Combina fecha @db.Date y hora HH:mm (hora del centro) en instante UTC. */
 export function appointmentStartInstant(appointmentDate: Date, startTime: string): Date {
   const day = formatStoredDateOnlyISO(appointmentDate);
+  const [y, mo, da] = day.split("-").map(Number);
   const [h, m] = startTime.split(":").map(Number);
-  const d = new Date(`${day}T00:00:00`);
-  d.setHours(h ?? 0, m ?? 0, 0, 0);
-  return d;
+  return new Date(Date.UTC(y, mo - 1, da, (h ?? 0) + CLINIC_UTC_OFFSET_HOURS, m ?? 0, 0, 0));
 }
 
 export function hoursUntilAppointmentStart(

@@ -3,7 +3,7 @@ import {
   PatientConfirmationSource,
   WhatsappReminderKind,
 } from "@prisma/client";
-import { isWhatsappConfigured } from "../config/whatsapp.js";
+import { isWhatsappConfigured, isWhatsappRemindersEnabled } from "../config/whatsapp.js";
 import { appointmentRepository } from "../repositories/appointment.repository.js";
 import { fixedAppointmentOccurrenceRepository } from "../repositories/fixedAppointmentOccurrence.repository.js";
 import { fixedAppointmentSeriesRepository } from "../repositories/fixedAppointmentSeries.repository.js";
@@ -176,6 +176,8 @@ export async function syncWhatsappReminderForAppointment(
     return;
   }
 
+  if (!isWhatsappRemindersEnabled()) return;
+
   let patientPhone = cached?.patientPhone;
   if (patientPhone === undefined) {
     const patient = await patientRepository.findById(target.patientId);
@@ -255,6 +257,9 @@ export async function processDueWhatsappReminders(): Promise<{
   failed: number;
   skipped: number;
 }> {
+  if (!isWhatsappRemindersEnabled()) {
+    return { processed: 0, sent: 0, failed: 0, skipped: 0 };
+  }
   const due = await whatsappReminderRepository.findDue(new Date());
   let sent = 0;
   let failed = 0;
@@ -273,6 +278,49 @@ export async function processDueWhatsappReminders(): Promise<{
   }
 
   return { processed: due.length, sent, failed, skipped };
+}
+
+/** Fuerza envío inmediato del recordatorio 24 h para un turno Agendado (≥48 h). */
+export async function forceSendWhatsappReminderForAppointment(appointmentRef: string): Promise<{
+  sent: boolean;
+  error?: string;
+}> {
+  const appt = await appointmentRepository.findById(appointmentRef);
+  if (!appt) return { sent: false, error: "Turno no encontrado" };
+  if (appt.status !== AppointmentStatus.RESERVED) {
+    return { sent: false, error: `Estado del turno: ${appt.status}` };
+  }
+  if (shouldAutoConfirmWithoutWhatsapp(appt.appointmentDate, appt.startTime)) {
+    return { sent: false, error: "Turno a menos de 48 h (sin WhatsApp)" };
+  }
+  if (!appt.patient.phone?.trim()) {
+    return { sent: false, error: "Paciente sin teléfono" };
+  }
+
+  await syncWhatsappReminderForAppointment({
+    appointmentRef: appt.id,
+    patientId: appt.patientId,
+    specialistId: appt.specialistId,
+    appointmentDate: appt.appointmentDate,
+    startTime: appt.startTime,
+    endTime: appt.endTime,
+    consultorio: appt.consultorio,
+    status: appt.status,
+  });
+
+  const reminder = await whatsappReminderRepository.findLatestForAppointment(appointmentRef);
+  if (!reminder) return { sent: false, error: "No se creó recordatorio" };
+
+  await whatsappReminderRepository.scheduleSendNow(reminder.id);
+  const result = await sendSingleReminder(
+    reminder.id,
+    reminder.appointmentRef,
+    reminder.patientId,
+    reminder.kind
+  );
+  if (result === "sent") return { sent: true };
+  const updated = await whatsappReminderRepository.findLatestForAppointment(appointmentRef);
+  return { sent: false, error: updated?.lastError ?? result };
 }
 
 async function sendSingleReminder(

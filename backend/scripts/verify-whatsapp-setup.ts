@@ -195,4 +195,4 @@ if (wabaProbe?.kind === "WABA_ID" && wabaIdEnv) {
   console.log(`\n✓ WHATSAPP_WABA_ID debería ser ${phoneIdEnv}`);
 }
 
-console.log("\nLuego: npm run whatsapp:real-test\n");
+console.log("\nLuego: npm run whatsapp:real-test   (crea turno de prueba, no toca los reales)\n");
